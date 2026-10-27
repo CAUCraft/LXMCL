@@ -58,7 +58,7 @@ cargo build --locked
 
 ```powershell
 cargo test --locked benchmark_tracking_frames -- --ignored --nocapture
-cargo test --locked ffmpeg -- --ignored --nocapture
+cargo test --locked decoder_loops_pauses_and_resumes_without_an_unbounded_queue -- --ignored --nocapture
 target/debug/lxmcl.exe --ui-benchmark target/ui-benchmark.json
 ```
 
