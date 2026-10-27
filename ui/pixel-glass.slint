@@ -1,0 +1,25 @@
+import { Theme } from "theme.slint";
+
+// Non-overlapping bands form a stepped silhouette: no rounded masks or blur.
+export component PixelGlass inherits Rectangle {
+    in property <color> tint: Theme.panel;
+    in property <color> edge: Theme.glass-rim;
+    in property <length> step: 4px;
+    in property <bool> gleam: true;
+    background: transparent;
+    Rectangle { x: root.step * 2; y: 0px; width: parent.width - root.step * 4; height: root.step; background: root.tint; }
+    Rectangle { x: root.step; y: root.step; width: parent.width - root.step * 2; height: root.step; background: root.tint; }
+    Rectangle { x: 0px; y: root.step * 2; width: parent.width; height: max(0px, parent.height - root.step * 4); background: root.tint; }
+    Rectangle { x: root.step; y: parent.height - root.step * 2; width: parent.width - root.step * 2; height: root.step; background: root.tint; }
+    Rectangle { x: root.step * 2; y: parent.height - root.step; width: parent.width - root.step * 4; height: root.step; background: root.tint; }
+    Rectangle { x: root.step * 2; y: 0px; width: parent.width - root.step * 4; height: 2px; background: root.edge; }
+    Rectangle { x: root.step; y: root.step; width: root.step; height: 2px; background: root.edge; }
+    Rectangle { x: 0px; y: root.step * 2; width: 2px; height: parent.height - root.step * 4; background: root.edge; }
+    Rectangle { x: root.step; y: parent.height - root.step * 2; width: 2px; height: root.step; background: root.edge; }
+    Rectangle { x: parent.width - root.step * 2; y: root.step; width: root.step; height: 2px; background: root.edge; }
+    Rectangle { x: parent.width - 2px; y: root.step * 2; width: 2px; height: parent.height - root.step * 4; background: root.edge; }
+    Rectangle { x: parent.width - root.step - 2px; y: parent.height - root.step * 2; width: 2px; height: root.step; background: root.edge; }
+    Rectangle { x: root.step * 2; y: parent.height - 2px; width: parent.width - root.step * 4; height: 2px; background: root.edge; }
+    if(root.gleam): Rectangle { x: root.step * 3; y: 4px; width: max(0px, parent.width * 0.55 - root.step * 3); height: 2px; background: Theme.tone(#ffffffa0, #dcecff28); }
+    if(root.gleam): Rectangle { x: root.step * 2; y: 8px; width: max(0px, parent.width * 0.35 - root.step * 2); height: 2px; background: Theme.tone(#ffffff50, #dcecff12); }
+}

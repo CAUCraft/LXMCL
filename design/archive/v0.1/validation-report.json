@@ -1,0 +1,26 @@
+{
+  "date": "2026-10-26",
+  "boards": 33,
+  "scene_nodes": 3829,
+  "validated_navigation_targets": 458,
+  "text_or_frame_bounds_findings": 0,
+  "svg_xml": "passed",
+  "figma_cloud_write": "completed via Figma desktop and local drawing plugin; no Figma AI calls",
+  "figma_file": "https://www.figma.com/design/wDdnB7HQaIpiE8rzkwU4VQ/LXMCL",
+  "figma_native_audit": {
+    "ui_frames": 33,
+    "information_architecture_frames": 1,
+    "native_text_layers_in_ui": 1865,
+    "button_master_components": 130,
+    "button_instances": 248,
+    "vector_layers": 1166,
+    "cross_frame_navigation_links": 409,
+    "current_frame_actions_without_navigation": 52,
+    "font": "Noto Sans SC",
+    "errors": []
+  },
+  "figma_canvas_validation": "all three home screens visually reviewed in native Figma prototype; classic home > join > downloads and glass resources > compatibility confirmation > downloads clicked successfully",
+  "browser_interaction_validation": "HTML browser access blocked by URL policy; not claimed as passed",
+  "html": "static syntax checked separately",
+  "implementation_scope": "UI prototypes only, no game/network/backend integration"
+}

@@ -1,0 +1,72 @@
+
+const data=window.LXMCL_DATA, stage=document.querySelector('#stage'),wrap=document.querySelector('#stage-wrap'),modal=document.querySelector('#modal');
+let theme='glass',page='home',previous='home',downloadPaused=false,installed=false,selectedGame='社团生存',toggles={},resourceCategory='模组',searchIndex=0;
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const rgba=(h,a)=>{let n=parseInt(h.slice(1),16);return `rgba(${n>>16},${(n>>8)&255},${n&255},${a})`};
+function scale(){let s=Math.min((innerWidth-32)/1440,1);wrap.style.width=1440*s+'px';wrap.style.height=900*s+'px';stage.style.transform=`scale(${s})`}
+function toast(s){let e=document.querySelector('#toast');e.textContent=s;e.style.display='block';clearTimeout(window.toastTimer);window.toastTimer=setTimeout(()=>e.style.display='none',4000)}
+function go(key){previous=page;page=key;location.hash=theme+'/'+page;render()}
+function dialog(title,body,confirm='知道了',cb=null){document.querySelector('#modal-content').innerHTML=`<h2>${esc(title)}</h2>${body}<div class="modal-actions"><button class="secondary" id="dismiss">取消</button><button id="confirm">${esc(confirm)}</button></div>`;modal.showModal();document.querySelector('#dismiss').onclick=()=>modal.close();document.querySelector('#confirm').onclick=()=>{modal.close();if(cb)cb()}}
+function render(){
+ const board=data.boards.find(b=>b.id===theme+'/'+page)||data.boards[0];const overlayIndex=board.nodes.findIndex(n=>n.type==='rect'&&n.x===0&&n.y===44&&n.w===1440&&n.h===856&&n.opacity===.3);stage.innerHTML='';stage.style.background=data.themes[theme].bg;document.querySelector('#screens').value=page;
+ document.querySelectorAll('[data-theme]').forEach(b=>b.classList.toggle('active',b.dataset.theme===theme));
+ for(let i=0;i<board.nodes.length;i++){
+  const n=board.nodes[i];let e=document.createElement(n.type==='input'?'input':n.type==='hit'?'button':'div');
+  Object.assign(e.style,{left:n.x+'px',top:n.y+'px',width:n.w+'px',height:n.h+'px'});
+  if(n.type==='rect'||n.type==='ellipse'){
+   e.className='shape'+(n.glass?' glass':'');e.style.background=n.glow?`radial-gradient(ellipse,${rgba(n.fill,n.opacity||1)},${rgba(n.fill,0)} 70%)`:rgba(n.fill,n.opacity??1);e.style.borderRadius=n.type==='ellipse'?'50%':(n.r||0)+'px';if(n.stroke)e.style.border='1px solid '+n.stroke;if(n.shadow)e.style.boxShadow='0 20px 80px #0a203b40';
+  }else if(n.type==='text'){e.className='text';e.textContent=n.text;e.style.fontSize=n.size+'px';e.style.color=n.color;e.style.fontWeight=n.weight||400;
+  }else if(n.type==='svg'){e.className='vector';e.innerHTML=n.svg;
+  }else if(n.type==='input'){e.value=n.text||'';e.placeholder=n.placeholder||'';e.style.fontSize=n.size+'px';e.style.color=n.color;e.setAttribute('aria-label',n.placeholder);e.dataset.kind=n.kind;e.addEventListener('input',()=>filterInput(e,n.kind));
+  }else if(n.type==='hit'){e.className='hit';e.setAttribute('aria-label',n.label||'打开');}
+  if(n.action&&(overlayIndex<0||i>overlayIndex)){e.dataset.action=n.action;e.setAttribute('aria-label',n.label||n.action);e.onclick=()=>act(n.action,e);if(n.type!=='hit'){e.style.pointerEvents='auto';e.style.cursor='pointer';e.tabIndex=0;e.setAttribute('role','button');e.onkeydown=k=>{if(k.key==='Enter'||k.key===' '){k.preventDefault();act(n.action,e)}}}if(n.action.startsWith('toggle')){toggles[n.action]??=n.fill===data.themes[theme].accent;e.style.background=toggles[n.action]?data.themes[theme].accent:data.themes[theme].line;e.setAttribute('role','switch');e.setAttribute('aria-checked',String(toggles[n.action]));}}
+  if(i===overlayIndex)e.style.pointerEvents='auto';if(overlayIndex>=0&&i<overlayIndex){e.style.pointerEvents='none';e.tabIndex=-1;if(n.type==='input'||n.type==='hit')e.disabled=true;}
+  const prev=board.nodes[i-1];if(n.type==='rect'&&prev?.action?.startsWith('toggle'))e.style.left=(prev.x+(toggles[prev.action]?21:3))+'px';
+  stage.append(e);
+ }
+ if(page==='search'){requestAnimationFrame(()=>{stage.querySelector('input').focus();stage.querySelector('input').select()})}
+ if(downloadPaused&&page==='downloads'){stage.querySelectorAll('.text').forEach(e=>{if(e.textContent==='全部暂停')e.textContent='全部继续';if(e.textContent.includes('3.2 MB/s'))e.textContent='已暂停 · 任务与下载进度已保留';})}
+ if(selectedGame!=='社团生存'&&page==='instances')stage.querySelectorAll('.text').forEach(e=>{if(e.textContent==='社团生存')e.textContent=selectedGame});
+ scale();
+}
+function filterInput(e,kind){
+ if(kind==='global'){
+  const entries=[['服务器','民航社团服','在线 32 人 · 兼容：社团生存','route:join'],['游戏','社团生存','1.21.1 · Fabric · 已安装','route:instances'],['资源','Sodium / 钠','Modrinth · 渲染优化','route:resources'],['设置','Java 与存储','管理 Java 版本与安装路径','route:settings'],['设置','代理与网络','系统代理、镜像源和连通性测试','route:diagnostics'],['账号','LingXiao · 民航社团','管理账号与更换装扮','route:character']];
+  const q=e.value.toLowerCase();let results=entries.filter(r=>r.join(' ').toLowerCase().includes(q));let existing=stage.querySelector('#live-results');if(existing)existing.remove();let r=document.createElement('div');r.id='live-results';Object.assign(r.style,{left:'381px',top:'232px',width:'708px',height:'452px',background:data.themes[theme].card,borderRadius:'8px',padding:'16px',overflow:'auto',color:data.themes[theme].ink});
+  r.innerHTML=results.length?results.map((item,i)=>`<button data-result="${esc(item[3])}" style="display:block;width:100%;text-align:left;border:0;background:${i===0?data.themes[theme].soft:'transparent'};padding:14px;border-radius:8px;font:15px Microsoft YaHei;color:inherit;cursor:pointer"><small>${esc(item[0])}</small>　<strong>${esc(item[1])}</strong><br><span style="font-size:12px;opacity:.7">${esc(item[2])}</span></button>`).join(''):'<p>未找到匹配结果。试试“社团”“Java”“钠”或“代理”。</p>';r.querySelectorAll('[data-result]').forEach(b=>b.onclick=()=>act(b.dataset.result,b));stage.append(r);searchIndex=0;
+ }else{clearTimeout(window.inputTimer);window.inputTimer=setTimeout(()=>toast(e.value?`已按“${e.value}”筛选（交互示例）`:'已显示全部条目'),600)}
+}
+function act(a,el){
+ if(a.startsWith('route:'))return go(a.slice(6));
+ if(a==='launch')return dialog('正在启动游戏','<p>启动前检查 → 准备运行环境 → 打开游戏窗口</p><div id="overlay-log">✓ 账号有效\n✓ Java 21 兼容\n✓ 游戏文件完整\n✓ 启动完成（交互演示）</div>','返回启动器');
+ if(a.startsWith('togglemod:')||a.startsWith('toggle:')||a==='toggle'){toggles[a]=!toggles[a];el.style.background=toggles[a]?data.themes[theme].accent:data.themes[theme].line;el.setAttribute('aria-checked',String(toggles[a]));let next=el.nextElementSibling;if(next&&next.classList.contains('shape'))next.style.left=(parseFloat(el.style.left)+(toggles[a]?21:3))+'px';return toast(toggles[a]?'已启用':'已关闭，文件仍保留')}
+ if(a==='pause-all'){downloadPaused=!downloadPaused;render();return toast(downloadPaused?'全部任务已暂停，进度已保留':'任务已继续')}
+ if(a.startsWith('task:')){return dialog('管理下载任务','<p>暂停会保留已下载文件；取消仅停止这个任务。</p>','暂停任务',()=>toast('任务已暂停，可以继续下载'))}
+ if(a==='install')return dialog('已确认安装方案','<p>禁用 OptiFine → 安装依赖 → 安装 Iris Shaders。可以在“我的游戏 → 模组”恢复被禁用的文件。</p>','查看下载',()=>{installed=true;go('downloads')});
+ if(a.startsWith('mod:')){const name=a.slice(4),local=name.endsWith('.jar');dialog('管理 '+name,`<p>作用于：社团生存\n来源：${local?'用户自行导入 · 不支持在线更新':'Modrinth'}</p><div class="options"><button id="mod-update" ${local?'disabled style="opacity:.45"':''}>在线更新</button><button id="mod-remove">删除文件</button></div>`,'返回列表');document.querySelector('#mod-update').onclick=()=>{modal.close();go('downloads')};document.querySelector('#mod-remove').onclick=()=>{modal.close();dialog('删除 '+name,'<p>仅删除当前游戏中的这个模组文件，不影响世界存档。此原型仅演示确认流程。</p>','确认删除',()=>toast('已删除示例条目'))};return;}
+ if(a.startsWith('select:')){selectedGame=a.slice(7);render();return toast('已选择 '+selectedGame)}
+ if(a==='create')return dialog('创建游戏','<label>游戏名称<input id="new-name" value="我的新世界"></label><label>游戏版本<select><option>1.21.1（社团兼容）</option><option>1.20.1</option></select></label><label>加载器<select><option>Fabric</option><option>原版（无需加载器）</option><option>Forge</option></select></label><p>下一步确认 Java 与安装位置。</p>','下一步',()=>go('join'));
+ if(a==='import')return dialog('导入到当前游戏','<p>选择文件类型，确认目标游戏后导入。\n本地导入的资源会标记“用户自行导入”，不提供在线更新。</p><label>资源类型<select><option>模组（.jar）</option><option>资源包（.zip）</option><option>光影（.zip）</option><option>世界存档</option><option>整合包（.mrpack / .zip）</option></select></label><label>目标游戏<select><option>社团生存</option><option>创造与建筑</option></select></label>','模拟导入',()=>toast('已导入示例文件，可在目标游戏中查看'));
+ if(a==='folder')return dialog('更改安装位置','<label>文件夹路径<input value="D:\\LXMCL\\runtime"></label><p>确认后仅影响本次安装。文件夹选择器将在正式应用中打开。</p>','使用此位置',()=>toast('已保存示例位置'));
+ if(a==='account')return dialog('添加账号','<p>选择账号类型。民航社团服优先使用社团账号。</p><div class="options"><button>民航社团</button><button>Microsoft</button><button>第三方认证</button><button>离线账号</button></div>','开始登录',()=>toast('登录交互到此结束；此设计稿不会收集账号或密码'));
+ if(a.startsWith('account:'))return dialog('切换游戏账号',`<p>切换到 ${esc(a.slice(8))}。入服前将再次检查服务器要求的认证类型。</p>`,'使用此账号',()=>toast('已切换示例账号'));
+ if(a==='choose-instance')return dialog('选择安装目标','<label>游戏实例<select><option>社团生存 · 1.21.1 · Fabric</option><option>机械动力 · 1.20.1 · Forge</option></select></label>','应用筛选',()=>toast('已更新版本和加载器筛选'));
+ if(a==='source')return dialog('选择资源来源','<label>来源<select><option>全部来源</option><option>Modrinth</option><option>CurseForge</option></select></label>','应用',()=>toast('已更新来源筛选'));
+ if(a.startsWith('category:')){resourceCategory=a.slice(9);return dialog(resourceCategory+'资源',`<p>资源中心切换为“${esc(resourceCategory)}”。所有安装操作会先确认目标游戏与兼容版本。</p>`,'查看安装确认',()=>go('conflict'))}
+ if(a.startsWith('setting:')){
+  let s=a.slice(8);if(s==='Java 与存储')return go('settings');
+  const bodies={'外观与无障碍':'<label>视觉风格<select id="style-pick"><option value="glass">液态玻璃</option><option value="classic">经典桌面</option><option value="terminal">极简深色</option></select></label><label>色彩模式<select><option>跟随系统</option><option>浅色</option><option>深色</option></select></label><label>字体大小<select><option>标准 · 100%</option><option>大 · 125%</option><option>更大 · 150%</option></select></label><p>减少透明度与减少动画可独立开启。</p>','下载与网络':'<label>代理方式<select><option>跟随系统代理（推荐）</option><option>不使用代理</option><option>手动配置 HTTP / SOCKS</option></select></label><label>下载源<select><option>自动选择</option><option>官方源</option><option>BMCLAPI</option></select></label><p>游戏进程代理在游戏设置中单独配置。</p>','游戏默认配置':'<label>内存分配<select><option>自动分配（推荐）</option><option>手动</option></select></label><label>窗口尺寸<select><option>1280 × 720</option><option>1920 × 1080</option><option>全屏</option></select></label><details><summary>高级参数</summary><label>JVM 参数<input placeholder="留空使用默认参数"></label><p>实例逐项覆盖；可恢复继承。</p></details>','扩展与自动化':'<p>扩展管理 / 深度链接 / CLI / MCP 服务\n默认关闭外部控制。启用时选择允许的操作。</p>','关于与更新':'<p>LXMCL · 中国民航 MC 启动器\n更新说明、版本检查、开源致谢与帮助。</p>','常规与启动':'<label>游戏启动后<select><option>隐藏启动器，游戏退出后恢复</option><option>保持窗口显示</option><option>退出启动器</option></select></label>'};
+  return dialog(s,bodies[s]||'<p>此页为扩展设置入口。</p>','保存',()=>{if(s==='外观与无障碍'){theme=document.querySelector('#style-pick').value;location.hash=theme+'/'+page;render()}toast('设置已保存（交互示例）')})
+ }
+ if(a.startsWith('tab:')){let s=a.slice(4);if(s.startsWith('模组'))return toast('已显示当前游戏的模组');return dialog('社团生存 · '+s,`<p>${esc(s)}只作用于当前游戏。</p>`+(s==='设置'?'<label>内存分配<select><option>继承全局 · 自动 6 GB</option><option>单独设置 · 8 GB</option></select></label><details><summary>高级启动参数</summary><p>JVM 参数、环境变量、前后置命令、运行目录、包装命令。</p></details>':'<p>可查看、导入、启用或管理当前游戏中的内容。</p>'),'保存',()=>toast('已保存到当前游戏'))}
+ if(a==='network')return dialog('网络测试结果','<div id="overlay-log">民航服务器      正常 · 28 ms\nBMCLAPI         正常 · 42 ms\nModrinth        正常 · 96 ms\nCurseForge      连接超时\nIPv6            可用</div><p>建议：重试连接或检查系统代理。</p>','查看网络设置',()=>act('setting:下载与网络'));
+ if(a==='cache')return dialog('图形缓存清理','<p>先检测显卡与缓存占用，再展示清理范围。游戏运行中不执行清理。此原型不会删除任何文件。</p>','模拟检测',()=>toast('检测完成：可清理缓存 128 MB（示例）'));
+ const details={notice:['社团公告','本周一起完善校园建筑。服务器维护与活动信息将在这里集中展示。'],room:['多人联机','创建房间或输入房间码加入；连接前检查联机组件状态。'],java:['安装 Java','推荐 Zulu OpenJDK。显示匹配版本、下载大小和安装位置，确认后开始下载。'],skin:['皮肤站衣橱','预览皮肤，选择经典或纤细模型，再保存到当前角色。'],cape:['选择披风','先预览，再应用到当前认证服务支持的角色。'],auth:['认证服务','民航社团 / Microsoft / 第三方 Yggdrasil 认证入口。'],help:['新手指南','登录账号 → 选择社团服务器 → 检查环境 → 下载 → 进入游戏。'],memory:['内存与性能','优先使用自动内存分配；显示系统可用内存与当前游戏配置。'],logs:['高级日志工具','运行日志、调试日志、诊断包和线程转储按能力提供。']};
+ if(a==='scan-java')return toast('找到 Java 21 与 Java 17，均可使用');if(a==='save-skin')return toast('装扮已保存到当前角色（示例）');
+ const d=details[a]||['操作详情',a.startsWith('diagnostic:')?'展示原因、可执行修复、日志详情与导出入口。':'此入口已规划；交互原型展示到当前层级。'];dialog(d[0],'<p>'+esc(d[1])+'</p>');
+}
+document.querySelector('#themes').innerHTML=Object.entries(data.themes).map(([k,v])=>`<button data-theme="${k}">${v.name}</button>`).join(' ');
+document.querySelectorAll('[data-theme]').forEach(b=>b.onclick=()=>{theme=b.dataset.theme;location.hash=theme+'/'+page;render()});document.querySelector('#screens').innerHTML=data.boards.filter(b=>b.theme==='glass').map(b=>`<option value="${b.key}">${b.name}</option>`).join('');document.querySelector('#screens').onchange=e=>go(e.target.value);
+addEventListener('resize',scale);addEventListener('hashchange',()=>{const [th,pg]=location.hash.slice(1).split('/');if(data.themes[th]&&data.boards.some(b=>b.id===th+'/'+pg)){theme=th;page=pg;render()}});
+addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();if(!modal.open)go('search')}if(e.key==='Escape'&&!modal.open&&['search','join','conflict'].includes(page)){e.preventDefault();go(previous==='search'?'home':previous)}if(page==='search'&&e.key==='Enter'&&!modal.open){e.preventDefault();let first=stage.querySelector('[data-result]');act(first?first.dataset.result:'route:join')}if(page==='search'&&['ArrowDown','ArrowUp'].includes(e.key)){let bs=[...stage.querySelectorAll('[data-result]')];if(bs.length){e.preventDefault();searchIndex=(searchIndex+(e.key==='ArrowDown'?1:-1)+bs.length)%bs.length;bs[searchIndex].focus()}}});
+const start=location.hash.slice(1).split('/');if(data.themes[start[0]])theme=start[0];if(data.boards.some(b=>b.id===theme+'/'+start[1]))page=start[1];render();

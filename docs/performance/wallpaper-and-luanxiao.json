@@ -1,0 +1,28 @@
+{
+  "measured_on": "2026-10-26",
+  "skin": "luanxiao.png (original RGBA, both layers)",
+  "resolution": [
+    280,
+    400
+  ],
+  "poses": 360,
+  "cpu_raster_ms": {
+    "p50": 1.814,
+    "p95": 2.674,
+    "max": 8.094
+  },
+  "scope": "CPU skin rasterization only; excludes GPU upload and OS input/display latency",
+  "validation": "12 functional tests, skin timing and FFmpeg looping/pause/resume integration test passed",
+  "wallpaper_sources": 7,
+  "wallpaper_playback": "1280x720, 24 fps, silent",
+  "paused_decoder_cpu_seconds_over_2s": 0.0,
+  "manual_ui_checks": [
+    "video visible under pixel glass",
+    "light/dark end states",
+    "wallpaper selector shows seven scenes",
+    "switch cabin to aquarium",
+    "pause frame and decoder CPU",
+    "static background fallback",
+    "original RGBA dual-layer skin"
+  ]
+}

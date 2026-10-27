@@ -1,0 +1,233 @@
+import { ScrollView, LineEdit, ComboBox } from "std-widgets.slint";
+import { Theme } from "../theme.slint";
+import { AppState } from "../models.slint";
+import { Guidance } from "../guidance-models.slint";
+import { Label, Muted, Heading, Panel, AppButton, Badge, Divider, EmptyState } from "../components.slint";
+
+export component OnboardingPage inherits Rectangle {
+    background: transparent;
+    VerticalLayout {
+        padding: 24px; spacing: 16px;
+        HorizontalLayout { Heading { text: "第一次玩，一步步准备"; font-size: 23px; } AppButton { text: "稍后继续"; quiet: true; clicked => { AppState.navigate(0); } } }
+        Muted { text: "可以随时返回修改；本次会话保留填写内容。不会下载或改动真实文件。"; wrap: word-wrap; }
+        HorizontalLayout {
+            spacing: 10px;
+            for title[i] in ["1  选玩法", "2  确认身份", "3  存储与环境", "4  检查启动"]:
+                Rectangle {
+                    height: 38px; background: Guidance.step == i ? Theme.accent-soft : Theme.panel;
+                    border-width: Guidance.step == i ? 1px : 0px; border-color: Theme.accent;
+                    Label { text: title; horizontal-alignment: center; color: Guidance.step == i ? Theme.accent : Theme.muted; font-weight: Guidance.step == i ? 600 : 400; }
+                }
+        }
+        Panel {
+            vertical-stretch: 1;
+            ScrollView {
+                horizontal-scrollbar-policy: always-off;
+                VerticalLayout {
+                    padding: 20px; spacing: 12px;
+                    if(Guidance.step == 0): VerticalLayout {
+                        spacing: 12px; vertical-stretch: 0;
+                        Label { text: "你想怎么玩？"; font-size: 21px; font-weight: 600; }
+                        HorizontalLayout {
+                            spacing: 16px;
+                            Panel {
+                                width: (root.width - 108px) / 2; height: 142px;
+                                VerticalLayout {
+                                    padding: 18px; spacing: 10px;
+                                    Label { text: "和社团伙伴一起玩"; font-size: 17px; font-weight: 600; }
+                                    Muted { text: "按服务器要求匹配游戏、加载器与账号。"; wrap: word-wrap; }
+                                    AppButton { text: Guidance.club ? "已选：进入社团服" : "选择社团服"; primary: Guidance.club; clicked => { Guidance.club = true; } }
+                                }
+                            }
+                            Panel {
+                                width: (root.width - 108px) / 2; height: 142px;
+                                VerticalLayout {
+                                    padding: 18px; spacing: 10px;
+                                    Label { text: "先玩自己的世界"; font-size: 17px; font-weight: 600; }
+                                    Muted { text: "选择一个独立游戏，模组与存档分别管理。"; wrap: word-wrap; }
+                                    AppButton { text: !Guidance.club ? "已选：自己玩" : "选择自己玩"; primary: !Guidance.club; clicked => { Guidance.club = false; } }
+                                }
+                            }
+                        }
+                        HorizontalLayout {
+                            spacing: 14px;
+                            Label { text: "使用哪个游戏"; width: 110px; }
+                            ComboBox { model: AppState.game-names; current-index: AppState.current-game-index; selected(_) => { AppState.choose-game-at(self.current-index); } }
+                            AppButton { text: "创建游戏"; clicked => { AppState.open-modal("create", 0); } }
+                        }
+                        Muted { text: Guidance.club ? "示例服务器要求 1.21.1 / Fabric；不匹配时会提示处理，不覆盖已有游戏。" : "原版不需要模组加载器；整合包应创建为独立游戏。"; wrap: word-wrap; }
+                    }
+                    if(Guidance.step == 1): VerticalLayout {
+                        spacing: 12px; vertical-stretch: 0;
+                        Label { text: "确认将使用的身份"; font-size: 21px; font-weight: 600; }
+                        HorizontalLayout { Label { text: AppState.account-name; font-size: 28px; font-weight: 700; } AppButton { text: "管理账号"; clicked => { AppState.navigate(5); } } }
+                        HorizontalLayout { spacing: 12px; Badge { text: "本地预览身份 · 尚未认证"; warning: true; } AppButton { text: "了解账号区别"; quiet: true; clicked => { Guidance.open-article("account"); } } Rectangle { horizontal-stretch: 1; } }
+                        Label { text: Guidance.club ? "社团服可能要求指定认证服务。正式接入后会检查入服资格，登录过期时保留当前目标并引导重新认证。" : "微软、第三方和本地身份适用的服务不同。本地预览身份仅用于体验这套交互。"; wrap: word-wrap; }
+                        Divider {}
+                        Muted { text: "登录相关操作集中在账号页。向导不会要求你在这里填写学校或微软密码。"; wrap: word-wrap; }
+                    }
+                    if(Guidance.step == 2): VerticalLayout {
+                        spacing: 10px; vertical-stretch: 0;
+                        HorizontalLayout { Label { text: "选择游戏与 Java 的存放位置"; font-size: 21px; font-weight: 600; } AppButton { text: "填写说明"; quiet: true; clicked => { Guidance.open-article("storage"); } } }
+                        Muted { text: "可选其他磁盘，路径支持中文和空格。下面先检查格式，磁盘空间与权限待服务接入。"; wrap: word-wrap; }
+                        Label { text: "游戏目录"; font-weight: 600; }
+                        LineEdit { text <=> Guidance.game-directory; placeholder-text: "例如 E:\\Games\\LXMCL"; edited(_) => { Guidance.validate-paths(); } }
+                        Label { text: "Java 目录"; font-weight: 600; }
+                        LineEdit { text <=> Guidance.java-directory; placeholder-text: "例如 E:\\Games\\Java"; edited(_) => { Guidance.validate-paths(); } }
+                        Muted { text: "优先复用匹配的 Java；缺失时推荐 Zulu JDK。具体版本、来源和下载量在准备清单中确认。"; wrap: word-wrap; }
+                    }
+                    if(Guidance.step == 3): VerticalLayout {
+                        spacing: 12px; vertical-stretch: 0;
+                        Label { text: "准备好了，先检查再启动"; font-size: 21px; font-weight: 600; }
+                        Label { text: "游戏：" + AppState.current-game.name + "  ·  " + AppState.current-game.version + " / " + AppState.current-game.loader; wrap: word-wrap; }
+                        Label { text: "身份：" + AppState.account-name; }
+                        Label { text: "玩法：" + (Guidance.club ? "进入 CAUCRAFT 示例服务器" : "本地游玩"); }
+                        Divider {}
+                        Muted { text: "游戏目录：" + Guidance.game-directory; wrap: word-wrap; }
+                        Muted { text: "Java 目录：" + Guidance.java-directory; wrap: word-wrap; }
+                        Label { text: "检查账号、版本、Java、目录和资源。遇到问题，会给出原因与下一步；需要安装时先展示变更清单。"; wrap: word-wrap; }
+                    }
+                    Rectangle { vertical-stretch: 1; min-height: 8px; }
+                }
+            }
+        }
+        if(Guidance.path-error != ""): Label { text: Guidance.path-error; wrap: word-wrap; color: Theme.danger; font-size: 12px; }
+        HorizontalLayout {
+            spacing: 12px;
+            AppButton { text: "上一步"; enabled: Guidance.step > 0; clicked => { Guidance.advance(-1); } }
+            Rectangle { horizontal-stretch: 1; }
+            AppButton { text: "查看教程"; quiet: true; clicked => { Guidance.open-article("start"); } }
+            AppButton { text: Guidance.step == 3 ? "打开启动检查" : "下一步"; primary: true; enabled: Guidance.step != 2 || Guidance.path-error == ""; clicked => { if(Guidance.step == 3) { Guidance.start-check(Guidance.club); } else { Guidance.advance(1); } } }
+        }
+    }
+}
+
+export component PreparationPage inherits Rectangle {
+    background: transparent;
+    VerticalLayout {
+        padding: 24px; spacing: 14px;
+        HorizontalLayout {
+            Heading { text: "启动前检查"; font-size: 24px; }
+            Badge { text: "交互预演"; }
+            AppButton { text: "返回首页"; quiet: true; clicked => { AppState.navigate(0); } }
+        }
+        Muted { text: Guidance.target-summary; wrap: word-wrap; }
+        HorizontalLayout {
+            spacing: 10px;
+            Muted { text: "下列为演示结果，尚未检测本机或连接服务器。"; wrap: word-wrap; }
+            AppButton { text: Guidance.show-scenarios ? "收起演示场景" : "切换演示场景"; quiet: true; clicked => { Guidance.show-scenarios = !Guidance.show-scenarios; } }
+        }
+        if(Guidance.show-scenarios): HorizontalLayout {
+            spacing: 10px;
+            Label { text: "测试不同情况"; width: 120px; }
+            ComboBox { model: ["缺少 Java", "全部就绪", "账号过期", "版本不兼容", "准备时下载失败", "检查结果未知"]; current-index: Guidance.scenario; enabled: !Guidance.busy; selected(_) => { Guidance.select-scenario(self.current-index); } }
+        }
+        ScrollView {
+            horizontal-scrollbar-policy: always-off;
+            VerticalLayout {
+                spacing: 10px;
+                if(!Guidance.show-plan): VerticalLayout { spacing: 10px;
+                for check in Guidance.checks: Panel {
+                    height: 80px;
+                    HorizontalLayout {
+                        padding: 12px; spacing: 14px;
+                        Rectangle { width: 4px; background: check.severity == 0 ? Theme.green : check.severity == 2 ? Theme.danger : Theme.amber; }
+                        VerticalLayout {
+                            spacing: 7px;
+                            Label { text: check.title; font-weight: 600; }
+                            Muted { text: check.detail; wrap: word-wrap; }
+                        }
+                        Badge { text: check.status; positive: check.severity == 0; warning: check.severity != 0; }
+                        AppButton { text: "怎么办"; quiet: true; clicked => { Guidance.open-article(check.help-id); } }
+                    }
+                }
+                }
+                if(Guidance.busy && Guidance.checks.length == 0): EmptyState { title: "正在检查…"; description: "检查账号、游戏版本、运行环境与资源依赖。"; }
+                if(!Guidance.busy && Guidance.checks.length == 0): EmptyState { title: "还不能开始检查"; description: "先选择游戏和账号，并检查向导中的目录填写。"; }
+                if(Guidance.show-plan && Guidance.has-plan): Panel {
+                    min-height: 252px;
+                    VerticalLayout {
+                        padding: 20px; spacing: 12px;
+                        Label { text: "确认准备清单"; font-size: 18px; font-weight: 600; }
+                        Label { text: Guidance.plan-text; wrap: word-wrap; font-size: 13px; }
+                        Muted { text: "只预演这份清单，不覆盖存档，也不修改系统 Java。执行后仍需通过其他检查项。"; wrap: word-wrap; }
+                        HorizontalLayout {
+                            spacing: 10px;
+                            AppButton { text: "返回检查"; enabled: !Guidance.busy; clicked => { Guidance.show-plan = false; } }
+                            Rectangle { horizontal-stretch: 1; }
+                            AppButton { text: Guidance.busy ? "正在准备…" : "模拟执行这些变更"; primary: true; enabled: !Guidance.busy; clicked => { Guidance.apply-plan(); } }
+                        }
+                    }
+                }
+                Rectangle { min-height: 6px; }
+            }
+        }
+        Panel {
+            min-height: 58px;
+            HorizontalLayout { padding: 14px; Label { text: Guidance.check-message; wrap: word-wrap; color: Guidance.completed ? Theme.green : Theme.text; font-size: 13px; } }
+        }
+        HorizontalLayout {
+            spacing: 10px;
+            AppButton { text: "修改准备选项"; enabled: !Guidance.busy; clicked => { Guidance.open-guide(); } }
+            AppButton { text: "重新检查"; enabled: !Guidance.busy; clicked => { Guidance.start-check(Guidance.club); } }
+            Rectangle { horizontal-stretch: 1; }
+            if(Guidance.has-plan && !Guidance.show-plan): AppButton { text: "预览准备清单"; primary: true; enabled: !Guidance.busy; clicked => { Guidance.show-plan = true; } }
+            if(!Guidance.has-plan): AppButton { text: Guidance.completed ? "启动预演已完成" : "预演启动"; primary: true; enabled: Guidance.can-launch && !Guidance.busy && !Guidance.completed; clicked => { Guidance.launch-preview(); } }
+        }
+    }
+}
+
+export component KnowledgePage inherits Rectangle {
+    background: transparent;
+    VerticalLayout {
+        padding: 24px; spacing: 16px;
+        HorizontalLayout {
+            Heading { text: "帮助与教程"; font-size: 24px; }
+            if(Guidance.article >= 0): AppButton { text: "返回目录"; quiet: true; clicked => { Guidance.article = -1; } }
+            if(Guidance.article >= 0): AppButton { text: "返回刚才操作"; clicked => { AppState.page = Guidance.help-return-page; } }
+        }
+        if(Guidance.article < 0): VerticalLayout {
+            spacing: 16px;
+            Muted { text: "按你想完成的事查找；遇到问题时按 F1 打开当前页面的教程。"; wrap: word-wrap; }
+            LineEdit { text: Guidance.help-query; placeholder-text: "搜索：进服、Java、材质、下载慢、登录过期…"; edited(t) => { Guidance.search-help(t); } }
+            ScrollView {
+                horizontal-scrollbar-policy: always-off;
+                VerticalLayout {
+                    spacing: 12px;
+                    for article in Guidance.articles: Panel {
+                        height: 100px;
+                        HorizontalLayout {
+                            padding: 18px; spacing: 16px;
+                            VerticalLayout { spacing: 8px; Label { text: article.title; font-size: 16px; font-weight: 600; } Muted { text: article.summary; wrap: word-wrap; } }
+                            AppButton { text: "阅读教程"; clicked => { Guidance.open-article-at(article.id); } }
+                        }
+                    }
+                    if(Guidance.articles.length == 0): EmptyState { title: "还没有对应的教程"; description: "试试“Java”“账号”或“下载”，也可以清空搜索查看全部。"; }
+                    Rectangle { min-height: 6px; }
+                }
+            }
+        }
+        if(Guidance.article >= 0): VerticalLayout {
+            spacing: 16px;
+            ScrollView {
+                horizontal-scrollbar-policy: always-off;
+                VerticalLayout {
+                    spacing: 14px;
+                    Label { text: Guidance.article-title; font-size: 23px; font-weight: 700; wrap: word-wrap; }
+                    Muted { text: Guidance.article-summary; wrap: word-wrap; }
+                    for step[i] in Guidance.article-steps: Panel {
+                        min-height: 128px;
+                        HorizontalLayout {
+                            padding: 20px; spacing: 18px;
+                            Label { text: (i + 1); width: 28px; font-size: 26px; color: Theme.accent; vertical-alignment: top; }
+                            VerticalLayout { spacing: 10px; Label { text: step.title; font-size: 17px; font-weight: 600; } Label { text: step.detail; wrap: word-wrap; font-size: 13px; } }
+                        }
+                    }
+                    Panel { min-height: 90px; VerticalLayout { padding: 18px; spacing: 8px; Label { text: "当前预览的实际范围"; color: Theme.amber; font-weight: 600; } Muted { text: Guidance.article-caution; wrap: word-wrap; } } }
+                    Rectangle { min-height: 6px; }
+                }
+            }
+            HorizontalLayout { Muted { text: "离线内置教程 · 阅读不需要联网"; } AppButton { text: Guidance.article-action; primary: true; clicked => { Guidance.article-action-clicked(); } } }
+        }
+    }
+}

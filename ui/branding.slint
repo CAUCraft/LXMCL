@@ -1,0 +1,57 @@
+import { Theme } from "theme.slint";
+import { AppState } from "models.slint";
+import { Label, Muted, AppButton } from "components.slint";
+import { PixelGlass } from "pixel-glass.slint";
+
+export component LauncherMark inherits Rectangle {
+    background: Theme.pixel-glass ? transparent : #f0f3ff;
+    border-radius: Theme.pixel-glass ? 0px : 13px;
+    if(Theme.pixel-glass): PixelGlass { tint: #ffffffbc; edge: #ffffff; step: 2px; }
+    Image { x: 5px; y: 5px; width: parent.width - 10px; height: parent.height - 10px; source: @image-url("assets/launcher-logo.png"); image-fit: contain; accessible-label: "LXMCL 启动器 Logo"; }
+}
+
+export component ClubMark inherits Rectangle {
+    background: Theme.pixel-glass ? transparent : white;
+    border-radius: Theme.pixel-glass ? 0px : 12px;
+    if(Theme.pixel-glass): PixelGlass { tint: white; edge: white; step: 2px; }
+    clip: true;
+    Image { x: 4px; y: 4px; width: parent.width - 8px; height: parent.height - 8px; source: @image-url("assets/club-logo.svg"); image-fit: contain; accessible-label: "CAUCRAFT 社团 Logo"; }
+}
+
+export component MascotStage inherits Rectangle {
+    in property <bool> controls: false;
+    in property <bool> on-dark: false;
+    background: transparent;
+    Rectangle {
+        visible: !Theme.pixel-glass;
+        width: min(parent.width - 20px, 210px); height: self.width;
+        x: (parent.width - self.width)/2; y: 28px;
+        border-radius: self.width/2;
+        background: root.on-dark ? #c4dbff12 : Theme.stage;
+        border-width: 1px; border-color: root.on-dark ? #d6e6ff20 : Theme.line;
+    }
+    if(Theme.pixel-glass): Rectangle {
+        x: (parent.width - 176px)/2; y: 38px; width: 176px; height: 176px;
+        background: Theme.tone(#ffffff25, #b2dcff09);
+        border-width: 1px; border-color: Theme.glass-rim;
+        Rectangle { x: -12px; y: 134px; width: 24px; height: 24px; background: Theme.tone(#ffffff6c, #c4ddff25); border-width: 1px; border-color: Theme.glass-rim; }
+        Rectangle { x: 166px; y: 18px; width: 18px; height: 18px; background: Theme.tone(#ffffff6c, #c4ddff25); border-width: 1px; border-color: Theme.glass-rim; }
+    }
+    Rectangle {
+        width: min(parent.width - 60px, 144px); height: 16px;
+        x: (parent.width - self.width)/2; y: parent.height - (root.controls ? 67px : 26px);
+        border-radius: Theme.pixel-glass ? 0px : 8px; background: root.on-dark ? #111c3c40 : #6680bd25;
+    }
+    Image {
+        source: root.controls ? AppState.mascot-image : AppState.mascot-home-image;
+        x: 0px; y: -8px; width: parent.width; height: parent.height - (root.controls ? 42px : 8px);
+        image-fit: contain; image-rendering: pixelated;
+        accessible-label: "使用美术部原始皮肤贴图渲染的孪枭";
+    }
+    if(root.controls): HorizontalLayout {
+        x: (parent.width - 160px)/2; y: parent.height - 38px; width: 160px; height: 36px; spacing: 6px;
+        AppButton { text: "←"; description: "向左旋转皮肤"; preferred-width: 42px; clicked => { AppState.rotate-mascot(-45); } }
+        AppButton { text: "复位"; description: "重置皮肤视角"; preferred-width: 64px; clicked => { AppState.rotate-mascot(0); } }
+        AppButton { text: "→"; description: "向右旋转皮肤"; preferred-width: 42px; clicked => { AppState.rotate-mascot(45); } }
+    }
+}

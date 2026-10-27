@@ -1,0 +1,149 @@
+import { ScrollView, LineEdit, CheckBox, SpinBox } from "std-widgets.slint";
+import { Theme } from "../theme.slint";
+import { AppState } from "../models.slint";
+import { Label, Muted, Heading, Panel, AppButton, Badge, Progress, Divider, EmptyState } from "../components.slint";
+import { ClubMark } from "../branding.slint";
+
+export component GamesPage inherits Rectangle {
+    background: transparent;
+    VerticalLayout {
+        padding: 28px; spacing: 18px;
+        HorizontalLayout { Heading { text: "我的游戏"; } AppButton { text: "＋ 创建游戏"; primary: true; clicked => { AppState.open-modal("create", 0); } } }
+        HorizontalLayout {
+            spacing: 18px;
+            Panel {
+                width: 238px;
+                VerticalLayout {
+                    padding: 12px; spacing: 10px;
+                    LineEdit { placeholder-text: "搜索已安装的游戏"; text: AppState.game-filter; edited(t) => { AppState.filter-games(t); } }
+                    ScrollView {
+                        horizontal-scrollbar-policy: always-off;
+                        VerticalLayout {
+                            spacing: 8px;
+                            for game in AppState.games: Rectangle {
+                                height: 82px; border-radius: Theme.pixel-glass ? 0px : 7px;
+                                background: AppState.current-game.id == game.id ? Theme.accent-soft : Theme.panel;
+                                border-width: 1px; border-color: AppState.current-game.id == game.id ? Theme.accent : Theme.line;
+                                HorizontalLayout {
+                                    padding: 12px; spacing: 12px;
+                                    Rectangle { width: 4px; border-radius: Theme.pixel-glass ? 0px : 2px; background: game.tint; }
+                                    VerticalLayout { spacing: 6px; Label { text: game.name; font-weight: 600; } Muted { text: game.version + " / " + game.loader; } }
+                                }
+                                TouchArea { mouse-cursor: pointer; clicked => { AppState.choose-game(game.id); } }
+                                accessible-role: button; accessible-label: "选择游戏 " + game.name;
+                                accessible-action-default => { AppState.choose-game(game.id); }
+                            }
+                            if(AppState.games.length == 0): EmptyState { title: "没有找到游戏"; description: "试试其他关键词，或创建新游戏。"; }
+                            Rectangle { vertical-stretch: 1; }
+                        }
+                    }
+                }
+            }
+            Panel {
+                if(AppState.current-game.id < 0): EmptyState { title: "创建一个游戏"; description: "每个游戏分别管理版本、模组和存档。"; }
+                if(AppState.current-game.id >= 0): VerticalLayout {
+                    padding: 20px; spacing: 16px;
+                    HorizontalLayout {
+                        VerticalLayout { spacing: 5px; Label { text: AppState.current-game.name; font-size: 20px; font-weight: 600; } Muted { text: AppState.current-game.version + "  ·  " + AppState.current-game.loader; } }
+                        AppButton { text: "启动"; primary: true; enabled: !AppState.launching; clicked => { AppState.launch-game(); } }
+                        AppButton { text: "删除"; danger: true; clicked => { AppState.open-modal("delete", AppState.current-game.id); } }
+                    }
+                    HorizontalLayout {
+                        spacing: 6px;
+                        for name[i] in ["模组", "资源包", "光影", "世界", "整合包", "游戏设置"]:
+                            AppButton { text: name; preferred-width: i == 5 ? 82px : 64px; primary: AppState.game-tab == i; clicked => { AppState.switch-game-tab(i); } }
+                        Rectangle { horizontal-stretch: 1; }
+                    }
+                    Divider {}
+                    if(AppState.game-tab < 5): VerticalLayout {
+                        spacing: 12px;
+                        HorizontalLayout {
+                            Muted { text: AppState.mods.length + " 项内容"; }
+                            AppButton { text: "获取更多"; quiet: true; clicked => { AppState.navigate(3); } }
+                            AppButton { text: "导入资源"; clicked => { AppState.open-modal("import", 0); } }
+                        }
+                        ScrollView {
+                            horizontal-scrollbar-policy: always-off;
+                            VerticalLayout {
+                                spacing: 8px;
+                                for item in AppState.mods: Rectangle {
+                                    height: item.updatable ? 78px : 92px;
+                                    border-radius: Theme.pixel-glass ? 0px : 6px; background: Theme.canvas;
+                                    VerticalLayout {
+                                        padding: 12px; spacing: 5px;
+                                        HorizontalLayout {
+                                            if(AppState.game-tab != 4): CheckBox { checked: item.enabled; text: item.name; toggled => { AppState.toggle-mod(item.id); } }
+                                            if(AppState.game-tab == 4): Label { text: item.name; font-weight: 600; }
+                                            Rectangle { horizontal-stretch: 1; }
+                                            if(item.updatable): AppButton { text: "检查更新"; quiet: true; clicked => { AppState.update-mod(item.id); } }
+                                        }
+                                        Muted { text: item.detail + "  ·  " + item.source; }
+                                        if(!item.updatable): Muted { text: "用户自行导入 · 不支持在线更新"; color: Theme.amber; }
+                                    }
+                                }
+                                if(AppState.mods.length == 0): EmptyState { title: "这里还没有内容"; description: "从资源中心获取，或导入本地资源。"; }
+                                Rectangle { vertical-stretch: 1; }
+                            }
+                        }
+                    }
+                    if(AppState.game-tab == 5): VerticalLayout {
+                        spacing: 18px;
+                        Badge { text: "当前继承全局默认配置"; }
+                        Muted { text: "此处先展示游戏使用的配置，独立覆盖将在下一轮补充。"; wrap: word-wrap; }
+                        HorizontalLayout { Label { text: "内存分配"; } Label { text: AppState.auto-memory ? "自动" : AppState.memory + " GB"; horizontal-alignment: right; } }
+                        HorizontalLayout { Label { text: "游戏窗口"; } Label { text: AppState.fullscreen ? "全屏" : "1280 × 720"; horizontal-alignment: right; } }
+                        Divider {}
+                        AppButton { text: "修改全局默认配置"; clicked => { AppState.navigate(6); } }
+                        Rectangle { vertical-stretch: 1; }
+                    }
+                }
+            }
+        }
+    }
+}
+
+export component ServersPage inherits Rectangle {
+    background: transparent;
+    ScrollView {
+        horizontal-scrollbar-policy: always-off;
+        VerticalLayout {
+            padding: 28px; spacing: 20px;
+            Heading { text: "社团联机"; }
+            Muted { text: "先检查账号和游戏环境，再进入服务器。"; }
+            Panel {
+                height: 286px;
+                VerticalLayout {
+                    padding: 24px; spacing: 16px;
+                    HorizontalLayout { spacing: 20px; ClubMark { width: 78px; height: 78px; } VerticalLayout { spacing: 8px; Label { text: "CAUCRAFT 社团生存服"; font-size: 23px; font-weight: 600; } Muted { text: "Minecraft 1.21.1   /   Fabric"; } } Badge { text: "示例服务器"; } }
+                    Label { text: "和社团伙伴一起，继续建设你们的世界。"; }
+                    Divider {}
+                    HorizontalLayout { Muted { text: "待检查游戏"; } Label { text: AppState.current-game.name; } Muted { text: "运行环境"; } Label { text: "按游戏版本匹配"; } }
+                    HorizontalLayout {
+                        AppButton { text: "准备并进入"; primary: true; min-width: 160px; clicked => { AppState.open-modal("join", 0); } }
+                        AppButton { text: "查看公告"; clicked => { AppState.open-modal("notice", 0); } }
+                        Rectangle { horizontal-stretch: 1; }
+                        Muted { text: "未连接真实服务器"; }
+                    }
+                }
+            }
+            Panel {
+                height: 152px;
+                VerticalLayout {
+                    padding: 22px; spacing: 14px;
+                    Label { text: "入服前需要准备什么？"; font-size: 17px; font-weight: 600; }
+                    Label { text: "1. 选择社团账号     2. 匹配游戏版本     3. 确认资源变更"; wrap: word-wrap; }
+                    Muted { text: "游戏与 Java 安装位置由你选择；下载失败可以从任务页继续。"; wrap: word-wrap; }
+                }
+            }
+            Panel {
+                height: 120px;
+                HorizontalLayout {
+                    padding: 22px; spacing: 20px;
+                    VerticalLayout { spacing: 8px; Label { text: "和朋友临时联机"; font-size: 17px; font-weight: 600; } Muted { text: "创建房间或输入房间码，与朋友一起玩。"; } }
+                    AppButton { text: "了解联机方式"; clicked => { AppState.open-modal("room", 0); } }
+                }
+            }
+            Rectangle { vertical-stretch: 1; }
+        }
+    }
+}

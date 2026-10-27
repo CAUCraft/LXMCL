@@ -1,0 +1,93 @@
+export struct GameItem { id: int, name: string, version: string, loader: string, detail: string, tint: color }
+export struct ModItem { id: int, name: string, detail: string, source: string, enabled: bool, updatable: bool }
+export struct ResourceItem { id: int, name: string, description: string, detail: string, source: string, tint: color, compatible: bool, installed: bool }
+export struct DownloadItem { id: int, name: string, detail: string, progress: int, state: string, paused: bool, done: bool }
+export struct AccountItem { id: int, name: string, kind: string, active: bool }
+export struct SearchItem { id: int, name: string, detail: string, category: string }
+
+export struct WallpaperItem { id: int, name: string, poster: image }
+export global AppState {
+    in-out property <[WallpaperItem]> wallpapers;
+    in-out property <image> wallpaper-frame;
+    in-out property <bool> wallpaper-ready;
+    in-out property <int> wallpaper-index: 0;
+    in-out property <bool> wallpaper-enabled: true;
+    in-out property <bool> wallpaper-paused: false;
+    in-out property <string> wallpaper-status;
+    callback select-wallpaper(int);
+    callback configure-wallpaper(bool, bool);
+    callback wallpaper-visibility(bool);
+    in-out property <image> mascot-image;
+    in-out property <image> mascot-home-image;
+    in-out property <int> mascot-angle: -24;
+    callback rotate-mascot(int);
+    callback track-mascot(float, float, bool);
+    in-out property <int> page: 0;
+    in-out property <[GameItem]> games;
+    in-out property <GameItem> current-game;
+    in-out property <[string]> game-names;
+    in-out property <int> current-game-index;
+    in-out property <string> game-filter;
+    in-out property <int> game-tab: 0;
+    in-out property <[ModItem]> mods;
+    in-out property <[ResourceItem]> resources;
+    in-out property <[DownloadItem]> downloads;
+    in-out property <[AccountItem]> accounts;
+    in-out property <string> account-name: "本地玩家";
+    in-out property <string> resource-query;
+    in-out property <int> resource-category: 0;
+    in-out property <bool> compatible-only: true;
+    in-out property <int> active-downloads;
+    in-out property <int> launch-progress;
+    in-out property <bool> launching;
+    in-out property <string> launch-status;
+    in-out property <string> toast;
+    in-out property <string> modal;
+    in-out property <string> modal-title;
+    in-out property <string> modal-body;
+    in-out property <string> form-name;
+    in-out property <string> form-error;
+    in-out property <int> form-version;
+    in-out property <int> form-loader;
+    in-out property <string> folder: "D:\\Games\\LXMCL";
+    in-out property <int> memory: 4;
+    in-out property <bool> auto-memory: true;
+    in-out property <bool> fullscreen: false;
+    in-out property <int> proxy-mode: 0;
+    in-out property <int> source-mode: 0;
+    in-out property <string> search-query;
+    in-out property <[SearchItem]> search-results;
+    in-out property <int> search-index;
+    in-out property <bool> search-open;
+    in-out property <string> diagnostic-text: "选择一项检查，查看检查过程与结果。";
+    in-out property <bool> diagnosing;
+    callback navigate(int);
+    callback choose-game(int);
+    callback choose-game-at(int);
+    callback filter-games(string);
+    callback open-modal(string, int);
+    callback confirm-modal();
+    callback close-modal();
+    callback switch-game-tab(int);
+    callback toggle-mod(int);
+    callback update-mod(int);
+    callback filter-resources(string, int, bool);
+    callback install-resource(int);
+    callback toggle-download(int);
+    callback view-download(int);
+    callback cancel-download(int);
+    callback clear-downloads();
+    callback launch-game();
+    callback select-account(int);
+    callback save-settings();
+    callback set-dark(bool);
+    callback set-pixel-glass(bool);
+    in-out property <image> nav-image;
+    in-out property <float> nav-top;
+    in-out property <float> nav-height;
+    callback move-nav(float);
+    callback refresh-nav();
+    callback search(string);
+    callback activate-search(int);
+    callback diagnose(int);
+}

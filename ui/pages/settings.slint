@@ -1,0 +1,83 @@
+import { ScrollView, LineEdit, ComboBox, CheckBox, SpinBox } from "std-widgets.slint";
+import { Theme } from "../theme.slint";
+import { AppState } from "../models.slint";
+import { Label, Muted, Heading, Panel, AppButton, Badge, Divider } from "../components.slint";
+import { WallpaperPicker } from "../wallpaper-picker.slint";
+import { Guidance } from "../guidance-models.slint";
+
+export component SettingsPage inherits Rectangle {
+    background: transparent;
+    ScrollView {
+        horizontal-scrollbar-policy: always-off;
+        VerticalLayout {
+            padding: 28px; spacing: 20px;
+            HorizontalLayout { Heading { text: "设置"; } AppButton { text: "保存设置"; primary: true; clicked => { AppState.save-settings(); } } }
+            WallpaperPicker {}
+            Panel {
+                height: 200px;
+                VerticalLayout {
+                    padding: 20px; spacing: 18px;
+                    Label { text: "外观"; font-size: 17px; font-weight: 600; }
+                    HorizontalLayout {
+                        spacing: 12px;
+                        VerticalLayout { horizontal-stretch: 1; Label { text: "界面风格"; } Muted { text: "即时预览两种风格，保存后下次继续使用。"; } }
+                        AppButton { text: "经典"; primary: !Theme.pixel-glass; clicked => { AppState.set-pixel-glass(false); } }
+                        AppButton { text: "像素玻璃"; primary: Theme.pixel-glass; clicked => { AppState.set-pixel-glass(true); } }
+                    }
+                    HorizontalLayout { VerticalLayout { horizontal-stretch: 1; Label { text: "深色模式"; } Muted { text: "柔和过渡，保留页面内容与位置。"; } } CheckBox { text: "启用"; width: 90px; checked: Theme.dark; toggled => { AppState.set-dark(self.checked); } } }
+                }
+            }
+            Panel {
+                height: 230px;
+                VerticalLayout {
+                    padding: 20px; spacing: 18px;
+                    HorizontalLayout { Label { text: "游戏默认配置"; font-size: 17px; font-weight: 600; } Badge { text: "全局默认"; } }
+                    HorizontalLayout { spacing: 12px; Label { text: "内存分配"; horizontal-stretch: 1; } CheckBox { text: "自动分配"; width: 120px; checked <=> AppState.auto-memory; } SpinBox { width: 110px; value <=> AppState.memory; minimum: 1; maximum: 32; enabled: !AppState.auto-memory; } Muted { text: "GB"; width: 24px; } }
+                    Divider {}
+                    HorizontalLayout { Label { text: "游戏窗口"; horizontal-stretch: 1; } CheckBox { text: "全屏启动"; width: 126px; checked <=> AppState.fullscreen; } }
+                    Muted { text: "独立游戏的逐项覆盖入口位于「我的游戏 → 游戏设置」。"; wrap: word-wrap; }
+                }
+            }
+            Panel {
+                height: 180px;
+                VerticalLayout {
+                    padding: 20px; spacing: 14px;
+                    Label { text: "Java 与存储"; font-size: 17px; font-weight: 600; }
+                    HorizontalLayout { Label { text: "游戏存放目录"; width: 130px; } LineEdit { text <=> AppState.folder; placeholder-text: "例如 D:\\Games\\LXMCL"; } }
+                    Muted { text: "此处保存目录偏好，当前不会创建或移动真实游戏文件。"; wrap: word-wrap; }
+                    HorizontalLayout { Muted { text: "Java 由游戏与加载器共同匹配 · 优先 Zulu"; } AppButton { text: "环境准备教程"; quiet: true; clicked => { Guidance.open-article("java"); } } }
+                }
+            }
+            Panel {
+                height: 185px;
+                VerticalLayout {
+                    padding: 20px; spacing: 16px;
+                    Label { text: "下载与网络"; font-size: 17px; font-weight: 600; }
+                    HorizontalLayout { Label { text: "代理方式"; horizontal-stretch: 1; } ComboBox { model: ["跟随系统代理", "不使用代理", "手动配置（待接入）"]; current-index <=> AppState.proxy-mode; width: 260px; } }
+                    HorizontalLayout { Label { text: "下载源"; horizontal-stretch: 1; } ComboBox { model: ["自动选择", "官方源", "BMCLAPI"]; current-index <=> AppState.source-mode; width: 260px; } }
+                }
+            }
+            Muted { text: "LXMCL 0.1.0  ·  Rust + Slint  ·  前端交互预览"; }
+            Rectangle { min-height: 8px; }
+        }
+    }
+}
+
+export component DiagnosticsPage inherits Rectangle {
+    background: transparent;
+    ScrollView {
+        horizontal-scrollbar-policy: always-off;
+        VerticalLayout {
+            padding: 28px; spacing: 20px;
+            Heading { text: "诊断与工具"; }
+            Muted { text: "先查看问题，再选择修复方式。以下检查目前使用演示结果。"; wrap: word-wrap; }
+            HorizontalLayout { spacing: 12px; AppButton { text: "检查游戏环境"; enabled: !AppState.diagnosing; clicked => { Guidance.start-check(false); } } AppButton { text: "测试网络连接"; enabled: !AppState.diagnosing; clicked => { AppState.diagnose(1); } } AppButton { text: "查看运行日志"; clicked => { AppState.diagnose(2); } } Rectangle {} }
+            Panel {
+                min-height: 300px;
+                VerticalLayout { padding: 24px; spacing: 18px; Label { text: "检查结果"; font-size: 18px; font-weight: 600; } Divider {} Label { text: AppState.diagnostic-text; wrap: word-wrap; vertical-alignment: top; } Rectangle { vertical-stretch: 1; } }
+            }
+            Panel { height: 110px; HorizontalLayout { padding: 22px; spacing: 20px; VerticalLayout { spacing: 8px; Label { text: "找不到解决方法？"; font-weight: 600; } Muted { text: "从帮助中心按任务查找，保留当前游戏和问题上下文。"; } } AppButton { text: "打开帮助中心"; clicked => { AppState.navigate(8); } } } }
+            Rectangle { vertical-stretch: 1; }
+        }
+    }
+}

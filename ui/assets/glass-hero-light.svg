@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360">
+<defs>
+ <linearGradient id="glass" x2=".95" y2="1"><stop stop-color="#ffffff" stop-opacity=".69"/><stop offset=".53" stop-color="#d0e9ff" stop-opacity=".50"/><stop offset="1" stop-color="#ffffff" stop-opacity=".32"/></linearGradient>
+ <linearGradient id="rim" x2=".6" y2="1"><stop stop-color="#ffffff" stop-opacity=".95"/><stop offset=".5" stop-color="#ffffff" stop-opacity=".16"/><stop offset="1" stop-color="#ffffff" stop-opacity=".65"/></linearGradient>
+ <linearGradient id="light"><stop stop-color="#ffffff" stop-opacity="0"/><stop offset=".6" stop-color="#ffffff" stop-opacity=".30"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></linearGradient>
+ <clipPath id="clip"><rect x="2" y="2" width="1196" height="350" rx="28"/></clipPath>
+</defs>
+<rect x="4" y="8" width="1192" height="350" rx="28" fill="#294378" opacity=".10"/>
+<rect x="1" y="1" width="1198" height="350" rx="28" fill="url(#glass)" stroke="url(#rim)" stroke-width="2"/>
+<g clip-path="url(#clip)">
+ <path d="M780 352v-36h48v-36h48v-36h48v-36h48v36h48v-72h48v-36h48v72h48v-36h48v180z" fill="#609bc4" opacity=".10"/>
+ <path d="M780 316h48v-36h48v-36h48v-36h48m48 36v-72h48v-36h48v72h48v-36h48" fill="none" stroke="#ffffff" stroke-opacity=".35" stroke-width="2"/>
+ <path d="M600 -50h120L450 400H330z" fill="url(#light)" opacity=".6"/>
+ <path d="M1070 48h18v18h-18z M1096 74h8v8h-8z M796 96h12v12h-12z M756 228h8v8h-8z" fill="#ffffff" opacity=".55"/>
+ <path d="M818 60h32v32h-32z M1120 240h40v40h-40z" fill="#ffffff" fill-opacity=".13" stroke="#ffffff" stroke-opacity=".40"/>
+</g>
+<path d="M32 4h1136" stroke="#ffffff" stroke-opacity=".6" stroke-width="2"/>
+<rect x="5" y="5" width="1190" height="342" rx="24" fill="none" stroke="#ffffff" stroke-opacity=".13"/>
+</svg>

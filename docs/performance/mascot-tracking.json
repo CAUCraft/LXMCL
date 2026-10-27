@@ -1,0 +1,19 @@
+{
+  "measured_on": "2026-10-26",
+  "task": "Home mascot pointer tracking",
+  "command": "cargo test -- --include-ignored --nocapture",
+  "profile": "optimized dev/test (app opt-level=1, dependencies opt-level=2)",
+  "resolution": [
+    280,
+    400
+  ],
+  "poses": 360,
+  "cpu_raster_ms": {
+    "p50": 0.889,
+    "p95": 1.823,
+    "max": 4.127
+  },
+  "scope": "CPU skin rasterization only; excludes Slint image upload, GPU completion and OS input/display latency",
+  "behavior": "16 ms timer while pose changes; latest target replaces prior target; timer stops on settle",
+  "tests": "10 functional tests plus 1 manual timing test passed"
+}

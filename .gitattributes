@@ -1,0 +1,10 @@
+* text=auto eol=lf
+*.rs text eol=lf
+*.slint text eol=lf
+*.md text eol=lf
+*.toml text eol=lf
+*.json text eol=lf
+*.svg text eol=lf
+ui/assets/wallpapers/*.mp4 filter=lfs diff=lfs merge=lfs -text
+ui/assets/club-logo.svg -text
+design/archive/** linguist-generated=true

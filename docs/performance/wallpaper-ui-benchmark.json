@@ -1,0 +1,29 @@
+{
+  "active_frame_interval_under_100ms": {
+    "max_ms": 79.33579999999999,
+    "p50_ms": 12.1089,
+    "p95_ms": 34.3866,
+    "samples": 986
+  },
+  "cpu_render_submission": {
+    "max_ms": 416.64390000000003,
+    "p50_ms": 4.270099999999999,
+    "p95_ms": 9.4665,
+    "samples": 989
+  },
+  "dispatch_to_before_render": {
+    "max_ms": 33.4242,
+    "p50_ms": 8.5859,
+    "p95_ms": 11.1188,
+    "samples": 27
+  },
+  "graphics_api": "GraphicsAPI::NativeOpenGL",
+  "navigation_callback": {
+    "max_ms": 0.3851,
+    "p50_ms": 0.1957,
+    "p95_ms": 0.3502,
+    "samples": 27
+  },
+  "render_notifier_available": true,
+  "scenario": "27 programmatic page navigations, 1180x700 logical px, pixel glass, 280ms morph; NOT OS input-to-photon latency"
+}

@@ -1,0 +1,42 @@
+import { Theme } from "theme.slint";
+import { AppState } from "models.slint";
+import { Label, Muted, Panel, AppButton } from "components.slint";
+
+export component WallpaperPicker inherits Panel {
+    height: 432px;
+    VerticalLayout {
+        padding: 20px; spacing: 12px;
+        HorizontalLayout {
+            Label { text: "动态壁纸"; font-size: 17px; font-weight: 600; }
+            Rectangle { horizontal-stretch: 1; }
+            AppButton { text: "静态背景"; primary: !AppState.wallpaper-enabled; clicked => { AppState.configure-wallpaper(false, AppState.wallpaper-paused); } }
+            AppButton { text: "视频壁纸"; primary: AppState.wallpaper-enabled; clicked => { AppState.configure-wallpaper(true, AppState.wallpaper-paused); } }
+            AppButton { text: AppState.wallpaper-paused ? "继续播放" : "暂停画面"; enabled: AppState.wallpaper-enabled; clicked => { AppState.configure-wallpaper(true, !AppState.wallpaper-paused); } }
+        }
+        Muted { text: "选择一个世界，让风景在像素玻璃后流动。"; }
+        Rectangle {
+            height: 266px;
+            for item[i] in AppState.wallpapers: Rectangle {
+                x: mod(i, 4) * (parent.width + 12px) / 4; y: floor(i / 4) * 138px;
+                width: (parent.width - 36px) / 4; height: 126px;
+                background: Theme.solid-panel;
+                border-width: 2px;
+                border-color: focus.has-focus || (AppState.wallpaper-enabled && i == AppState.wallpaper-index) ? Theme.accent : Theme.line;
+                Image { x: 3px; y: 3px; width: parent.width - 6px; height: 88px; source: item.poster; image-fit: cover; }
+                Label { x: 10px; y: 94px; width: parent.width - 20px; height: 23px; font-size: 12px; text: item.name + (AppState.wallpaper-enabled && i == AppState.wallpaper-index ? " · 当前" : ""); }
+                accessible-role: button; accessible-label: "选择壁纸：" + item.name;
+                accessible-action-default => { AppState.select-wallpaper(item.id); }
+                forward-focus: focus;
+                focus := FocusScope {
+                    key-pressed(e) => {
+                        if(e.text == Key.Return || e.text == " ") { AppState.select-wallpaper(item.id); return accept; }
+                        reject
+                    }
+                }
+                TouchArea { mouse-cursor: pointer; clicked => { AppState.select-wallpaper(item.id); } }
+            }
+        }
+        Muted { text: AppState.wallpaper-enabled ? (AppState.wallpaper-paused ? "画面已暂停 · 点击继续播放恢复" : AppState.wallpaper-status) : "已使用主题静态背景"; }
+        Muted { text: "点击「保存设置」，下次打开继续使用当前选择。"; font-size: 11px; }
+    }
+}

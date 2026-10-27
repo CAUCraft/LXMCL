@@ -1,0 +1,131 @@
+import { ScrollView, LineEdit, ComboBox, CheckBox } from "std-widgets.slint";
+import { Theme } from "../theme.slint";
+import { AppState } from "../models.slint";
+import { Label, Muted, Heading, Panel, AppButton, Badge, Progress, Divider, EmptyState } from "../components.slint";
+import { MascotStage } from "../branding.slint";
+
+export component ResourcesPage inherits Rectangle {
+    background: transparent;
+    VerticalLayout {
+        padding: 28px; spacing: 18px;
+        Heading { text: "资源中心"; }
+        HorizontalLayout {
+            spacing: 12px;
+            LineEdit { placeholder-text: "搜索资源名称或中文别名"; text: AppState.resource-query; edited(t) => { AppState.filter-resources(t, AppState.resource-category, AppState.compatible-only); } }
+            Muted { text: "安装到"; horizontal-stretch: 0; }
+            target := ComboBox { model: AppState.game-names; current-index: AppState.current-game-index; width: 240px; selected(_) => { AppState.choose-game-at(self.current-index); } }
+        }
+        HorizontalLayout {
+            spacing: 6px;
+            for label[i] in ["模组", "整合包", "资源包", "光影", "世界"]: AppButton { text: label; primary: AppState.resource-category == i; clicked => { AppState.filter-resources(AppState.resource-query, i, AppState.compatible-only); } }
+            Rectangle { horizontal-stretch: 1; }
+            CheckBox { text: "仅看兼容"; checked: AppState.compatible-only; toggled => { AppState.filter-resources(AppState.resource-query, AppState.resource-category, self.checked); } }
+        }
+        HorizontalLayout { Muted { text: AppState.resources.length + " 项资源  ·  演示目录"; } Muted { text: "目标：" + AppState.current-game.version + " / " + AppState.current-game.loader; horizontal-alignment: right; } }
+        ScrollView {
+            horizontal-scrollbar-policy: always-off;
+            VerticalLayout {
+                spacing: 12px;
+                for item in AppState.resources: Panel {
+                    height: 118px;
+                    HorizontalLayout {
+                        padding: 18px; spacing: 18px;
+                        Rectangle { width: 48px; height: 48px; border-radius: Theme.pixel-glass ? 0px : 12px; background: item.tint; Image { x: 12px; y: 12px; width: 24px; height: 24px; source: @image-url("../icons/resources.svg"); colorize: white; } }
+                        VerticalLayout {
+                            spacing: 6px;
+                            HorizontalLayout { Label { text: item.name; font-size: 17px; font-weight: 600; } Rectangle { horizontal-stretch: 1; } Badge { text: item.source; } }
+                            Label { text: item.description; font-size: 13px; }
+                            Muted { text: item.detail; }
+                        }
+                        VerticalLayout {
+                            width: 112px; spacing: 8px; alignment: center;
+                            if(!item.compatible): Badge { text: "版本不兼容"; warning: true; }
+                            AppButton { text: item.installed ? "已安装" : "查看并安装"; enabled: !item.installed && item.compatible; clicked => { AppState.install-resource(item.id); } }
+                        }
+                    }
+                }
+                if(AppState.resources.length == 0): EmptyState { title: "没有匹配的资源"; description: "试试其他关键词，或关闭「仅看兼容」查看全部演示条目。"; }
+                Rectangle { vertical-stretch: 1; }
+            }
+        }
+    }
+}
+
+export component DownloadsPage inherits Rectangle {
+    background: transparent;
+    VerticalLayout {
+        padding: 28px; spacing: 20px;
+        HorizontalLayout { Heading { text: "下载任务"; } AppButton { text: "清除已完成"; enabled: AppState.downloads.length > 0; clicked => { AppState.clear-downloads(); } } }
+        Muted { text: "当前使用模拟进度，方便测试暂停、继续、取消及安装后的界面变化。"; wrap: word-wrap; }
+        ScrollView {
+            horizontal-scrollbar-policy: always-off;
+            VerticalLayout {
+                spacing: 12px;
+                for item in AppState.downloads: Panel {
+                    height: 128px;
+                    VerticalLayout {
+                        padding: 18px; spacing: 12px;
+                        HorizontalLayout {
+                            VerticalLayout { spacing: 6px; Label { text: item.name; font-weight: 600; font-size: 16px; } Muted { text: item.detail; } }
+                            Badge { text: item.state; positive: item.done; }
+                            AppButton { text: item.done ? "查看游戏" : item.paused ? "继续" : "暂停"; clicked => { if(item.done) { AppState.view-download(item.id); } else { AppState.toggle-download(item.id); } } }
+                            if(!item.done): AppButton { text: "取消"; quiet: true; clicked => { AppState.cancel-download(item.id); } }
+                        }
+                        Progress { value: item.progress; }
+                        Muted { text: item.progress + "%"; horizontal-alignment: right; }
+                    }
+                }
+                if(AppState.downloads.length == 0): Panel {
+                    height: 290px;
+                    VerticalLayout {
+                        padding: 35px; spacing: 18px;
+                        EmptyState { title: "暂时没有下载任务"; description: "安装资源或准备进入社团服时，任务会出现在这里。"; }
+                        HorizontalLayout { Rectangle {} AppButton { text: "去资源中心看看"; primary: true; clicked => { AppState.navigate(3); } } Rectangle {} }
+                    }
+                }
+                Rectangle { vertical-stretch: 1; }
+            }
+        }
+    }
+}
+
+export component AccountsPage inherits Rectangle {
+    background: transparent;
+    ScrollView {
+        horizontal-scrollbar-policy: always-off;
+        VerticalLayout {
+            padding: 28px; spacing: 20px;
+            HorizontalLayout { Heading { text: "账号与装扮"; } AppButton { text: "＋ 添加账号"; primary: true; clicked => { AppState.open-modal("account", 0); } } }
+            Muted { text: "切换游戏身份；皮肤和披风统一在这里管理。"; }
+            for account in AppState.accounts: Panel {
+                height: 90px;
+                HorizontalLayout {
+                    padding: 18px; spacing: 16px;
+                    Rectangle { width: 44px; height: 44px; border-radius: Theme.pixel-glass ? 0px : 14px; background: Theme.accent-soft; Image { source: @image-url("../icons/account.svg"); width: 22px; height: 22px; x: 11px; y: 11px; colorize: Theme.accent; } }
+                    VerticalLayout { spacing: 6px; Label { text: account.name; font-size: 17px; font-weight: 600; } Muted { text: account.kind; } }
+                    if(account.active): Badge { text: "当前账号"; positive: true; }
+                    AppButton { text: "使用此账号"; enabled: !account.active; clicked => { AppState.select-account(account.id); } }
+                }
+            }
+            Panel {
+                height: 328px;
+                HorizontalLayout {
+                    padding: 20px; spacing: 28px;
+                    Rectangle { width: 230px; border-radius: Theme.pixel-glass ? 0px : 12px; background: Theme.canvas; MascotStage { x: 4px; y: 0px; width: parent.width - 8px; height: parent.height - 4px; controls: true; } }
+                    VerticalLayout {
+                        padding-top: 22px; padding-bottom: 22px; spacing: 14px;
+                        HorizontalLayout { Badge { text: "社团形象"; } Rectangle { horizontal-stretch: 1; } }
+                        Label { text: "孪枭"; font-size: 28px; font-weight: 700; }
+                        Muted { text: "美术部提供  /  64 × 64 双层经典模型"; }
+                        Label { text: "转动看看，每一面都有小细节。"; }
+                        Muted { text: "使用下方方向按钮旋转，点击复位恢复初始视角。"; wrap: word-wrap; }
+                        Rectangle { vertical-stretch: 1; }
+                        Muted { text: "仅本地预览，尚未应用到游戏账号。"; color: Theme.sky; wrap: word-wrap; }
+                        HorizontalLayout { AppButton { text: "皮肤与披风说明"; clicked => { AppState.open-modal("skin", 0); } } Rectangle { horizontal-stretch: 1; } }
+                    }
+                }
+            }
+            Rectangle { vertical-stretch: 1; }
+        }
+    }
+}

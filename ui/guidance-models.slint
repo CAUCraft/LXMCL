@@ -1,0 +1,45 @@
+export struct CheckRow { title: string, detail: string, status: string, severity: int, help-id: string }
+export struct GuideArticle { id: int, title: string, summary: string }
+export struct GuideStep { title: string, detail: string }
+
+export global Guidance {
+    in-out property <bool> guide-started;
+    in-out property <int> step: 0;
+    in-out property <bool> club: true;
+    in-out property <string> game-directory;
+    in-out property <string> java-directory;
+    in-out property <string> path-error;
+    in-out property <string> target-summary;
+    in-out property <[CheckRow]> checks;
+    in-out property <int> scenario: 0;
+    in-out property <bool> show-scenarios: false;
+    in-out property <bool> busy;
+    in-out property <bool> can-launch;
+    in-out property <bool> has-plan;
+    in-out property <bool> show-plan;
+    in-out property <string> plan-text;
+    in-out property <string> check-message;
+    in-out property <bool> completed;
+    in-out property <bool> has-report;
+    in-out property <[GuideArticle]> articles;
+    in-out property <string> help-query;
+    in-out property <int> article: -1;
+    in-out property <string> article-title;
+    in-out property <string> article-summary;
+    in-out property <[GuideStep]> article-steps;
+    in-out property <string> article-caution;
+    in-out property <string> article-action;
+    in-out property <int> help-return-page: 0;
+    callback open-guide();
+    callback advance(int);
+    callback validate-paths();
+    callback start-check(bool);
+    callback select-scenario(int);
+    callback apply-plan();
+    callback launch-preview();
+    callback search-help(string);
+    callback open-article(string);
+    callback open-article-at(int);
+    callback article-action-clicked();
+    callback context-help();
+}

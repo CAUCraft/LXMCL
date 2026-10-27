@@ -1,0 +1,32 @@
+export global Theme {
+    in-out property <bool> dark: false;
+    in-out property <bool> pixel-glass: false;
+    in-out property <bool> animations-ready: false;
+    in-out property <float> darkness: 0;
+    public pure function tone(day: color, night: color) -> color { night.mix(day, root.darkness) }
+    out property <color> canvas: tone(#f3f5fc, #111726);
+    out property <color> solid-panel: tone(#ffffff, #1b2335);
+    out property <color> panel: pixel-glass ? (tone(#ffffffaa, #23334bdc)) : solid-panel;
+    out property <color> sidebar: pixel-glass ? (tone(#f7fbff9c, #1b2943cf)) : (tone(#fafbff, #151c2d));
+    out property <color> text: tone(#202b48, #edf1fc);
+    out property <color> muted: pixel-glass ? (tone(#4a5b78, #bdcce3)) : (tone(#6c7896, #a4b0cd));
+    out property <color> line: pixel-glass ? (tone(#ffffffcc, #b8d8ff30)) : (tone(#e2e7f3, #303c55));
+    out property <color> hover: pixel-glass ? (tone(#ffffffe0, #4a638d90)) : (tone(#edf1fc, #27344d));
+    out property <color> accent: tone(#4b5c9f, #b0bff8);
+    out property <color> accent-fill: tone(#4b5c9f, #6579c9);
+    out property <color> accent-hover: tone(#5b6db5, #778bdb);
+    out property <color> accent-pressed: #3b4b88;
+    out property <color> accent-soft: pixel-glass ? (tone(#ffffffc7, #6989bb45)) : (tone(#e9edfc, #2a3659));
+    out property <color> glass-rim: tone(#ffffffed, #e1efff3d);
+    out property <color> hero-text: pixel-glass ? text : #ffffff;
+    out property <color> hero-muted: pixel-glass ? (tone(#435877, #d0dcef)) : #c6d5f4;
+    out property <color> hero-start: #1e2d59;
+    out property <color> hero-end: #4b6094;
+    out property <color> stage: tone(#e9effb, #25334e);
+    out property <color> sky: tone(#4a829e, #8dcbdc);
+    out property <color> green: tone(#327b57, #82d6ad);
+    out property <color> green-soft: tone(#eaf5ee, #213c31);
+    out property <color> amber: tone(#926126, #e8bd7d);
+    out property <color> amber-soft: tone(#fff4e3, #423524);
+    out property <color> danger: tone(#bd4141, #ffa2a2);
+}

@@ -1,0 +1,10 @@
+/target/
+*.log
+.DS_Store
+/LXMCL-UI-review-*.zip
+/.env
+/.env.*
+!/.env.example
+**/__pycache__/
+*.pyc
+/ui-preferences.json

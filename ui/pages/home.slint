@@ -1,0 +1,145 @@
+import { ScrollView } from "std-widgets.slint";
+import { Theme } from "../theme.slint";
+import { AppState } from "../models.slint";
+import { Label, Muted, Heading, Panel, AppButton, Badge, Progress, EmptyState } from "../components.slint";
+import { LauncherMark, ClubMark, MascotStage } from "../branding.slint";
+import { PixelGlass } from "../pixel-glass.slint";
+import { Guidance } from "../guidance-models.slint";
+
+export component HomePage inherits TouchArea {
+    in property <bool> window-visible: true;
+    // A parent TouchArea observes hover before its children, preserving buttons,
+    // wheel scrolling and the existing click-to-open outfit action.
+    property <length> eye-x: mascot.absolute-position.x + mascot.width / 2;
+    property <length> eye-y: mascot.absolute-position.y + mascot.height * 0.20 - 8px;
+    property <float> look-x: (root.mouse-x + root.absolute-position.x - root.eye-x) / max(1px, mascot.height * 0.42);
+    property <float> look-y: (root.mouse-y + root.absolute-position.y - root.eye-y) / max(1px, mascot.height * 0.42);
+    property <bool> tracking: root.has-hover && root.window-visible && AppState.page == 0 && AppState.modal == "" && !AppState.search-open && root.eye-y >= root.absolute-position.y && root.eye-y < root.absolute-position.y + root.height;
+    function update-look() { AppState.track-mascot(root.look-x, root.look-y, root.tracking); }
+    changed look-x => { root.update-look(); }
+    changed look-y => { root.update-look(); }
+    changed tracking => { root.update-look(); }
+    ScrollView {
+        horizontal-scrollbar-policy: always-off;
+        VerticalLayout {
+            padding: Theme.pixel-glass ? 18px : 26px; spacing: 18px;
+            HorizontalLayout {
+                VerticalLayout { spacing: 5px; Heading { text: "欢迎回来，" + AppState.account-name; font-size: 24px; } Muted { text: "你的世界，今天继续。"; } }
+                AppButton { text: "＋ 创建游戏"; clicked => { AppState.open-modal("create", 0); } }
+            }
+            Panel {
+                height: 80px;
+                HorizontalLayout {
+                    padding: 16px; spacing: 16px;
+                    VerticalLayout { spacing: 6px; Label { text: "第一次来？从选玩法开始"; font-weight: 600; } Muted { text: "确认账号、选择安装位置，再按提示准备环境。"; wrap: word-wrap; } }
+                    AppButton { text: "首次游玩向导"; clicked => { Guidance.open-guide(); } }
+                    AppButton { text: "查看教程"; quiet: true; clicked => { AppState.navigate(8); } }
+                }
+            }
+            Rectangle {
+                height: 274px;
+                background: transparent;
+                if(!Theme.pixel-glass): Image { source: @image-url("../assets/hero-background.svg"); width: parent.width; height: parent.height; image-fit: fill; }
+                if(Theme.pixel-glass): PixelGlass { step: 8px; tint: Theme.tone(#eefaff91, #36577b94); }
+                if(Theme.pixel-glass): Rectangle {
+                    x: parent.width - 340px; y: 24px; width: 316px; height: 220px;
+                    for i in 5: Rectangle {
+                        x: i * 48px; y: 172px - i * 28px; width: 48px; height: 36px + i * 28px;
+                        background: Theme.tone(#ffffff15, #b2d9ff08);
+                        Rectangle { x: 0px; y: 0px; width: parent.width; height: 4px; background: Theme.tone(#ffffff70, #b2d9ff30); }
+                    }
+                    Rectangle { x: 4px; y: 36px; width: 12px; height: 12px; background: Theme.glass-rim; }
+                    Rectangle { x: 24px; y: 16px; width: 4px; height: 4px; background: Theme.glass-rim; }
+                }
+                HorizontalLayout {
+                    padding-left: 28px; padding-right: 12px; spacing: 8px;
+                    VerticalLayout {
+                        padding-top: 25px; padding-bottom: 24px; spacing: 12px;
+                        HorizontalLayout {
+                            spacing: 10px;
+                            if(Theme.pixel-glass): Image { source: @image-url("../icons/pixel/games.svg"); width: 16px; height: 16px; image-rendering: pixelated; colorize: Theme.accent; }
+                            Label { text: "MINECRAFT  /  当前游戏"; color: Theme.hero-muted; font-size: 11px; font-weight: 600; }
+                            Rectangle { horizontal-stretch: 1; }
+                        }
+                        Label { text: AppState.current-game.name; font-size: 31px; font-weight: 700; color: Theme.hero-text; }
+                        Label { text: AppState.current-game.id >= 0 ? AppState.current-game.version + "   /   " + AppState.current-game.loader : "创建第一个游戏，准备开始"; color: Theme.hero-muted; font-size: 13px; }
+                        Rectangle { vertical-stretch: 1; }
+                        HorizontalLayout {
+                            spacing: 20px;
+                            Label { text: "环境状态 · 启动前检查"; color: Theme.hero-muted; font-size: 12px; }
+                            Label { text: AppState.auto-memory ? "内存自动分配" : AppState.memory + " GB 内存"; color: Theme.hero-muted; font-size: 12px; }
+                            Rectangle { horizontal-stretch: 1; }
+                        }
+                        HorizontalLayout {
+                            spacing: 12px;
+                            AppButton {
+                                text: AppState.launching ? "正在检查…" : "检查并启动";
+                                inverted: !Theme.pixel-glass; primary: Theme.pixel-glass;
+                                with-icon: Theme.pixel-glass; icon: @image-url("../icons/pixel/play.svg");
+                                min-width: 172px; preferred-height: 44px;
+                                enabled: !AppState.launching && AppState.current-game.id >= 0;
+                                clicked => { AppState.launch-game(); }
+                            }
+                            AppButton { text: "切换游戏"; inverted: !Theme.pixel-glass; preferred-height: 44px; clicked => { AppState.navigate(1); } }
+                            Rectangle { horizontal-stretch: 1; }
+                        }
+                        if(AppState.launching): Progress { value: AppState.launch-progress; }
+                    }
+                    Rectangle {
+                        width: 246px;
+                        border-width: profile-focus.has-focus ? 1px : 0px; border-color: #c6d5f4; border-radius: 12px;
+                        forward-focus: profile-focus;
+                        mascot := MascotStage { x: 0px; y: 4px; width: parent.width; height: parent.height - 8px; on-dark: !Theme.pixel-glass || Theme.dark; }
+                        Rectangle { x: parent.width - 156px; y: parent.height - 34px; width: 140px; height: 22px; border-radius: Theme.pixel-glass ? 0px : 11px; background: Theme.pixel-glass ? Theme.panel : #15244570; Label { text: "孪枭 · 查看装扮 →"; color: Theme.hero-muted; font-size: 10px; horizontal-alignment: center; } }
+                        accessible-role: button; accessible-label: "查看孪枭皮肤";
+                        accessible-action-default => { AppState.navigate(5); }
+                        profile-focus := FocusScope { key-pressed(e) => { if(e.text == Key.Return || e.text == " ") { AppState.navigate(5); return accept; } reject } }
+                        TouchArea { mouse-cursor: pointer; clicked => { AppState.navigate(5); } }
+                    }
+                }
+            }
+            HorizontalLayout {
+                spacing: 16px;
+                Panel {
+                    horizontal-stretch: 3; height: 132px;
+                    HorizontalLayout {
+                        padding: 18px; spacing: 16px;
+                        ClubMark { width: 86px; height: 86px; }
+                        VerticalLayout {
+                            spacing: 8px;
+                            Label { text: "回到 CAUCRAFT"; font-size: 18px; font-weight: 600; }
+                            Muted { text: "社团生存服 · 1.21.1 / Fabric"; }
+                            HorizontalLayout { spacing: 8px; AppButton { text: "准备并进入"; primary: true; clicked => { AppState.open-modal("join", 0); } } AppButton { text: "详情"; quiet: true; clicked => { AppState.navigate(2); } } Rectangle { horizontal-stretch: 1; } }
+                        }
+                    }
+                }
+                Panel {
+                    horizontal-stretch: 2; height: 132px;
+                    VerticalLayout {
+                        padding: 20px; spacing: 8px;
+                        HorizontalLayout {
+                            spacing: 10px;
+                            if(Theme.pixel-glass): Image { source: @image-url("../icons/pixel/resources.svg"); width: 16px; height: 16px; image-rendering: pixelated; colorize: Theme.accent; }
+                            Label { text: "从这里开始探索"; font-size: 17px; font-weight: 600; }
+                        }
+                        Muted { text: "发现模组、资源包和新的世界。"; }
+                        HorizontalLayout { AppButton { text: "打开资源中心  →"; quiet: true; clicked => { AppState.navigate(3); } } Rectangle { horizontal-stretch: 1; } }
+                    }
+                }
+            }
+            HorizontalLayout { Label { text: "我的游戏"; font-size: 17px; font-weight: 600; } AppButton { text: "管理全部  →"; quiet: true; clicked => { AppState.navigate(1); } } }
+            for game in AppState.games: Panel {
+                height: 70px;
+                HorizontalLayout {
+                    padding: 14px; spacing: 16px;
+                    Rectangle { width: 4px; border-radius: 2px; background: game.tint; }
+                    VerticalLayout { spacing: 5px; Label { text: game.name; font-weight: 600; } Muted { text: game.version + "  ·  " + game.loader; } }
+                    if(game.id == AppState.current-game.id): Badge { text: "当前游戏"; positive: true; }
+                    AppButton { text: "选择"; enabled: game.id != AppState.current-game.id; clicked => { AppState.choose-game(game.id); } }
+                }
+            }
+            if(AppState.games.length == 0): EmptyState { title: "还没有游戏"; description: "点击右上角「创建游戏」，添加你的第一个游戏。"; }
+            Rectangle { min-height: 8px; }
+        }
+    }
+}

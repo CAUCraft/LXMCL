@@ -1,0 +1,150 @@
+import { Theme } from "theme.slint";
+import { PixelGlass } from "pixel-glass.slint";
+
+export component Label inherits Text {
+    color: Theme.text;
+    font-size: 14px;
+    vertical-alignment: center;
+    overflow: elide;
+}
+
+export component Muted inherits Label { color: Theme.muted; font-size: 12px; }
+
+export component Heading inherits Label { font-size: 25px; font-weight: 700; }
+
+export component Panel inherits Rectangle {
+    in property <bool> opaque: false;
+    background: Theme.pixel-glass ? transparent : root.opaque ? Theme.solid-panel : Theme.panel;
+    border-color: Theme.line;
+    border-width: Theme.pixel-glass ? 0px : 1px;
+    border-radius: Theme.pixel-glass ? 0px : 14px;
+    if(Theme.pixel-glass): PixelGlass { tint: root.opaque ? Theme.solid-panel : Theme.panel; step: 6px; }
+}
+
+export component AppButton inherits Rectangle {
+    in property <string> text;
+    in property <string> description;
+    in property <bool> primary: false;
+    in property <bool> quiet: false;
+    in property <bool> danger: false;
+    in property <bool> inverted: false;
+    in property <bool> enabled: true;
+    in property <bool> with-icon: false;
+    in property <image> icon;
+    callback clicked();
+    public function focus-button() { focus.focus(); }
+    min-height: 36px;
+    preferred-height: 36px;
+    preferred-width: max(82px, caption.preferred-width + 28px + (root.with-icon ? 24px : 0px));
+    max-width: max(root.min-width, root.preferred-width);
+    max-height: max(root.min-height, root.preferred-height);
+    horizontal-stretch: 0;
+    border-radius: Theme.pixel-glass ? 0px : 8px;
+    border-width: Theme.pixel-glass ? 0px : focus.has-focus ? 2px : (root.quiet || root.primary ? 0px : 1px);
+    border-color: focus.has-focus ? Theme.accent : root.primary ? #e1edff66 : Theme.line;
+    property <color> surface: !root.enabled ? Theme.hover : root.inverted ? (touch.has-hover ? #ffffff : #edf2ff) : root.primary ? (touch.pressed ? Theme.accent-pressed : touch.has-hover ? Theme.accent-hover : Theme.accent-fill) : touch.has-hover ? Theme.hover : root.quiet ? transparent : Theme.panel;
+    background: Theme.pixel-glass ? transparent : root.surface;
+    animate surface { duration: 70ms; }
+    opacity: root.enabled ? 1 : 0.5;
+    forward-focus: focus;
+    accessible-role: button;
+    accessible-label: root.description != "" ? root.description : root.text;
+    accessible-enabled: root.enabled;
+    accessible-action-default => { if(root.enabled) { root.clicked(); } }
+    if(Theme.pixel-glass && (!root.quiet || touch.has-hover || focus.has-focus)): PixelGlass {
+        tint: root.surface; step: 2px; gleam: !root.quiet;
+        edge: focus.has-focus ? Theme.accent : root.primary ? #c6deff80 : Theme.glass-rim;
+    }
+    if(root.with-icon): Image {
+        source: root.icon; x: 14px; y: (parent.height - 16px)/2; width: 16px; height: 16px;
+        image-rendering: pixelated; colorize: root.primary ? white : Theme.accent;
+    }
+    caption := Label {
+        x: root.with-icon ? 30px : 0px; width: parent.width - self.x;
+        text: root.text;
+        color: !root.enabled ? Theme.muted : root.inverted ? #2e427b : root.primary ? white : root.danger ? Theme.danger : Theme.text;
+        horizontal-alignment: center;
+        font-size: 13px;
+        font-weight: root.primary ? 600 : 400;
+    }
+    focus := FocusScope {
+        enabled: root.enabled;
+        key-pressed(event) => {
+            if(event.text == Key.Return || event.text == " ") { root.clicked(); return accept; }
+            reject
+        }
+    }
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { focus.focus(); root.clicked(); }
+    }
+}
+
+export component NavItem inherits Rectangle {
+    in property <string> text;
+    in property <image> icon;
+    in property <string> count;
+    in property <bool> selected;
+    callback clicked();
+    height: 40px;
+    border-radius: Theme.pixel-glass ? 0px : 10px;
+    background: Theme.pixel-glass ? transparent : root.selected ? Theme.accent-soft : touch.has-hover ? Theme.hover : transparent;
+    border-width: !Theme.pixel-glass && focus.has-focus ? 1px : 0px;
+    border-color: focus.has-focus ? Theme.accent : Theme.glass-rim;
+    animate background { duration: 120ms; }
+    forward-focus: focus;
+    accessible-role: button;
+    accessible-label: root.text;
+    accessible-action-default => { root.clicked(); }
+    if(Theme.pixel-glass && ((!root.selected && touch.has-hover) || focus.has-focus)): PixelGlass {
+        tint: root.selected ? transparent : Theme.hover;
+        edge: focus.has-focus ? Theme.accent : Theme.glass-rim; gleam: false;
+    }
+    if(root.selected): Rectangle { x: Theme.pixel-glass ? 5px : 0px; y: Theme.pixel-glass ? 18px : 12px; width: Theme.pixel-glass ? 4px : 3px; height: Theme.pixel-glass ? 4px : 16px; border-radius: Theme.pixel-glass ? 0px : 2px; background: Theme.accent; }
+    HorizontalLayout {
+        padding-left: 14px; padding-right: 12px; spacing: 12px;
+        Rectangle { width: 18px; Image { source: root.icon; width: Theme.pixel-glass ? 16px : 18px; height: self.width; x: 0px; y: (parent.height - self.height) / 2; image-rendering: pixelated; colorize: root.selected ? Theme.accent : Theme.muted; } }
+        Label { text: root.text; font-weight: root.selected ? 600 : 400; color: root.selected ? Theme.accent : Theme.text; }
+        if(root.count != ""): Label { text: root.count; color: Theme.accent; horizontal-alignment: right; }
+    }
+    focus := FocusScope {
+        key-pressed(e) => { if(e.text == Key.Return || e.text == " ") { root.clicked(); return accept; } reject }
+    }
+    touch := TouchArea { mouse-cursor: pointer; clicked => { focus.focus(); root.clicked(); } }
+}
+
+export component Badge inherits Rectangle {
+    in property <string> text;
+    in property <bool> positive: false;
+    in property <bool> warning: false;
+    height: 26px;
+    preferred-width: caption.preferred-width + 18px;
+    max-width: root.preferred-width;
+    horizontal-stretch: 0;
+    border-radius: Theme.pixel-glass ? 0px : 7px;
+    background: root.warning ? Theme.amber-soft : root.positive ? Theme.green-soft : Theme.accent-soft;
+    caption := Label { text: root.text; font-size: 11px; color: root.warning ? Theme.amber : root.positive ? Theme.green : Theme.accent; horizontal-alignment: center; }
+}
+
+export component Progress inherits Rectangle {
+    in property <int> value;
+    height: 5px;
+    background: Theme.line;
+    border-radius: 2px;
+    Rectangle { x: 0px; y: 0px; width: parent.width * min(100, max(0, root.value)) / 100; height: parent.height; border-radius: 2px; background: Theme.accent; animate width { duration: 160ms; } }
+}
+
+export component Divider inherits Rectangle { height: 1px; background: Theme.line; }
+
+export component EmptyState inherits Rectangle {
+    in property <string> title;
+    in property <string> description;
+    background: transparent;
+    min-height: 170px;
+    VerticalLayout {
+        alignment: center; spacing: 12px; padding: 20px;
+        Label { text: root.title; font-size: 18px; font-weight: 600; horizontal-alignment: center; }
+        Muted { text: root.description; horizontal-alignment: center; wrap: word-wrap; }
+    }
+}

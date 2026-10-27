@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="340" viewBox="0 0 1200 340" fill="none">
+  <defs>
+    <linearGradient id="base" x1="0" y1="340" x2="1200" y2="0" gradientUnits="userSpaceOnUse"><stop stop-color="#1e2d59"/><stop offset="1" stop-color="#4b6094"/></linearGradient>
+    <clipPath id="card"><rect width="1200" height="340" rx="24"/></clipPath>
+  </defs>
+  <g clip-path="url(#card)">
+    <rect width="1200" height="340" rx="24" fill="url(#base)"/>
+    <circle cx="1130" cy="22" r="205" fill="#e0eaff" fill-opacity=".025" stroke="#e8f0ff" stroke-opacity=".08"/>
+    <ellipse cx="1100" cy="400" rx="320" ry="190" fill="#bfd8ff" fill-opacity=".035"/>
+  </g>
+</svg>
