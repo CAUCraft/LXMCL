@@ -3,10 +3,12 @@
 //! 这里是产品（第 5 个角色）的代码：只做装配与消费，不实现任何服务。
 use crate::controller;
 use crate::instances_bridge::InstanceBridge;
+use crate::java_bridge::JavaBridge;
 use crate::settings_bridge::SettingsBridge;
 use crate::{AppWindow, Theme, mascot_motion, pixel_motion, wallpaper};
-use launcher_api::{Instances, Settings};
+use launcher_api::{Instances, JavaRuntime, Settings};
 use launcher_instances::{JsonInstancesConfig, JsonInstancesPlugin};
+use launcher_java::LocalJavaPlugin;
 use launcher_runtime::{PluginCatalog, PluginHost, ProductConfig, RuntimeError};
 use launcher_settings::{JsonSettingsConfig, JsonSettingsPlugin};
 use slint::ComponentHandle;
@@ -90,6 +92,9 @@ fn plugin_catalog(data_root: &Path) -> Result<PluginCatalog, RuntimeError> {
             instance_root.join(&config.file_name),
         )))
     })?;
+    catalog.register("java-local", move |_config| {
+        Ok(Box::new(LocalJavaPlugin::new()))
+    })?;
     Ok(catalog)
 }
 
@@ -102,8 +107,18 @@ pub fn run_shell(host: &PluginHost) -> Result<(), Box<dyn Error>> {
     let instances = host.service::<Instances>()?;
     let (instance_bridge, mut instance_worker) = InstanceBridge::start(Arc::clone(&instances))?;
     let initial_instances = instance_bridge.load_blocking()?;
+    let java = host.service::<JavaRuntime>()?;
+    let (java_bridge, mut java_worker) = JavaBridge::start(Arc::clone(&java))?;
+
     let ui = AppWindow::new()?;
-    let timer = controller::connect(&ui, bridge, initial, instance_bridge, initial_instances);
+    let timer = controller::connect(
+        &ui,
+        bridge,
+        initial,
+        instance_bridge,
+        initial_instances,
+        java_bridge,
+    );
     let _motion = pixel_motion::connect(&ui);
     let _mascot = mascot_motion::connect(&ui);
     let _wallpaper = wallpaper::connect(&ui);
@@ -125,7 +140,9 @@ pub fn run_shell(host: &PluginHost) -> Result<(), Box<dyn Error>> {
     // 两个工作线程都要收尾；先各自 join，再按顺序上报，避免一个失败跳过另一个。
     let settings_join = worker.join();
     let instances_join = instance_worker.join();
+    let java_join = java_worker.join();
     settings_join?;
     instances_join?;
+    java_join?;
     Ok(run_result?)
 }

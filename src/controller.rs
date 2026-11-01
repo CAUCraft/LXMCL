@@ -1,11 +1,12 @@
 use crate::instances_bridge::InstanceBridge;
+use crate::java_bridge::JavaBridge;
 use crate::settings_bridge::SettingsBridge;
 use crate::state::{Content, Game, Preferences, State};
 use crate::{
-    AccountItem, AppState, AppWindow, DownloadItem, GameItem, Guidance, InstanceUpdate, ModItem,
-    ResourceItem, SearchItem, Theme,
+    AccountItem, AppState, AppWindow, DownloadItem, GameItem, Guidance, InstanceUpdate,
+    JavaCandidateItem, ModItem, ResourceItem, SearchItem, Theme,
 };
-use launcher_api::{InstanceRecord, LauncherSettings, NewInstance};
+use launcher_api::{InstanceRecord, JavaCandidate, JavaScanResult, LauncherSettings, NewInstance};
 use slint::{Color, ComponentHandle, Model, ModelRc, SharedString, Timer, TimerMode, VecModel};
 use std::{
     cell::RefCell,
@@ -88,6 +89,64 @@ fn instance_record(update: InstanceUpdate) -> InstanceRecord {
     }
 }
 
+fn java_candidate_item(candidate: &JavaCandidate) -> JavaCandidateItem {
+    JavaCandidateItem {
+        path: candidate.path.display().to_string().into(),
+        title: format!(
+            "Java {} · {}",
+            candidate.version.as_deref().unwrap_or("版本未知"),
+            candidate.vendor.as_deref().unwrap_or("厂商未知")
+        )
+        .into(),
+        detail: format!(
+            "{} · {}",
+            candidate
+                .major
+                .map(|major| format!("主版本 {major}"))
+                .unwrap_or_else(|| "主版本未知".into()),
+            candidate.architecture.as_deref().unwrap_or("架构未知")
+        )
+        .into(),
+    }
+}
+
+fn java_candidate_items(scan: &JavaScanResult) -> Vec<JavaCandidateItem> {
+    scan.candidates.iter().map(java_candidate_item).collect()
+}
+
+fn java_notes(scan: &JavaScanResult) -> String {
+    scan.failures
+        .iter()
+        .map(|failure| format!("{}：{}", failure.path.display(), failure.reason))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn persist_java(ui: &AppWindow, settings: &SettingsBridge, path: Option<PathBuf>) {
+    let app = ui.global::<AppState>();
+    let path_text = path
+        .as_ref()
+        .map(|path| path.display().to_string())
+        .unwrap_or_default();
+    app.set_java_detecting(true);
+    app.set_java_status("正在保存 Java 选择…".into());
+    let weak = ui.as_weak();
+    settings.save_async(
+        LauncherSettings {
+            game_root: PathBuf::from(app.get_folder().trim()),
+            java_path: path,
+        },
+        move |result| {
+            let Some(ui) = weak.upgrade() else { return };
+            let (success, message) = match result {
+                Ok(()) => (true, "Java 路径已保存".to_string()),
+                Err(error) => (false, format!("Java 路径保存失败：{error}")),
+            };
+            ui.global::<AppState>()
+                .invoke_java_saved(path_text.into(), success, message.into());
+        },
+    );
+}
 fn toast(ui: &AppWindow, s: &mut State, message: impl Into<SharedString>) {
     ui.global::<AppState>().set_toast(message.into());
     s.toast_until = Some(Instant::now() + Duration::from_secs(5));
@@ -536,10 +595,12 @@ pub fn connect(
     initial: LauncherSettings,
     instances: InstanceBridge,
     initial_instances: Vec<InstanceRecord>,
+    java: JavaBridge,
 ) -> Timer {
     let state = Rc::new(RefCell::new({
         let mut state = State::default();
         state.replace_instances(initial_instances);
+        state.java_path = initial.java_path.clone();
         state
     }));
     let p = Preferences::load();
@@ -551,8 +612,14 @@ pub fn connect(
     ui.invoke_sync_theme();
     // 游戏目录以业务设置（设置插件）为准；界面偏好里的 folder 仅作为旧字段继续写入。
     app.set_folder(initial.game_root.display().to_string().into());
-    // 当前界面没有 Java 路径编辑入口，保存时沿用启动时读到的值，不能写回 None。
-    let java_path = initial.java_path.clone();
+    let initial_java = initial
+        .java_path
+        .as_ref()
+        .map(|path| path.display().to_string())
+        .unwrap_or_default();
+    app.set_java_selected(initial_java.clone().into());
+    app.set_java_input(initial_java.into());
+    app.set_java_status("尚未检测本机 Java".into());
     app.set_memory(p.memory);
     app.set_auto_memory(p.auto_memory);
     app.set_fullscreen(p.fullscreen);
@@ -668,6 +735,133 @@ pub fn connect(
         });
     }
 
+    {
+        let weak = ui.as_weak();
+        let data = state.clone();
+        let java = java.clone();
+        app.on_detect_java(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let app = ui.global::<AppState>();
+            if app.get_java_detecting() {
+                return;
+            }
+            let saved = data.borrow().java_path.clone();
+            app.set_java_detecting(true);
+            app.set_java_status("正在检测本机 Java…".into());
+            app.set_java_notes("".into());
+            let weak = ui.as_weak();
+            java.detect_async(saved, move |result| {
+                let Some(ui) = weak.upgrade() else { return };
+                let app = ui.global::<AppState>();
+                app.set_java_detecting(false);
+                match result {
+                    Ok(scan) => {
+                        let count = scan.candidates.len();
+                        let failed = scan.failures.len();
+                        app.set_java_candidates(model(java_candidate_items(&scan)));
+                        app.set_java_notes(java_notes(&scan).into());
+                        app.set_java_status(
+                            if count == 0 {
+                                "未发现可用的 Java；可以手动填写 java.exe 路径。".to_string()
+                            } else {
+                                format!("检测完成：{count} 个可用，{failed} 个失败")
+                            }
+                            .into(),
+                        );
+                    }
+                    Err(error) => {
+                        app.set_java_candidates(model(Vec::<JavaCandidateItem>::new()));
+                        app.set_java_status(format!("检测失败：{error}").into());
+                    }
+                }
+            });
+        });
+    }
+    {
+        let weak = ui.as_weak();
+        let settings = settings.clone();
+        app.on_use_java(move |path| {
+            let Some(ui) = weak.upgrade() else { return };
+            persist_java(&ui, &settings, Some(PathBuf::from(path.as_str())));
+        });
+    }
+    {
+        let weak = ui.as_weak();
+        let java = java.clone();
+        app.on_verify_java(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let app = ui.global::<AppState>();
+            if app.get_java_detecting() {
+                return;
+            }
+            let input = app.get_java_input().trim().to_string();
+            if input.is_empty() {
+                app.set_java_status("请填写 java.exe 路径".into());
+                return;
+            }
+            app.set_java_detecting(true);
+            app.set_java_status("正在验证 Java…".into());
+            app.set_java_notes("".into());
+            let weak = ui.as_weak();
+            java.probe_async(PathBuf::from(&input), move |result| {
+                let Some(ui) = weak.upgrade() else { return };
+                let app = ui.global::<AppState>();
+                match result {
+                    Ok(candidate) => {
+                        let item = java_candidate_item(&candidate);
+                        app.set_java_status(format!("验证通过：{}", item.title).into());
+                        app.invoke_java_verified(item.path.clone(), item.title.clone());
+                    }
+                    Err(error) => {
+                        app.set_java_detecting(false);
+                        app.set_java_status(format!("验证失败：{error}").into());
+                    }
+                }
+            });
+        });
+    }
+    {
+        let weak = ui.as_weak();
+        let settings = settings.clone();
+        app.on_auto_java(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            if ui.global::<AppState>().get_java_detecting() {
+                return;
+            }
+            persist_java(&ui, &settings, None);
+        });
+    }
+    {
+        let weak = ui.as_weak();
+        let settings = settings.clone();
+        app.on_java_verified(move |path, label| {
+            let Some(ui) = weak.upgrade() else { return };
+            ui.global::<AppState>()
+                .set_java_status(format!("{label} 验证通过，正在保存…").into());
+            persist_java(&ui, &settings, Some(PathBuf::from(path.as_str())));
+        });
+    }
+    {
+        let weak = ui.as_weak();
+        let data = state.clone();
+        app.on_java_saved(move |path, success, message| {
+            let Some(ui) = weak.upgrade() else { return };
+            let app = ui.global::<AppState>();
+            app.set_java_detecting(false);
+            app.set_java_status(message.clone());
+            let mut s = data.borrow_mut();
+            if success {
+                s.java_path = if path.is_empty() {
+                    None
+                } else {
+                    Some(PathBuf::from(path.as_str()))
+                };
+                app.set_java_selected(path.clone());
+                app.set_java_input(path);
+            }
+            toast(&ui, &mut s, message);
+        });
+    }
     bind_view!(on_close_modal, |ui, s| {
         close_modal(&ui, s);
     });
@@ -754,6 +948,10 @@ pub fn connect(
             let Some(ui) = weak.upgrade() else { return };
             let s = &mut *data.borrow_mut();
             let app = ui.global::<AppState>();
+            if app.get_instance_saving() || app.get_java_detecting() {
+                toast(&ui, s, "请等待当前操作完成");
+                return;
+            }
             let p = Preferences {
                 dark: ui.global::<Theme>().get_dark(),
                 pixel_glass: ui.global::<Theme>().get_pixel_glass(),
@@ -777,7 +975,7 @@ pub fn connect(
             };
             // 绑定点击时的快照；结果经事件循环回到界面线程后合并展示。
             let weak = ui.as_weak();
-            let java_path = java_path.clone();
+            let java_path = s.java_path.clone();
             bridge.save_async(
                 LauncherSettings {
                     game_root: p.folder.into(),

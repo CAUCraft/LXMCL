@@ -11,7 +11,7 @@ export component SettingsPage inherits Rectangle {
         horizontal-scrollbar-policy: always-off;
         VerticalLayout {
             padding: 28px; spacing: 20px;
-            HorizontalLayout { Heading { text: "设置"; } AppButton { text: "保存设置"; primary: true; clicked => { AppState.save-settings(); } } }
+            HorizontalLayout { Heading { text: "设置"; } AppButton { text: "保存设置"; primary: true; enabled: !AppState.java-detecting && !AppState.instance-saving; clicked => { AppState.save-settings(); } } }
             WallpaperPicker {}
             Panel {
                 height: 200px;
@@ -46,6 +46,44 @@ export component SettingsPage inherits Rectangle {
                     HorizontalLayout { Label { text: "游戏存放目录"; width: 130px; } LineEdit { text <=> AppState.folder; placeholder-text: "例如 D:\\Games\\LXMCL"; } }
                     Muted { text: "此处保存目录偏好，当前不会创建或移动真实游戏文件。"; wrap: word-wrap; }
                     HorizontalLayout { Muted { text: "Java 由游戏与加载器共同匹配 · 优先 Zulu"; } AppButton { text: "环境准备教程"; quiet: true; clicked => { Guidance.open-article("java"); } } }
+                }
+            }
+            Panel {
+                min-height: 300px;
+                VerticalLayout {
+                    padding: 20px; spacing: 12px;
+                    HorizontalLayout {
+                        Label { text: "Java 运行环境"; font-size: 17px; font-weight: 600; }
+                        Badge { text: "本机检测"; positive: true; }
+                        Rectangle { horizontal-stretch: 1; }
+                        AppButton { text: AppState.java-detecting ? "处理中…" : "检测 Java"; enabled: !AppState.java-detecting; clicked => { AppState.detect-java(); } }
+                    }
+                    Muted { text: AppState.java-status; wrap: word-wrap; }
+                    Label { text: "当前：" + (AppState.java-selected == "" ? "自动选择（尚未指定）" : AppState.java-selected); wrap: word-wrap; }
+                    for item in AppState.java-candidates: Rectangle {
+                        min-height: 58px;
+                        background: Theme.canvas;
+                        border-width: 1px; border-color: Theme.line;
+                        HorizontalLayout {
+                            padding: 10px; spacing: 10px;
+                            VerticalLayout {
+                                spacing: 3px;
+                                Label { text: item.title; font-weight: 600; }
+                                Muted { text: item.path; }
+                                Muted { text: item.detail; }
+                            }
+                            AppButton { text: "使用"; enabled: !AppState.java-detecting; clicked => { AppState.use-java(item.path); } }
+                        }
+                    }
+                    if(AppState.java-notes != ""): Muted { text: AppState.java-notes; wrap: word-wrap; color: Theme.amber; }
+                    HorizontalLayout {
+                        LineEdit { text <=> AppState.java-input; placeholder-text: "例如 C:\\Program Files\\Java\\jdk-21\\bin\\java.exe"; enabled: !AppState.java-detecting; }
+                        AppButton { text: "验证并保存"; enabled: !AppState.java-detecting; clicked => { AppState.verify-java(); } }
+                    }
+                    HorizontalLayout {
+                        Muted { text: "手动路径会真实启动一次 Java；不修改 JAVA_HOME 或 PATH。"; wrap: word-wrap; }
+                        AppButton { text: "使用自动选择"; quiet: true; enabled: !AppState.java-detecting; clicked => { AppState.auto-java(); } }
+                    }
                 }
             }
             Panel {

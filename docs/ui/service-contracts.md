@@ -8,12 +8,13 @@
 
 Slint 只负责展示与用户输入 → Rust 控制器处理导航 / 草稿 / 展示状态 → Rust 应用服务端口接收命令并返回结构化结果 → 真实后端接认证、磁盘、下载、进程。桌面程序内部无需先搭 HTTP 服务或监听网络端口。
 
-当前可编译的最小契约在 `src/contracts.rs`，演示服务在 `src/preview_services.rs`，Slint 适配在 `src/journey.rs`。设置与实例记录契约在 `crates/launcher-api`，分别由 JSON 设置 / 实例插件提供，经工作线程桥回 UI。`PreparationPort` 提供 `check`、`apply_plan`、`launch`；当前实现仅内存操作。真实实现必须在工作线程执行，通过 Slint 事件循环回传；不能把真实阻塞下载塞进现在的 UI 回调。
+当前可编译的最小契约在 `src/contracts.rs`，演示服务在 `src/preview_services.rs`，Slint 适配在 `src/journey.rs`。设置、实例记录与 Java 检测契约在 `crates/launcher-api`，分别由 JSON 设置 / 实例 / 本机 Java 插件提供，经工作线程桥回 UI。`PreparationPort` 提供 `check`、`apply_plan`、`launch`；当前实现仅内存操作。真实实现必须在工作线程执行，通过 Slint 事件循环回传；不能把真实阻塞下载塞进现在的 UI 回调。
 
 | 已有 Rust 类型 | 责任与字段约束 |
 |---|---|
 | `LaunchContext` | 固定实例 ID、名称、配置修订、账号 ID、版本 / 加载器、游戏与 Java 目录、启动目标；无令牌 |
 | `InstanceRecord` / `InstanceRepository` | 稳定整数 ID、名称、版本、加载器、独立游戏目录、单调修订；列表 / 创建记录 / 重命名。当前由 JSON 插件持久化，不安装游戏文件 |
+| `JavaCandidate` / `JavaRuntimeService` | 发现保存路径、JAVA_HOME、PATH 与常见目录候选；真实 `java` 进程探测版本 / 主版本 / 厂商 / 架构；手动路径复用同一探测。写入 `LauncherSettings.java_path`，空值表示自动 |
 | `CheckReport` | 报告 ID + 目标快照 + 来源（Preview / Live）+ 检查项 + 可选准备计划；当前五项均是必需项 |
 | `CheckItem` | 稳定 code、标题、Ready / NeedsAction / Blocked / Unknown、说明、关联教程 ID |
 | `PreparationPlan` / `PlannedChange` | 清单 ID、各项动作、来源、目标路径、可空下载字节数；None 显示待估算 |
@@ -21,7 +22,7 @@ Slint 只负责展示与用户输入 → Rust 控制器处理导航 / 草稿 / �
 | `LaunchRequest` / `LaunchReceipt` | 请求 ID、报告 ID及目标；回执明确 Preview / Live，不能等同于已进入服务器 |
 | `ServiceError` | 稳定错误码、用户说明、是否可重试、教程 ID；不让界面解析日志字符串来判断错误类型 |
 
-当前演示配置修订使用内存指纹；真实实例服务须维护单调递增的修订号。检查开始清除旧结果；提交前再次比较目标与修订。同 ID 的成功重放返回同一结果；同请求 ID 对应不同内容时拒绝。失败重试沿用原请求 ID，不生成重复操作。真实服务还须在持久化层完成幂等与原子提交，不能只靠 UI 内存 Map。
+实例记录已维护持久化的单调修订；启动准备仍在使用演示配置，提交前比较目标与修订。检查开始清除旧结果；同 ID 的成功重放返回同一结果；同请求 ID 对应不同内容时拒绝。失败重试沿用原请求 ID，不生成重复操作。后续真实服务还须在持久化层完成幂等与原子提交，不能只靠 UI 内存 Map。
 
 ### 完整服务划分（下表为后续契约设计，不宣称全部已实现）
 

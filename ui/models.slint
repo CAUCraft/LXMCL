@@ -1,5 +1,6 @@
 export struct GameItem { id: int, name: string, version: string, loader: string, detail: string, tint: color }
 export struct InstanceUpdate { id: int, name: string, version: string, loader: string, game-directory: string, revision: int }
+export struct JavaCandidateItem { path: string, title: string, detail: string }
 export struct ModItem { id: int, name: string, detail: string, source: string, enabled: bool, updatable: bool }
 export struct ResourceItem { id: int, name: string, description: string, detail: string, source: string, tint: color, compatible: bool, installed: bool }
 export struct DownloadItem { id: int, name: string, detail: string, progress: int, state: string, paused: bool, done: bool }
@@ -52,6 +53,12 @@ export global AppState {
     in-out property <int> form-version;
     in-out property <int> form-loader;
     in-out property <string> folder: "D:\\Games\\LXMCL";
+    in-out property <[JavaCandidateItem]> java-candidates;
+    in-out property <string> java-status: "尚未检测本机 Java";
+    in-out property <string> java-notes;
+    in-out property <string> java-input;
+    in-out property <string> java-selected;
+    in-out property <bool> java-detecting;
     in-out property <int> memory: 4;
     in-out property <bool> auto-memory: true;
     in-out property <bool> fullscreen: false;
@@ -85,6 +92,12 @@ export global AppState {
     callback launch-game();
     callback select-account(int);
     callback save-settings();
+    callback detect-java();
+    callback use-java(string);
+    callback verify-java();
+    callback auto-java();
+    callback java-verified(string, string);
+    callback java-saved(string, bool, string);
     callback set-dark(bool);
     callback set-pixel-glass(bool);
     in-out property <image> nav-image;

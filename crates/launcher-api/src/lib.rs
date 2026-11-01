@@ -10,7 +10,8 @@ pub use launcher_runtime::{
 };
 
 use std::fmt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicBool;
 
 /// 启动器全局设置的业务值。提供者负责落盘，界面不直接读写配置文件。
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -177,4 +178,85 @@ pub struct Instances;
 impl ServiceKey for Instances {
     type Service = dyn InstanceRepository;
     const NAME: &'static str = "launcher.instances";
+}
+
+/// 一个已探测的 Java 运行时。只保留实际从 java 进程读取到的信息。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct JavaCandidate {
+    pub path: PathBuf,
+    pub version: Option<String>,
+    pub major: Option<u32>,
+    pub vendor: Option<String>,
+    pub architecture: Option<String>,
+}
+
+/// 单个候选探测失败；不影响其他候选。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct JavaProbeFailure {
+    pub path: PathBuf,
+    pub reason: String,
+}
+
+/// 检测结果：成功候选与失败原因分开返回。
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct JavaScanResult {
+    pub candidates: Vec<JavaCandidate>,
+    pub failures: Vec<JavaProbeFailure>,
+}
+
+/// Java 检测或探测错误。
+#[derive(Debug)]
+pub enum JavaError {
+    InvalidPath { path: PathBuf, reason: String },
+    NotFound { path: PathBuf },
+    Spawn { path: PathBuf, message: String },
+    Timeout { path: PathBuf, seconds: u64 },
+    Exit { path: PathBuf, message: String },
+    Parse { path: PathBuf, message: String },
+    Busy,
+    Unavailable,
+}
+
+impl fmt::Display for JavaError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidPath { path, reason } => {
+                write!(f, "Java 路径 {} 无效：{reason}", path.display())
+            }
+            Self::NotFound { path } => write!(f, "找不到 Java：{}", path.display()),
+            Self::Spawn { path, message } => {
+                write!(f, "无法启动 Java {}：{message}", path.display())
+            }
+            Self::Timeout { path, seconds } => {
+                write!(f, "Java 探测超时（{seconds} 秒）：{}", path.display())
+            }
+            Self::Exit { path, message } => {
+                write!(f, "Java {} 返回失败：{message}", path.display())
+            }
+            Self::Parse { path, message } => {
+                write!(f, "无法解析 Java 输出 {}：{message}", path.display())
+            }
+            Self::Busy => write!(f, "已有 Java 检测正在执行"),
+            Self::Unavailable => write!(f, "Java 检测工作线程不可用"),
+        }
+    }
+}
+
+impl std::error::Error for JavaError {}
+
+/// 本机 Java 检测契约：候选发现与单路径探测分开。
+pub trait JavaRuntimeService: Send + Sync {
+    /// 从保存路径、JAVA_HOME、PATH 和少量常见目录发现并探测候选。
+    /// `cancelled` 由退出流程设置；实现应在候选之间尽早停止。
+    fn detect(&self, saved_path: Option<&Path>, cancelled: &AtomicBool) -> JavaScanResult;
+    /// 手动路径也走同一探测逻辑。
+    fn probe(&self, path: &Path) -> Result<JavaCandidate, JavaError>;
+}
+
+/// Java 检测服务的服务键。
+pub struct JavaRuntime;
+
+impl ServiceKey for JavaRuntime {
+    type Service = dyn JavaRuntimeService;
+    const NAME: &'static str = "launcher.java";
 }

@@ -10,9 +10,10 @@ Phase 1 让第三方用「装配插件 + 配置产品 + 替换界面」的方式
 - 服务依赖解析：宿主按「插件声明的 requires/provides」完成整体装配解析后统一启动。
 - 设置服务贯通：插件提供设置服务 → Slint 界面通过契约消费 → 落盘保存、重启后读回。
 - 实例记录贯通：插件提供实例仓库 → Slint 界面创建、列选、重命名 → JSON 持久化、重启后读回。
+- 本机 Java 检测：插件从保存路径 / JAVA_HOME / PATH / 常见目录发现候选，真实启动 Java 进程读取版本、厂商与架构；界面验证并保存选择。
 - 独立最小启动器示例：证明第三方能不携带 LXMCL 的控制器、品牌素材与演示状态复用 SDK 与插件。
 
-Phase 1 明确**不包含**：真实账号认证、Java 安装、游戏下载、游戏启动、实例文件安装、模组管理。这些只作为「未来契约归属」记录（见文末），不写占位 trait 或空插件。
+Phase 1 明确**不包含**：真实账号认证、Java 下载 / 安装、游戏下载、游戏启动、实例文件安装、模组管理。这些只作为「未来契约归属」记录（见文末），不写占位 trait 或空插件。
 
 ## 五个角色与依赖方向
 
@@ -20,8 +21,8 @@ Phase 1 明确**不包含**：真实账号认证、Java 安装、游戏下载、
 |---|---|---|---|
 | 1. 运行时（Runtime） | `crates/launcher-runtime` | 插件目录、服务注册表、依赖解析、装配启动、退出清理 | 不知道 Minecraft、Slint、LXMCL、账号，不知道任何业务服务名 |
 | 2. API | `crates/launcher-api` | 业务能力契约：服务 trait、请求与结果类型、服务键 | 不依赖任何提供者实现，不依赖 Slint |
-| 3. 提供者插件 | `crates/launcher-settings`（`settings-json`）、`crates/launcher-instances`（`instances-json`） | 实现服务契约并注册到上下文；I/O 在 load/save 或仓库方法中 | 不写 UI；不直接调用其他插件的具体实现（只依赖契约） |
-| 4. 消费者 / Shell | `src/controller.rs`、`src/settings_bridge.rs`、`src/instances_bridge.rs`、`examples/minimal-launcher` | 调用服务契约渲染界面 | 不直接读配置文件 |
+| 3. 提供者插件 | `crates/launcher-settings`（`settings-json`）、`crates/launcher-instances`（`instances-json`）、`crates/launcher-java`（`java-local`） | 实现服务契约并注册到上下文；I/O 与进程探测在服务方法中 | 不写 UI；不直接调用其他插件的具体实现（只依赖契约） |
+| 4. 消费者 / Shell | `src/controller.rs`、`src/settings_bridge.rs`、`src/instances_bridge.rs`、`src/java_bridge.rs`、`examples/minimal-launcher` | 调用服务契约渲染界面 | 不直接读配置文件 |
 | 5. 产品 | `src/main.rs` + `src/composition.rs` + `product.toml`（LXMCL）；`examples/minimal-launcher`（最小示例） | 装配：注册工厂、定位配置、启动宿主、运行 Shell | 不是 Runtime 的特例——LXMCL 与最小示例是平级的两个产品 |
 
 依赖方向（箭头指向被依赖方）：
@@ -41,10 +42,12 @@ crates/launcher-runtime/   插件宿主（catalog/context/error/host/key/plugin/
 crates/launcher-api/       业务契约（LauncherSettings、SettingsService、Settings 服务键）
 crates/launcher-settings/  JSON 设置提供者插件（settings-json）
 crates/launcher-instances/ JSON 实例仓库插件（instances-json）
+crates/launcher-java/      本机 Java 检测插件（java-local）
 src/main.rs                LXMCL 入口：装配 → 运行 → 退出清理
 src/composition.rs         LXMCL 产品装配（定位 product.toml、注册工厂、运行 Shell）
 src/settings_bridge.rs     LXMCL Shell 的设置线程桥
 src/instances_bridge.rs    LXMCL Shell 的实例仓库工作线程桥
+src/java_bridge.rs         LXMCL Shell 的 Java 检测工作线程桥
 examples/custom-settings/  第三方 TOML 设置提供者插件示例（settings-toml-example）
 examples/minimal-launcher/ 独立最小启动器示例（自带 Slint 窗口与线程桥）
 examples/*/product.toml    示例产品装配配置
@@ -67,6 +70,14 @@ examples/*/product.toml    示例产品装配配置
 - 向导的游戏目录来自当前实例记录，只读展示；列表、下拉框和搜索选择都经同一状态刷新。切换实例只更新游戏目录，不重置用户单独填写的 Java 目录。
 - “我的游戏”空仓库显示空状态；创建只写配置记录，不写演示模组、下载任务或游戏文件。
 
+## 本机 Java 检测（2026-11-01）
+
+- `JavaRuntimeService` 把候选发现与单路径探测分开：`detect(saved_path, cancelled)` 只列保存路径、`JAVA_HOME`、`PATH` 和少量常见安装目录；`probe(path)` 对手动路径执行同一探测。
+- 探测直接启动 `java` 进程并读取 `-XshowSettings:properties -version` 输出，不经过 shell；单次探测 5 秒超时，退出时在候选之间取消。
+- 候选按规范化路径去重；单个候选失败进入 `failures`，不影响其他候选。版本、主版本、厂商、架构只展示实际读到的值。
+- 选择写回 `LauncherSettings.java_path`；`None` 表示自动选择。Shell 保存成功后更新控制器持有的有效设置，后续“保存设置”不会用启动时旧值覆盖。
+- 本轮不下载 / 安装 Java，不修改系统 `JAVA_HOME` / `PATH`，不做完整游戏兼容判断。
+
 ## 插件生命周期
 
 ```
@@ -85,6 +96,7 @@ Registered → Starting → Active → Stopping → Stopped
 - Slint 窗口与模型只在 UI 线程；设置读写在工作线程。
 - Shell 桥（每个 Shell 自己实现一份）：有界邮筒（`Mutex` + `Condvar`）。Load 携带回复 sender；Save 携带**点击时快照**与完成回调。待保存槽位只保留最新一个快照，正在执行一个，新点击覆盖尚未开始的旧快照，不随点击次数增长。工作线程执行磁盘 I/O，完成回调经 `slint::invoke_from_event_loop` 回到 UI 线程执行。
 - 启动首读用 `load_blocking`（窗口创建前完成，读操作仍在线程上）；读取排队上限 4，超过即返回 `Unavailable`。
+- Java 检测使用独立工作线程（容量 1）；退出时设置取消标志，当前探测最多等待单次超时后结束。
 - 顺序：`ui.run()` 返回 → 丢弃窗口 → `SettingsWorker::join()` 关闭邮箱并 join → `host.shutdown()`。关闭后不再接受新请求，但已接受的最后一个保存快照仍会写完；即使界面回调仍持有桥的克隆，工作线程也会在写完快照后退出。不在 UI 回调里 join，无全局轮询定时器，无无界队列。
 - 保存结果与界面偏好保存结果合并为一条提示展示；工作线程不可用时回调仍被执行（返回 `Unavailable`），不静默。
 

@@ -2,6 +2,38 @@
 
 本文件区分历史测试、当前检查和仍未完成的人工验证。历史基线为 2026-10-27，最新修复复验为 2026-11-01；不能把 v0.1 Figma / HTML 渲染检查当作当前 Slint 验收。
 
+## 本机 Java 检测与选择（2026-11-01）
+
+### 实现
+
+- `launcher-api` 增加 `JavaCandidate`、`JavaProbeFailure`、`JavaScanResult`、`JavaError`、`JavaRuntimeService` 与 `JavaRuntime` 服务键。
+- 新增 `crates/launcher-java`（`java-local`）：发现保存路径、`JAVA_HOME`、`PATH` 与少量常见安装目录；实际启动 `java -XshowSettings:properties -version`，不经 shell，单次探测 5 秒超时。
+- 候选按规范化路径去重；单个失败进入 `failures`，不影响其他候选。手动路径复用同一探测。
+- `src/java_bridge.rs` 用独立工作线程执行检测 / 验证；关闭时设置取消标志并等待当前探测结束。
+- 设置页新增真实检测、候选列表、手动路径验证、使用自动选择；保存写回 `LauncherSettings.java_path`，成功后更新控制器持有的有效设置。
+
+### 验证
+
+| 检查 | 结果 |
+|---|---|
+| `cargo fmt --all --check` | 通过 |
+| `cargo test --workspace --locked` | 通过：38 项通过，2 项需 FFmpeg / 手动计时的测试 ignored |
+| `cargo clippy --workspace --locked --all-targets -- -D warnings` | 通过 |
+| Java 输出解析测试 | OpenJDK 21 属性、Java 8 `1.8.0_402` 版本行与主版本解析通过 |
+| 窗口操作：检测 | 本机检测到 6 个候选、0 个失败；包含 BellSoft 21.0.10、Oracle 25.0.4 / 17.0.12 等真实结果 |
+| 窗口操作：选择候选 | 选择 BellSoft 候选后，`launcher-settings.json` 写入对应 `java_path` |
+| 窗口操作：手动路径 | 输入 `C:\Program Files\Java\jdk-17\bin\java.exe`，真实探测通过并保存；JSON 更新为该路径 |
+| 窗口操作：重启恢复 | 重启后设置页显示该 `jdk-17` 路径；退出码 0 |
+| 窗口操作：实例切换不重置 Java | 游戏目录只读从 `java-instance-1` 更新到 `java-instance-2`；用户填写的 Java 目录 `D:\CustomJava` 保持；设置的 `java_path` 未变化 |
+
+### 限制
+
+- 仅以 Windows 为验证平台；常见安装目录是有限列表，不递归扫描全部磁盘。
+- 未实现 Java 下载 / 安装、完整游戏兼容规则或自动选择策略；`None` 只表示交给后续自动选择。
+- 探测顺序执行，单次 5 秒超时；退出最多等待当前进程探测结束。
+- 不修改系统 `JAVA_HOME` 或 `PATH`，不执行 shell 拼接命令。
+- 厂商 / 架构字段仅在 Java 输出实际提供时展示。
+
 ## 实例仓库首个闭环（2026-11-01）
 
 ### 实现
@@ -32,7 +64,7 @@
 ### 限制
 
 - 本轮不支持导入、复制、删除记录 / 文件、自动下载或创建真实游戏目录。
-- 游戏文件安装、Java、账号、下载和启动仍保留演示标识；创建记录只代表配置已保存。
+- 游戏文件安装、账号、下载、Java 下载 / 安装和启动仍保留演示标识；Java 检测见上一节，创建记录只代表配置已保存。
 - JSON 仓库使用单进程工作线程写保护，不做跨进程文件锁。
 - 未增加第二种实例存储后端、通用任务总线或事件溯源。
 

@@ -2404,6 +2404,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "launcher-java"
+version = "0.1.0"
+dependencies = [
+ "launcher-api",
+]
+
+[[package]]
 name = "launcher-runtime"
 version = "0.1.0"
 dependencies = [
@@ -2548,6 +2555,7 @@ dependencies = [
  "image",
  "launcher-api",
  "launcher-instances",
+ "launcher-java",
  "launcher-runtime",
  "launcher-settings",
  "serde",

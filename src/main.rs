@@ -3,6 +3,7 @@ slint::include_modules!();
 mod composition;
 mod controller;
 mod instances_bridge;
+mod java_bridge;
 mod journey;
 mod mascot_motion;
 #[cfg(debug_assertions)]

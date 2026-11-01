@@ -31,23 +31,25 @@
 | `crates/launcher-api/` | 业务契约：设置、实例记录与服务键 |
 | `crates/launcher-settings/` | JSON 设置提供者插件（`settings-json`），apply 无 I/O |
 | `crates/launcher-instances/` | JSON 实例仓库插件（`instances-json`）：列表、创建、重命名 |
+| `crates/launcher-java/` | 本机 Java 检测插件（`java-local`）：候选发现、进程探测、版本/厂商/架构解析 |
 | `src/main.rs` | LXMCL 入口：装配 → 运行 Shell → join 设置线程（关闭新请求、写完最后快照）→ 宿主清理 |
 | `src/composition.rs` | 产品装配：定位 `product.toml`、解析数据目录、注册工厂、运行 Shell |
 | `src/settings_bridge.rs` | 设置线程桥：有界邮筒、合并待保存快照、退出写完最后快照 + `invoke_from_event_loop` 回 UI |
 | `src/instances_bridge.rs` | 实例线程桥：单工作线程、容量 1、关闭时写完已接受命令并返回最后写入错误 |
+| `src/java_bridge.rs` | Java 检测线程桥：容量 1、退出取消、探测超时由提供者处理 |
 | `product.toml` | LXMCL 产品装配配置（产品 ID、启用的插件与各自 config） |
 | `examples/custom-settings/` | 第三方 TOML 设置提供者示例（`settings-toml-example`） |
 | `examples/minimal-launcher/` | 独立最小启动器示例：自带窗口与线程桥，不依赖 LXMCL 控制器 |
 
-设置数据分两份：界面偏好仍写 `%LOCALAPPDATA%\LXMCL\ui-preferences.json`；业务设置由设置插件写入 `%LOCALAPPDATA%\org.caucraft.lxmcl\launcher-settings.json`（产品 ID 决定命名空间）。保存设置时两份数据合并为一条提示展示。实例记录由 `instances-json` 写入同目录 `instances.json`。
+设置数据分两份：界面偏好仍写 `%LOCALAPPDATA%\LXMCL\ui-preferences.json`；业务设置由设置插件写入 `%LOCALAPPDATA%\org.caucraft.lxmcl\launcher-settings.json`（产品 ID 决定命名空间）。保存设置时两份数据合并为一条提示展示。实例记录由 `instances-json` 写入同目录 `instances.json`；Java 选择保存在设置的 `java_path`，空值表示自动选择。
 
 现有页面编号 0–8 为日常入口，9 为向导，10 为准备检查。教程 ID 固定为 `start`、`club`、`account`、`java`、`storage`、`resources`、`network`、`launch`；改变展示标题时不要破坏 ID 关联。当前搜索仍使用特殊整数 ID 路由，改为类型化动作是后续工作。
 
 ## 真实状态与模拟状态
 
-真实可用：原生 UI、皮肤渲染、主题 / 导航动画、FFmpeg 视频、关键词搜索、路径格式校验、界面偏好落盘，以及实例记录创建 / 列表 / 选择 / 重命名与 JSON 重启恢复。偏好文件默认位于 `%LOCALAPPDATA%\LXMCL\ui-preferences.json`。
+真实可用：原生 UI、皮肤渲染、主题 / 导航动画、FFmpeg 视频、关键词搜索、路径格式校验、界面偏好落盘、实例记录创建 / 列表 / 选择 / 重命名与 JSON 重启恢复，以及本机 Java 候选检测、手动路径验证和选择持久化。偏好文件默认位于 `%LOCALAPPDATA%\LXMCL\ui-preferences.json`。
 
-仅演示：账号、游戏文件安装、资源目录、下载任务、Java 准备、启动、服务器和诊断。实例记录只保存配置，不创建或修改游戏文件。向导保留本次运行中的草稿，没有跨重启恢复；尚未自动识别首次启动。文件存在、权限和空间都没有由路径格式校验验证。
+仅演示：账号、游戏文件安装、资源目录、下载任务、Java 下载 / 安装、启动、服务器和诊断。实例记录只保存配置，不创建或修改游戏文件；Java 检测不修改系统 `JAVA_HOME` / `PATH`。向导保留本次运行中的草稿，没有跨重启恢复；尚未自动识别首次启动。文件存在、权限和空间都没有由路径格式校验验证。
 
 准备服务测试已约束目标快照、配置修订、幂等请求和旧结果失效。当前 `PreparationPort` 是同步的内存端口；真实 I/O 需要工作线程 / 调度桥，再通过 Slint 事件循环更新状态。不要直接把同步下载放进 UI 回调。实例记录已有持久化的单调修订；启动准备仍只比较演示配置，持久幂等、任务取消与事件流尚未实现。
 
