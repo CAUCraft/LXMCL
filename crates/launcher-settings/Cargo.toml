@@ -1,0 +1,11 @@
+[package]
+name = "launcher-settings"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.92"
+description = "JSON 文件设置服务插件（settings-json）"
+
+[dependencies]
+launcher-api = { path = "../launcher-api" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

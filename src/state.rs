@@ -1,3 +1,4 @@
+use launcher_api::InstanceRecord;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -7,7 +8,23 @@ pub struct Game {
     pub name: String,
     pub version: String,
     pub loader: String,
+    pub game_directory: PathBuf,
+    pub revision: u64,
     pub content: Vec<Content>,
+}
+
+impl From<InstanceRecord> for Game {
+    fn from(record: InstanceRecord) -> Self {
+        Self {
+            id: record.id,
+            name: record.name,
+            version: record.version,
+            loader: record.loader,
+            game_directory: record.game_directory,
+            revision: record.revision,
+            content: Vec::new(),
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -133,6 +150,8 @@ impl Default for State {
                     name: "社团生存".into(),
                     version: "1.21.1".into(),
                     loader: "Fabric".into(),
+                    game_directory: PathBuf::new(),
+                    revision: 1,
                     content: vec![
                         Content {
                             id: 100,
@@ -155,6 +174,8 @@ impl Default for State {
                     name: "原版生存".into(),
                     version: "1.21.1".into(),
                     loader: "原版".into(),
+                    game_directory: PathBuf::new(),
+                    revision: 1,
                     content: vec![],
                 },
                 Game {
@@ -162,6 +183,8 @@ impl Default for State {
                     name: "模组实验室".into(),
                     version: "1.20.1".into(),
                     loader: "Forge".into(),
+                    game_directory: PathBuf::new(),
+                    revision: 1,
                     content: vec![],
                 },
             ],
@@ -261,6 +284,30 @@ impl Default for State {
 }
 
 impl State {
+    /// 用实例仓库的记录替换演示条目；空仓库就是空列表。
+    pub fn replace_instances(&mut self, instances: Vec<InstanceRecord>) {
+        self.games = instances.into_iter().map(Game::from).collect();
+        self.selected = self.games.first().map_or(-1, |game| game.id);
+        self.downloads.clear();
+        self.pending = None;
+        self.launch = None;
+    }
+
+    /// 创建或重命名成功后更新单条记录；不补演示模组或下载任务。
+    pub fn apply_instance(&mut self, record: InstanceRecord) {
+        let id = record.id;
+        if let Some(game) = self.games.iter_mut().find(|game| game.id == id) {
+            game.name = record.name;
+            game.version = record.version;
+            game.loader = record.loader;
+            game.game_directory = record.game_directory;
+            game.revision = record.revision;
+        } else {
+            self.games.push(Game::from(record));
+        }
+        self.selected = id;
+    }
+
     pub fn id(&mut self) -> i32 {
         let id = self.next_id;
         self.next_id += 1;

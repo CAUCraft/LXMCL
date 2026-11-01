@@ -1,0 +1,17 @@
+# 最小示例启动器的产品装配配置。
+# 把 [[plugins]] 的 provider 换成 "settings-toml-example"（并把
+# file_name 换成 launcher-settings.toml）即可验证插件替换：窗口代码不用改。
+[product]
+id = "dev.example.minimal-launcher"
+name = "最小示例启动器"
+
+[[plugins]]
+id = "settings"
+provider = "settings-json"
+
+[plugins.config]
+file_name = "launcher-settings.json"
+
+[plugins.config.defaults]
+# 相对路径会相对产品数据目录解析（%LOCALAPPDATA%\dev.example.minimal-launcher\games）。
+game_root = "games"

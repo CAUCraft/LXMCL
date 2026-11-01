@@ -68,10 +68,11 @@ export component OnboardingPage inherits Rectangle {
                     }
                     if(Guidance.step == 2): VerticalLayout {
                         spacing: 10px; vertical-stretch: 0;
-                        HorizontalLayout { Label { text: "选择游戏与 Java 的存放位置"; font-size: 21px; font-weight: 600; } AppButton { text: "填写说明"; quiet: true; clicked => { Guidance.open-article("storage"); } } }
-                        Muted { text: "可选其他磁盘，路径支持中文和空格。下面先检查格式，磁盘空间与权限待服务接入。"; wrap: word-wrap; }
-                        Label { text: "游戏目录"; font-weight: 600; }
-                        LineEdit { text <=> Guidance.game-directory; placeholder-text: "例如 E:\\Games\\LXMCL"; edited(_) => { Guidance.validate-paths(); } }
+                        HorizontalLayout { Label { text: "确认游戏目录与 Java 位置"; font-size: 21px; font-weight: 600; } AppButton { text: "填写说明"; quiet: true; clicked => { Guidance.open-article("storage"); } } }
+                        Muted { text: "游戏目录来自当前实例记录；本轮尚未实现目录迁移，因此只读。Java 目录可另行填写。"; }
+                        Label { text: "游戏目录（实例记录）"; font-weight: 600; }
+                        LineEdit { text <=> Guidance.game-directory; read-only: true; }
+                        Muted { text: "切换实例时这里会更新；游戏目录本身不会迁移或创建。"; wrap: word-wrap; }
                         Label { text: "Java 目录"; font-weight: 600; }
                         LineEdit { text <=> Guidance.java-directory; placeholder-text: "例如 E:\\Games\\Java"; edited(_) => { Guidance.validate-paths(); } }
                         Muted { text: "优先复用匹配的 Java；缺失时推荐 Zulu JDK。具体版本、来源和下载量在准备清单中确认。"; wrap: word-wrap; }

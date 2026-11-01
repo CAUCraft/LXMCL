@@ -138,7 +138,7 @@ export component HomePage inherits TouchArea {
                     AppButton { text: "选择"; enabled: game.id != AppState.current-game.id; clicked => { AppState.choose-game(game.id); } }
                 }
             }
-            if(AppState.games.length == 0): EmptyState { title: "还没有游戏"; description: "点击右上角「创建游戏」，添加你的第一个游戏。"; }
+            if(AppState.games.length == 0): EmptyState { title: "还没有实例记录"; description: "点击右上角「创建游戏」，保存第一个实例配置；不会安装游戏文件。"; }
             Rectangle { min-height: 8px; }
         }
     }

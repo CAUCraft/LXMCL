@@ -1,0 +1,10 @@
+[package]
+name = "launcher-api"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.92"
+description = "启动器业务能力契约：服务 trait、请求与结果类型"
+
+[dependencies]
+launcher-runtime = { path = "../launcher-runtime" }
+serde = { version = "1", features = ["derive"] }

@@ -1,11 +1,15 @@
+use crate::instances_bridge::InstanceBridge;
+use crate::settings_bridge::SettingsBridge;
 use crate::state::{Content, Game, Preferences, State};
 use crate::{
-    AccountItem, AppState, AppWindow, DownloadItem, GameItem, Guidance, ModItem, ResourceItem,
-    SearchItem, Theme,
+    AccountItem, AppState, AppWindow, DownloadItem, GameItem, Guidance, InstanceUpdate, ModItem,
+    ResourceItem, SearchItem, Theme,
 };
+use launcher_api::{InstanceRecord, LauncherSettings, NewInstance};
 use slint::{Color, ComponentHandle, Model, ModelRc, SharedString, Timer, TimerMode, VecModel};
 use std::{
     cell::RefCell,
+    path::PathBuf,
     rc::Rc,
     time::{Duration, Instant},
 };
@@ -39,15 +43,51 @@ fn tint(index: i32) -> Color {
     }
 }
 fn game_item(g: &Game) -> GameItem {
+    let detail = if g.game_directory.as_os_str().is_empty() {
+        format!("{} 项内容", g.content.len())
+    } else {
+        format!("修订 {} · {}", g.revision, g.game_directory.display())
+    };
     GameItem {
         id: g.id,
         name: g.name.clone().into(),
         version: g.version.clone().into(),
         loader: g.loader.clone().into(),
-        detail: format!("{} 项内容", g.content.len()).into(),
+        detail: detail.into(),
         tint: tint(g.id),
     }
 }
+
+fn sync_guide_directory(ui: &AppWindow, game: &Game) {
+    if game.game_directory.as_os_str().is_empty() {
+        return;
+    }
+    ui.global::<Guidance>()
+        .set_game_directory(game.game_directory.display().to_string().into());
+}
+
+fn instance_update(record: InstanceRecord) -> InstanceUpdate {
+    InstanceUpdate {
+        id: record.id,
+        name: record.name.into(),
+        version: record.version.into(),
+        loader: record.loader.into(),
+        game_directory: record.game_directory.display().to_string().into(),
+        revision: record.revision.min(i32::MAX as u64) as i32,
+    }
+}
+
+fn instance_record(update: InstanceUpdate) -> InstanceRecord {
+    InstanceRecord {
+        id: update.id,
+        name: update.name.to_string(),
+        version: update.version.to_string(),
+        loader: update.loader.to_string(),
+        game_directory: PathBuf::from(update.game_directory.as_str()),
+        revision: update.revision.max(0) as u64,
+    }
+}
+
 fn toast(ui: &AppWindow, s: &mut State, message: impl Into<SharedString>) {
     ui.global::<AppState>().set_toast(message.into());
     s.toast_until = Some(Instant::now() + Duration::from_secs(5));
@@ -135,6 +175,9 @@ fn refresh(ui: &AppWindow, s: &State) {
         detail: "".into(),
         tint: tint(0),
     }));
+    if let Some(game) = s.game() {
+        sync_guide_directory(ui, game);
+    }
     app.set_mods(update_model(
         app.get_mods(),
         s.game()
@@ -212,14 +255,15 @@ fn open_modal(ui: &AppWindow, s: &mut State, kind: &str, id: i32) {
         return;
     }
     let app = ui.global::<AppState>();
-    let game = if kind == "delete" {
+    let game = if matches!(kind, "delete" | "rename") {
         s.games.iter().find(|g| g.id == id)
     } else {
         s.game()
     }
-    .map_or("未选择游戏", |g| g.name.as_str());
+    .map_or_else(|| "未选择游戏".to_string(), |g| g.name.clone());
     let (title,body)=match kind {
-        "create"=>("创建游戏","为游戏取一个容易辨认的名字，再选择版本和加载器。当前仅创建前端演示条目。".into()),
+        "create"=>("创建游戏","为游戏取一个容易辨认的名字，再选择版本和加载器。创建会保存一条实例配置，并在全局游戏目录下分配独立目录；不会安装游戏文件，也不会生成演示模组或下载任务。".into()),
+        "rename"=>("重命名实例",format!("修改「{game}」的显示名称。实例目录不变，成功后配置修订号会递增。")),
         "delete"=>("删除游戏",format!("将删除「{game}」的演示条目、资源条目和关联任务。\n\n输入完整游戏名称确认对象。当前不会删除磁盘文件；正式删除应另行展示存档保留与备份选项。")),
         "import"=>("导入资源 · 交互预览",format!("向「{game}」添加一个本地导入的演示条目。真实文件选择与导入尚未接入。")),
         "account"=>("添加本地账号","输入用于界面预览的角色名称。微软与社团账号登录会在接入认证服务后提供。".into()),
@@ -243,20 +287,28 @@ fn open_modal(ui: &AppWindow, s: &mut State, kind: &str, id: i32) {
     app.set_modal(kind.into());
     app.set_modal_title(title.into());
     app.set_modal_body(body.into());
-    app.set_form_name("".into());
+    app.set_form_name(if kind == "rename" {
+        game.into()
+    } else {
+        "".into()
+    });
     app.set_form_error("".into());
     app.set_form_version(0);
     app.set_form_loader(0);
+    app.set_instance_saving(false);
     ui.invoke_focus_modal();
 }
 fn close_modal(ui: &AppWindow, s: &mut State) {
+    if ui.global::<AppState>().get_instance_saving() {
+        return;
+    }
     s.pending = None;
     ui.global::<AppState>().set_modal("".into());
     ui.invoke_focus_main();
 }
 fn launch(ui: &AppWindow, s: &mut State) {
     if s.game().is_none() {
-        toast(ui, s, "请先创建游戏");
+        toast(ui, s, "请先创建或选择实例");
         return;
     }
     let weak = ui.as_weak();
@@ -266,13 +318,13 @@ fn launch(ui: &AppWindow, s: &mut State) {
         }
     });
 }
-fn confirm(ui: &AppWindow, s: &mut State) {
+fn confirm(ui: &AppWindow, s: &mut State, instances: &InstanceBridge) {
     let Some((kind, id, target, category)) = s.pending.clone() else {
         return;
     };
     let app = ui.global::<AppState>();
     let name = app.get_form_name().trim().to_owned();
-    if ["create", "import", "account"].contains(&kind.as_str())
+    if ["create", "rename", "import", "account"].contains(&kind.as_str())
         && (name.is_empty() || name.chars().count() > 32)
     {
         app.set_form_error("请输入 1–32 个字符的名称。".into());
@@ -284,29 +336,74 @@ fn confirm(ui: &AppWindow, s: &mut State) {
                 app.set_form_error("已有同名游戏，请换一个名称。".into());
                 return;
             }
-            let id = s.id();
-            s.games.push(Game {
-                id,
+            if let Err(reason) = lxmcl::contracts::validate_directory(app.get_folder().as_str()) {
+                app.set_form_error(format!("游戏存放目录：{reason}").into());
+                return;
+            }
+            let version = if app.get_form_version() == 0 {
+                "1.21.1"
+            } else {
+                "1.20.1"
+            };
+            let loader = match app.get_form_loader() {
+                0 => "Fabric",
+                1 => "原版",
+                _ => "Forge",
+            };
+            let draft = NewInstance {
                 name,
-                version: (if app.get_form_version() == 0 {
-                    "1.21.1"
-                } else {
-                    "1.20.1"
-                })
-                .into(),
-                loader: match app.get_form_loader() {
-                    0 => "Fabric",
-                    1 => "原版",
-                    _ => "Forge",
+                version: version.into(),
+                loader: loader.into(),
+                game_root: PathBuf::from(app.get_folder().trim()),
+            };
+            app.set_form_error("".into());
+            app.set_instance_saving(true);
+            let weak = ui.as_weak();
+            instances.create_async(draft, move |result| {
+                let Some(ui) = weak.upgrade() else { return };
+                match result {
+                    Ok(record) => ui
+                        .global::<AppState>()
+                        .invoke_instance_created(instance_update(record)),
+                    Err(error) => ui
+                        .global::<AppState>()
+                        .invoke_instance_error(format!("创建失败：{error}").into()),
                 }
-                .into(),
-                content: vec![],
             });
-            s.selected = id;
-            app.set_game_filter("".into());
-            app.set_page(1);
-            app.set_game_tab(0);
-            toast(ui, s, "游戏已添加到演示列表");
+            return;
+        }
+        "rename" => {
+            let Some(game) = s.games.iter().find(|game| game.id == id) else {
+                app.set_form_error("实例不存在，请刷新后重试。".into());
+                return;
+            };
+            if game.name == name {
+                close_modal(ui, s);
+                toast(ui, s, "名称未变化");
+                return;
+            }
+            if s.games
+                .iter()
+                .any(|game| game.id != id && game.name.eq_ignore_ascii_case(&name))
+            {
+                app.set_form_error("已有同名游戏，请换一个名称。".into());
+                return;
+            }
+            app.set_form_error("".into());
+            app.set_instance_saving(true);
+            let weak = ui.as_weak();
+            instances.rename_async(id, name, move |result| {
+                let Some(ui) = weak.upgrade() else { return };
+                match result {
+                    Ok(record) => ui
+                        .global::<AppState>()
+                        .invoke_instance_renamed(instance_update(record)),
+                    Err(error) => ui
+                        .global::<AppState>()
+                        .invoke_instance_error(format!("重命名失败：{error}").into()),
+                }
+            });
+            return;
         }
         "delete" => {
             if s.games
@@ -377,7 +474,7 @@ fn search(ui: &AppWindow, s: &State, query: &str) {
             id: g.id,
             name: g.name.clone().into(),
             detail: format!("{} / {}", g.version, g.loader).into(),
-            category: "游戏".into(),
+            category: "实例".into(),
         })
         .collect();
     for (id, name, detail) in [
@@ -433,8 +530,18 @@ fn search(ui: &AppWindow, s: &State, query: &str) {
     app.set_search_results(model(results));
 }
 
-pub fn connect(ui: &AppWindow) -> Timer {
-    let state = Rc::new(RefCell::new(State::default()));
+pub fn connect(
+    ui: &AppWindow,
+    settings: SettingsBridge,
+    initial: LauncherSettings,
+    instances: InstanceBridge,
+    initial_instances: Vec<InstanceRecord>,
+) -> Timer {
+    let state = Rc::new(RefCell::new({
+        let mut state = State::default();
+        state.replace_instances(initial_instances);
+        state
+    }));
     let p = Preferences::load();
     let app = ui.global::<AppState>();
     ui.global::<Theme>().set_dark(p.dark);
@@ -442,7 +549,10 @@ pub fn connect(ui: &AppWindow) -> Timer {
         .set_darkness(if p.dark { 1.0 } else { 0.0 });
     ui.global::<Theme>().set_pixel_glass(p.pixel_glass);
     ui.invoke_sync_theme();
-    app.set_folder(p.folder.into());
+    // 游戏目录以业务设置（设置插件）为准；界面偏好里的 folder 仅作为旧字段继续写入。
+    app.set_folder(initial.game_root.display().to_string().into());
+    // 当前界面没有 Java 路径编辑入口，保存时沿用启动时读到的值，不能写回 None。
+    let java_path = initial.java_path.clone();
     app.set_memory(p.memory);
     app.set_auto_memory(p.auto_memory);
     app.set_fullscreen(p.fullscreen);
@@ -480,14 +590,13 @@ pub fn connect(ui: &AppWindow) -> Timer {
     });
     bind!(on_choose_game, |ui, s, id| {
         s.select(id);
-        toast(&ui, s, "已切换当前游戏");
+        toast(&ui, s, "已切换当前实例");
     });
     bind!(on_choose_game_at, |ui, s, index| {
         if let Some(g) = s.games.get(index as usize) {
             let id = g.id;
             s.select(id);
         }
-        let _ = &ui;
     });
     bind!(on_filter_games, |ui, s, query| {
         ui.global::<AppState>().set_game_filter(query);
@@ -500,9 +609,65 @@ pub fn connect(ui: &AppWindow) -> Timer {
     bind_view!(on_open_modal, |ui, s, kind, id| {
         open_modal(&ui, s, kind.as_str(), id);
     });
-    bind!(on_confirm_modal, |ui, s| {
-        confirm(&ui, s);
-    });
+    {
+        let weak = ui.as_weak();
+        let data = state.clone();
+        let instances = instances.clone();
+        app.on_confirm_modal(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let mut s = data.borrow_mut();
+            confirm(&ui, &mut s, &instances);
+            refresh(&ui, &s);
+        });
+    }
+    {
+        let weak = ui.as_weak();
+        let data = state.clone();
+        app.on_instance_created(move |update| {
+            let Some(ui) = weak.upgrade() else { return };
+            let app = ui.global::<AppState>();
+            app.set_instance_saving(false);
+            let mut s = data.borrow_mut();
+            s.apply_instance(instance_record(update));
+            s.pending = None;
+            app.set_game_filter("".into());
+            app.set_page(1);
+            app.set_game_tab(0);
+            refresh(&ui, &s);
+            toast(&ui, &mut s, "实例配置已保存");
+            drop(s);
+            app.set_modal("".into());
+            ui.invoke_focus_main();
+        });
+    }
+    {
+        let weak = ui.as_weak();
+        let data = state.clone();
+        app.on_instance_renamed(move |update| {
+            let Some(ui) = weak.upgrade() else { return };
+            let app = ui.global::<AppState>();
+            app.set_instance_saving(false);
+            let mut s = data.borrow_mut();
+            s.apply_instance(instance_record(update));
+            s.pending = None;
+            refresh(&ui, &s);
+            toast(&ui, &mut s, "实例已重命名");
+            drop(s);
+            app.set_modal("".into());
+            ui.invoke_focus_main();
+        });
+    }
+    {
+        let weak = ui.as_weak();
+        app.on_instance_error(move |message| {
+            if let Some(ui) = weak.upgrade() {
+                let app = ui.global::<AppState>();
+                app.set_instance_saving(false);
+                app.set_form_error(message);
+            }
+        });
+    }
+
     bind_view!(on_close_modal, |ui, s| {
         close_modal(&ui, s);
     });
@@ -580,30 +745,57 @@ pub fn connect(ui: &AppWindow) -> Timer {
         ui.global::<Theme>().set_pixel_glass(enabled);
         toast(&ui, s, "主题已切换；在设置中保存可保留下次启动偏好");
     });
-    bind_view!(on_save_settings, |ui, s| {
-        let app = ui.global::<AppState>();
-        let p = Preferences {
-            dark: ui.global::<Theme>().get_dark(),
-            pixel_glass: ui.global::<Theme>().get_pixel_glass(),
-            wallpaper_index: app.get_wallpaper_index(),
-            wallpaper_enabled: app.get_wallpaper_enabled(),
-            wallpaper_paused: app.get_wallpaper_paused(),
-            folder: app.get_folder().trim().into(),
-            memory: app.get_memory(),
-            auto_memory: app.get_auto_memory(),
-            fullscreen: app.get_fullscreen(),
-            proxy: app.get_proxy_mode(),
-            source: app.get_source_mode(),
-        };
-        if p.folder.is_empty() {
-            toast(&ui, s, "请填写游戏存放目录");
-        } else {
-            match p.save() {
-                Ok(()) => toast(&ui, s, "界面偏好已保存到本机"),
-                Err(e) => toast(&ui, s, format!("保存失败：{e}")),
+    // 保存设置：界面偏好写本机；游戏设置经桥发往设置插件，两条结果合并为一条提示。
+    {
+        let weak = ui.as_weak();
+        let data = state.clone();
+        let bridge = settings.clone();
+        app.on_save_settings(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let s = &mut *data.borrow_mut();
+            let app = ui.global::<AppState>();
+            let p = Preferences {
+                dark: ui.global::<Theme>().get_dark(),
+                pixel_glass: ui.global::<Theme>().get_pixel_glass(),
+                wallpaper_index: app.get_wallpaper_index(),
+                wallpaper_enabled: app.get_wallpaper_enabled(),
+                wallpaper_paused: app.get_wallpaper_paused(),
+                folder: app.get_folder().trim().into(),
+                memory: app.get_memory(),
+                auto_memory: app.get_auto_memory(),
+                fullscreen: app.get_fullscreen(),
+                proxy: app.get_proxy_mode(),
+                source: app.get_source_mode(),
+            };
+            if p.folder.is_empty() {
+                toast(&ui, s, "请填写游戏存放目录");
+                return;
             }
-        }
-    });
+            let prefs_note = match p.save() {
+                Ok(()) => "界面偏好已保存到本机".to_string(),
+                Err(e) => format!("界面偏好保存失败：{e}"),
+            };
+            // 绑定点击时的快照；结果经事件循环回到界面线程后合并展示。
+            let weak = ui.as_weak();
+            let java_path = java_path.clone();
+            bridge.save_async(
+                LauncherSettings {
+                    game_root: p.folder.into(),
+                    java_path,
+                },
+                move |result| {
+                    let settings_note = match result {
+                        Ok(()) => "游戏设置已保存".to_string(),
+                        Err(e) => format!("游戏设置保存失败：{e}"),
+                    };
+                    crate::settings_bridge::toast_detached(
+                        &weak,
+                        format!("{prefs_note}；{settings_note}"),
+                    );
+                },
+            );
+        });
+    }
     {
         let weak = ui.as_weak();
         let data = state.clone();
@@ -648,7 +840,7 @@ pub fn connect(ui: &AppWindow) -> Timer {
     bind_view!(on_diagnose, |ui, s, kind| {
         let app = ui.global::<AppState>();
         if kind == 2 {
-            app.set_diagnostic_text(format!("[前端预览] LXMCL 0.1.0\n[界面] {} 个游戏条目，{} 个本地预览账号\n[任务] {} 项模拟下载\n\n这里只显示前端状态摘要。真实游戏日志、JVM 参数和错误分析尚未接入。",s.games.len(),s.accounts.len(),s.downloads.len()).into());
+            app.set_diagnostic_text(format!("[前端预览] LXMCL 0.1.0\n[界面] {} 条实例记录，{} 个本地预览账号\n[任务] {} 项模拟下载\n\n这里只显示前端状态摘要。真实游戏日志、JVM 参数和错误分析尚未接入。",s.games.len(),s.accounts.len(),s.downloads.len()).into());
         } else {
             s.diagnostic = Some((kind, 0));
             app.set_diagnosing(true);

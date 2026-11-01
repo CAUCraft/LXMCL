@@ -6,12 +6,7 @@ use lxmcl::{
     preview_services::{PreviewPreparation, PreviewScenario},
 };
 use slint::{ComponentHandle, ModelRc, Timer, VecModel};
-use std::{
-    cell::RefCell,
-    hash::{DefaultHasher, Hash, Hasher},
-    rc::Rc,
-    time::Duration,
-};
+use std::{cell::RefCell, rc::Rc, time::Duration};
 
 #[derive(Default)]
 struct Journey {
@@ -28,34 +23,21 @@ fn model<T: Clone + 'static>(values: Vec<T>) -> ModelRc<T> {
 
 fn context(ui: &AppWindow, state: &State) -> Result<LaunchContext, String> {
     let guide = ui.global::<Guidance>();
-    let app = ui.global::<AppState>();
     let game = state.game().ok_or("请先在“我的游戏”创建或选择一个游戏。")?;
     let (_, account) = state
         .accounts
         .iter()
         .find(|(id, _)| *id == state.account)
         .ok_or("请先选择一个账号。")?;
-    // Temporary fingerprint of effective demo configuration. A real service
-    // supplies a monotonic revision and revalidates immediately before commit.
-    let mut revision = DefaultHasher::new();
-    (
-        app.get_memory(),
-        app.get_auto_memory(),
-        app.get_fullscreen(),
-    )
-        .hash(&mut revision);
-    for item in &game.content {
-        (item.id, item.enabled).hash(&mut revision);
-    }
     Ok(LaunchContext {
         instance_id: game.id,
         instance_name: game.name.clone(),
-        instance_revision: revision.finish(),
+        instance_revision: game.revision,
         account_id: state.account,
         account_name: account.clone(),
         version: game.version.clone(),
         loader: game.loader.clone(),
-        game_directory: guide.get_game_directory().trim().into(),
+        game_directory: game.game_directory.clone(),
         java_directory: guide.get_java_directory().trim().into(),
         target: if guide.get_club() {
             LaunchTarget::ClubServer {
@@ -267,13 +249,17 @@ fn search_help(ui: &AppWindow, query: &str) {
 pub fn connect(ui: &AppWindow, state: Rc<RefCell<State>>) {
     let data = Rc::new(RefCell::new(Journey::default()));
     let guide = ui.global::<Guidance>();
-    guide.set_game_directory(ui.global::<AppState>().get_folder());
+    let initial_directory = state
+        .borrow()
+        .game()
+        .map(|game| game.game_directory.display().to_string())
+        .filter(|directory| !directory.is_empty())
+        .unwrap_or_else(|| ui.global::<AppState>().get_folder().to_string());
+    guide.set_game_directory(initial_directory.clone().into());
     guide.set_java_directory(
         format!(
             "{}\\runtimes",
-            ui.global::<AppState>()
-                .get_folder()
-                .trim_end_matches(['\\', '/'])
+            initial_directory.trim_end_matches(['\\', '/'])
         )
         .into(),
     );

@@ -39,7 +39,7 @@ export component AppWindow inherits Window {
     changed nav-glass => { root.sync-nav(); }
     public function sync-nav() { AppState.move-nav(root.nav-position / 1px); AppState.refresh-nav(); }
     function step-modal-focus(back: bool) {
-        let count = AppState.modal == "create" ? 5 : AppState.modal == "import" || AppState.modal == "account" || AppState.modal == "delete" ? 3 : 2;
+        let count = AppState.modal == "create" ? 5 : AppState.modal == "import" || AppState.modal == "account" || AppState.modal == "delete" || AppState.modal == "rename" ? 3 : 2;
         root.modal-focus-index = mod(root.modal-focus-index + (back ? count - 1 : 1), count);
         if(AppState.modal == "create") {
             if(root.modal-focus-index == 0) { form-input.focus(); }
@@ -63,7 +63,7 @@ export component AppWindow inherits Window {
     public function focus-search-input() { if(AppState.search-open) { search-input.focus(); } }
     public function focus-modal() {
         root.modal-focus-index = 0;
-        if(AppState.modal == "create" || AppState.modal == "import" || AppState.modal == "account" || AppState.modal == "delete") { form-input.focus(); }
+        if(AppState.modal == "create" || AppState.modal == "import" || AppState.modal == "account" || AppState.modal == "delete" || AppState.modal == "rename") { form-input.focus(); }
         else { cancel-button.focus-button(); }
     }
     function global-key(e: KeyEvent) -> EventResult {
@@ -179,19 +179,20 @@ export component AppWindow inherits Window {
             background: #10182788; TouchArea {}
             Panel {
                 opaque: true;
-                width: 540px; height: AppState.modal == "create" ? 470px : AppState.modal == "install" ? 440px : AppState.modal == "import" || AppState.modal == "account" || AppState.modal == "delete" ? 410px : 360px;
+                width: 540px; height: AppState.modal == "create" ? 470px : AppState.modal == "install" ? 440px : AppState.modal == "import" || AppState.modal == "account" || AppState.modal == "delete" || AppState.modal == "rename" ? 410px : 360px;
                 x: (parent.width - self.width)/2; y: (parent.height - self.height)/2;
                 TouchArea {}
                 VerticalLayout {
                     padding: 26px; spacing: 16px;
-                    HorizontalLayout { Label { text: AppState.modal-title; font-size: 21px; font-weight: 600; } AppButton { text: "×"; quiet: true; preferred-width: 32px; clicked => { AppState.close-modal(); scope.focus(); } } }
+                    HorizontalLayout { Label { text: AppState.modal-title; font-size: 21px; font-weight: 600; } AppButton { text: "×"; quiet: true; preferred-width: 32px; enabled: !AppState.instance-saving; clicked => { AppState.close-modal(); scope.focus(); } } }
                     Label { text: AppState.modal-body; wrap: word-wrap; font-size: 13px; color: Theme.muted; }
                     form-input := LineEdit {
-                        visible: AppState.modal == "create" || AppState.modal == "import" || AppState.modal == "account" || AppState.modal == "delete";
+                        visible: AppState.modal == "create" || AppState.modal == "import" || AppState.modal == "account" || AppState.modal == "delete" || AppState.modal == "rename";
                         height: self.visible ? 32px : 0px;
+                        enabled: !AppState.instance-saving;
                         text <=> AppState.form-name;
-                        placeholder-text: AppState.modal == "delete" ? "输入完整游戏名称，确认删除对象" : AppState.modal == "create" ? "游戏名称" : AppState.modal == "account" ? "角色名称" : "资源名称（演示条目）";
-                        accepted(_) => { if(AppState.modal != "delete") { AppState.confirm-modal(); } }
+                        placeholder-text: AppState.modal == "delete" ? "输入完整游戏名称，确认删除对象" : AppState.modal == "create" ? "游戏名称" : AppState.modal == "rename" ? "新的实例名称" : AppState.modal == "account" ? "角色名称" : "资源名称（演示条目）";
+                        accepted(_) => { if(AppState.modal != "delete" && !AppState.instance-saving) { AppState.confirm-modal(); } }
                     }
                     Rectangle {
                         visible: AppState.modal == "create";
@@ -208,10 +209,10 @@ export component AppWindow inherits Window {
                     Rectangle { vertical-stretch: 1; } Divider {}
                     HorizontalLayout {
                         Rectangle { horizontal-stretch: 1; }
-                        cancel-button := AppButton { text: "取消"; clicked => { AppState.close-modal(); scope.focus(); } }
+                        cancel-button := AppButton { text: "取消"; enabled: !AppState.instance-saving; clicked => { AppState.close-modal(); scope.focus(); } }
                         confirm-button := AppButton {
-                            text: AppState.modal == "create" ? "创建游戏" : AppState.modal == "delete" ? "删除游戏" : AppState.modal == "install" ? "确认安装" : AppState.modal == "join" ? "模拟下载并进入" : AppState.modal == "import" ? "添加导入条目" : AppState.modal == "account" ? "添加本地账号" : "知道了";
-                            primary: AppState.modal != "delete"; danger: AppState.modal == "delete"; clicked => { AppState.confirm-modal(); }
+                            text: AppState.modal == "create" ? "创建游戏" : AppState.modal == "rename" ? "保存名称" : AppState.modal == "delete" ? "删除游戏" : AppState.modal == "install" ? "确认安装" : AppState.modal == "join" ? "模拟下载并进入" : AppState.modal == "import" ? "添加导入条目" : AppState.modal == "account" ? "添加本地账号" : "知道了";
+                            primary: AppState.modal != "delete"; danger: AppState.modal == "delete"; enabled: !AppState.instance-saving; clicked => { AppState.confirm-modal(); }
                         }
                     }
                 }

@@ -8,11 +8,12 @@
 
 Slint 只负责展示与用户输入 → Rust 控制器处理导航 / 草稿 / 展示状态 → Rust 应用服务端口接收命令并返回结构化结果 → 真实后端接认证、磁盘、下载、进程。桌面程序内部无需先搭 HTTP 服务或监听网络端口。
 
-当前可编译的最小契约在 `src/contracts.rs`，演示服务在 `src/preview_services.rs`，Slint 适配在 `src/journey.rs`。`PreparationPort` 提供 `check`、`apply_plan`、`launch`；当前实现仅内存操作。真实实现必须在工作线程执行，通过 Slint 事件循环回传；不能把真实阻塞下载塞进现在的 UI 回调。
+当前可编译的最小契约在 `src/contracts.rs`，演示服务在 `src/preview_services.rs`，Slint 适配在 `src/journey.rs`。设置与实例记录契约在 `crates/launcher-api`，分别由 JSON 设置 / 实例插件提供，经工作线程桥回 UI。`PreparationPort` 提供 `check`、`apply_plan`、`launch`；当前实现仅内存操作。真实实现必须在工作线程执行，通过 Slint 事件循环回传；不能把真实阻塞下载塞进现在的 UI 回调。
 
 | 已有 Rust 类型 | 责任与字段约束 |
 |---|---|
 | `LaunchContext` | 固定实例 ID、名称、配置修订、账号 ID、版本 / 加载器、游戏与 Java 目录、启动目标；无令牌 |
+| `InstanceRecord` / `InstanceRepository` | 稳定整数 ID、名称、版本、加载器、独立游戏目录、单调修订；列表 / 创建记录 / 重命名。当前由 JSON 插件持久化，不安装游戏文件 |
 | `CheckReport` | 报告 ID + 目标快照 + 来源（Preview / Live）+ 检查项 + 可选准备计划；当前五项均是必需项 |
 | `CheckItem` | 稳定 code、标题、Ready / NeedsAction / Blocked / Unknown、说明、关联教程 ID |
 | `PreparationPlan` / `PlannedChange` | 清单 ID、各项动作、来源、目标路径、可空下载字节数；None 显示待估算 |

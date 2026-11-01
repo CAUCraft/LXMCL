@@ -1,4 +1,5 @@
 export struct GameItem { id: int, name: string, version: string, loader: string, detail: string, tint: color }
+export struct InstanceUpdate { id: int, name: string, version: string, loader: string, game-directory: string, revision: int }
 export struct ModItem { id: int, name: string, detail: string, source: string, enabled: bool, updatable: bool }
 export struct ResourceItem { id: int, name: string, description: string, detail: string, source: string, tint: color, compatible: bool, installed: bool }
 export struct DownloadItem { id: int, name: string, detail: string, progress: int, state: string, paused: bool, done: bool }
@@ -47,6 +48,7 @@ export global AppState {
     in-out property <string> modal-body;
     in-out property <string> form-name;
     in-out property <string> form-error;
+    in-out property <bool> instance-saving;
     in-out property <int> form-version;
     in-out property <int> form-loader;
     in-out property <string> folder: "D:\\Games\\LXMCL";
@@ -64,6 +66,9 @@ export global AppState {
     callback navigate(int);
     callback choose-game(int);
     callback choose-game-at(int);
+    callback instance-created(InstanceUpdate);
+    callback instance-renamed(InstanceUpdate);
+    callback instance-error(string);
     callback filter-games(string);
     callback open-modal(string, int);
     callback confirm-modal();

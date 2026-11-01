@@ -8,6 +8,7 @@
 
 - 经典 / 像素玻璃两种风格，浅深主题平滑切换，像素玻璃导航融合与分离。
 - 七段循环动态壁纸、暂停与静态回退；孪枭双层皮肤预览、主页跟随鼠标侧身和转头。
+- 创建、选择、重命名实例配置记录，关闭后重新打开仍保留；只保存配置，不安装游戏文件。
 - 游戏、资源、账号、下载任务和社团联机的演示交互。
 - 四步首次游玩向导、启动准备清单、六种检查场景及失败重试。
 - 八篇离线教程、F1 上下文帮助、Ctrl+K 聚合搜索、删除游戏名称确认。
@@ -40,6 +41,8 @@ cargo run --locked
 | [按钮与新手流程](docs/ui/interaction.md) | 按钮责任、错误恢复、教程与防呆 |
 | [接口与状态约定](docs/ui/service-contracts.md) | Rust 契约、目标快照、幂等、后续服务划分 |
 | [开发交接](docs/development.md) | 代码入口、能力边界、下一步与验证方法 |
+| [启动器平台架构](docs/architecture/launcher-platform.md) | 插件框架：角色、依赖方向、生命周期、线程模型 |
+| [插件开发上手](docs/plugins/getting-started.md) | 写提供者插件、组装独立启动器的步骤 |
 | [验证记录](docs/validation.md) | 已完成检查与待复验项 |
 | [素材说明](ui/assets/README.md) | 来源、原件保护、双层皮肤与视频 |
 | [LXMCL UI Skill](.agents/skills/lxmcl-ui/SKILL.md) | 供后续开发者 / Agent 使用的项目设计技能 |

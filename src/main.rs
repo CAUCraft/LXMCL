@@ -1,31 +1,26 @@
 #![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
-use slint::ComponentHandle;
 slint::include_modules!();
+mod composition;
 mod controller;
+mod instances_bridge;
 mod journey;
 mod mascot_motion;
 #[cfg(debug_assertions)]
 mod perf_probe;
 mod pixel_motion;
+mod settings_bridge;
 mod skin_preview;
 mod state;
 mod wallpaper;
-fn main() -> Result<(), slint::PlatformError> {
-    let ui = AppWindow::new()?;
-    let _timer = controller::connect(&ui);
-    let _motion = pixel_motion::connect(&ui);
-    let _mascot = mascot_motion::connect(&ui);
-    let _wallpaper = wallpaper::connect(&ui);
-    #[cfg(debug_assertions)]
-    let _probe = perf_probe::install_if_requested(&ui);
-    ui.show()?;
-    let weak = ui.as_weak();
-    // Sync once after the first layout; later geometry changes track themselves.
-    slint::Timer::single_shot(std::time::Duration::from_millis(32), move || {
-        if let Some(ui) = weak.upgrade() {
-            ui.invoke_sync_nav();
-            ui.global::<Theme>().set_animations_ready(true);
-        }
-    });
-    ui.run()
+use std::error::Error;
+
+fn main() -> Result<(), Box<dyn Error>> {
+    let product = composition::load_product()?;
+    let host = composition::start_host(&product)?;
+    // 界面关闭（或出错）后仍要执行宿主清理，两条结果都如实上报。
+    let shell = composition::run_shell(&host);
+    let shutdown = host.shutdown();
+    shell?;
+    shutdown?;
+    Ok(())
 }

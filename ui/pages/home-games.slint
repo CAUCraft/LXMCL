@@ -33,21 +33,30 @@ export component GamesPage inherits Rectangle {
                                 accessible-role: button; accessible-label: "选择游戏 " + game.name;
                                 accessible-action-default => { AppState.choose-game(game.id); }
                             }
-                            if(AppState.games.length == 0): EmptyState { title: "没有找到游戏"; description: "试试其他关键词，或创建新游戏。"; }
+                            if(AppState.games.length == 0): EmptyState {
+                                title: AppState.game-filter == "" ? "还没有实例记录" : "没有找到游戏";
+                                description: AppState.game-filter == "" ? "创建游戏只会保存实例配置，不会安装游戏文件。" : "试试其他关键词，或创建新游戏。";
+                            }
                             Rectangle { vertical-stretch: 1; }
                         }
                     }
                 }
             }
             Panel {
-                if(AppState.current-game.id < 0): EmptyState { title: "创建一个游戏"; description: "每个游戏分别管理版本、模组和存档。"; }
+                if(AppState.current-game.id < 0): EmptyState { title: "创建一个游戏"; description: "创建后会保存实例配置并分配独立目录；不会安装游戏文件。"; }
                 if(AppState.current-game.id >= 0): VerticalLayout {
                     padding: 20px; spacing: 16px;
                     HorizontalLayout {
-                        VerticalLayout { spacing: 5px; Label { text: AppState.current-game.name; font-size: 20px; font-weight: 600; } Muted { text: AppState.current-game.version + "  ·  " + AppState.current-game.loader; } }
-                        AppButton { text: "启动"; primary: true; enabled: !AppState.launching; clicked => { AppState.launch-game(); } }
-                        AppButton { text: "删除"; danger: true; clicked => { AppState.open-modal("delete", AppState.current-game.id); } }
+                        VerticalLayout {
+                            spacing: 5px;
+                            Label { text: AppState.current-game.name; font-size: 20px; font-weight: 600; }
+                            Muted { text: AppState.current-game.version + "  ·  " + AppState.current-game.loader; }
+                            Muted { text: AppState.current-game.detail; }
+                        }
+                        AppButton { text: "模拟启动"; primary: true; enabled: !AppState.launching; clicked => { AppState.launch-game(); } }
+                        AppButton { text: "重命名"; enabled: !AppState.instance-saving; clicked => { AppState.open-modal("rename", AppState.current-game.id); } }
                     }
+                    Muted { text: "实例配置已保存；游戏文件、Java、账号、下载和启动仍为演示。"; wrap: word-wrap; color: Theme.amber; }
                     HorizontalLayout {
                         spacing: 6px;
                         for name[i] in ["模组", "资源包", "光影", "世界", "整合包", "游戏设置"]:

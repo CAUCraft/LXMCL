@@ -1,3 +1,9 @@
+[workspace]
+resolver = "2"
+members = ["crates/launcher-runtime", "crates/launcher-api", "crates/launcher-settings", "crates/launcher-instances"]
+# 示例产品与第三方插件保持独立工作区，模拟外部使用者。
+exclude = ["examples/custom-settings", "examples/minimal-launcher"]
+
 [package]
 name = "lxmcl"
 version = "0.1.0"
@@ -7,6 +13,10 @@ description = "LXMCL Slint desktop frontend"
 build = "build.rs"
 
 [dependencies]
+launcher-runtime = { path = "crates/launcher-runtime" }
+launcher-api = { path = "crates/launcher-api" }
+launcher-settings = { path = "crates/launcher-settings" }
+launcher-instances = { path = "crates/launcher-instances" }
 slint = { version = "=1.18.1", default-features = false, features = ["std", "backend-winit", "renderer-femtovg", "renderer-software", "accessibility", "compat-1-2"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
