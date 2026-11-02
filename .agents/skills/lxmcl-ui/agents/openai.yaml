@@ -1,4 +1,4 @@
 interface:
-  display_name: "LXMCL UI 接力开发"
-  short_description: "维护 Rust 与 Slint 启动器的像素玻璃、孪枭动效及新手交互约定"
-  default_prompt: "使用 $lxmcl-ui 接续当前界面开发，保留设计约束并更新相关规范和验证记录。"
+  display_name: "LXMCL UI · 日光 04"
+  short_description: "实施 Rust 与 Slint 原生界面的统一控件、导航、动效和插件扩展"
+  default_prompt: "使用 $lxmcl-ui 按日光 04 规范实施当前界面改动，复用共享控件并核对相关交互。"

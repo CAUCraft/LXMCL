@@ -1,95 +1,92 @@
-# 开发交接
+# 开发指南
 
-基线日期：2026-10-27。先阅读 [UI 索引](ui/README.md) 和 [验证记录](validation.md)，再按要改的功能定位代码。
+LXMCL 是 Rust + Slint 原生桌面程序。业务与插件设计见[架构设计](architecture.md)，当前 SDK 用法见[插件开发](plugins.md)。全部 UI 规范与参考原型位于 [UI Skill](../.agents/skills/lxmcl-ui/SKILL.md)。
+
+## 环境与运行
+
+主要开发环境为 Windows x64 / MSVC，需要 Visual Studio C++ Build Tools 和 Windows SDK。其他平台的窗口、路径与媒体行为仍需单独验证。
+
+[rust-toolchain.toml](../rust-toolchain.toml) 固定 Rust 1.92.0，包含 `rustfmt`、`clippy`、`rust-src` 与 `rust-analyzer`。VS Code 安装 rust-analyzer 扩展并打开仓库根目录，使用项目工具链配套的分析器；无需设置个人机器上的绝对路径。依赖由 Cargo.lock 锁定，Slint 当前为 1.18.1。
+
+```powershell
+git lfs install
+git lfs pull
+cargo run --locked
+```
+
+静态资源可直接运行；动态壁纸另需 FFmpeg。视频来源与生成方式见[素材说明](../ui/assets/README.md)。自维护应用逻辑和新增工具使用 Rust；设计原型不属于应用运行依赖。
 
 ## 代码地图
 
-| 文件 | 责任 |
+| 位置 | 当前职责 |
 |---|---|
-| `src/main.rs` / `build.rs` | 窗口、控制器与动效生命周期；Slint 编译和 Windows 图标 |
-| `src/controller.rs` / `src/state.rs` | 旧演示数据、页面回调、模型增量同步、偏好保存 |
-| `src/contracts.rs` / `src/preview_services.rs` | 不依赖 Slint 的准备流程契约与内存演示服务 |
-| `src/journey.rs` / `src/help.rs` | 向导 / 检查 / 帮助适配，以及离线教程和别名检索 |
-| `ui/app.slint` | 窗口、导航、快捷键、搜索与弹窗 |
-| `ui/models.slint` / `ui/guidance-models.slint` | Slint 展示模型与回调 |
-| `ui/components.slint` / `ui/theme.slint` | 共享控件与主题 token |
-| `ui/pages/home.slint` / `home-games.slint` | 首页、我的游戏、社团联机 |
-| `ui/pages/library.slint` / `settings.slint` | 资源、下载、账号、设置、诊断 |
-| `ui/pages/guidance.slint` | 首次游玩向导、准备检查、帮助阅读 |
-| `src/pixel_motion.rs` / `ui/pixel-glass.slint` | 像素玻璃材质及导航融合 |
-| `src/skin_preview.rs` / `src/mascot_motion.rs` | 双层皮肤渲染、鼠标跟随 |
-| `src/wallpaper.rs` / `ui/wallpaper-picker.slint` | 视频管线、暂停、封面和选择器 |
-| `src/perf_probe.rs` | debug 构建内的有限性能测量 |
+| [launcher-runtime](../crates/launcher-runtime/src/lib.rs) | 工厂、依赖拓扑、服务与贡献注册、作用域清理、有界 worker |
+| [launcher-api](../crates/launcher-api/src/lib.rs) | 设置、实例、Java、Shell 契约，以及语义 UI 贡献 |
+| [launcher-settings](../crates/launcher-settings/src/lib.rs)、[launcher-instances](../crates/launcher-instances/src/lib.rs)、[launcher-java](../crates/launcher-java/src/lib.rs) | JSON 设置、JSON 实例记录、本机 Java 提供者 |
+| [main.rs](../src/main.rs)、[composition.rs](../src/composition.rs)、[product.toml](../product.toml) | 产品装配、默认 Shell、窗口与退出生命周期 |
+| [shell_plugins.rs](../src/shell_plugins.rs)、[shell_extensions.rs](../src/shell_extensions.rs) | 工具插件及贡献到 Slint 的适配 |
+| [application](../src/application/mod.rs) | 应用插件、实例重命名用例、后台写入与退出 Drain，不依赖 Slint |
+| [presentation/rename.rs](../src/presentation/rename.rs) | 重命名表单会话、请求关联、冲突恢复与展示投影 |
+| [settings_bridge.rs](../src/settings_bridge.rs)、[instances_bridge.rs](../src/instances_bridge.rs)、[java_bridge.rs](../src/java_bridge.rs) | 尚未迁移的设置、实例加载 / 创建与 Java 后台 I/O |
+| [controller.rs](../src/controller.rs)、[state.rs](../src/state.rs) | 展示模型、导航、演示状态与现有业务调用 |
+| [contracts.rs](../src/contracts.rs)、[preview_services.rs](../src/preview_services.rs)、[journey.rs](../src/journey.rs) | 准备契约、演示实现和向导适配 |
+| [ui/](../ui) | Slint Shell、页面、模型与共享控件 |
+| [wallpaper.rs](../src/wallpaper.rs)、[skin_preview.rs](../src/skin_preview.rs) | 可选视频与皮肤渲染 |
+| [examples/](../examples) | 独立 Cargo 工作区：替换设置提供者、独立产品窗口 |
 
-## 插件框架（Phase 1，2026-10-28 起接手）
+实例重命名已贯通独立应用用例与 Rust 展示层：按捕获的 ID / 修订保存，失败保留草稿；关闭表单后写入继续，结果不改变当前选择或导航。其余流程沿架构设计逐项迁移，不继续把文件操作和业务规则加入大型 controller。
 
-架构、生命周期、线程模型与 Cordis 对照见 [启动器平台架构](architecture/launcher-platform.md)；第三方上手见 [插件开发上手](plugins/getting-started.md)。
+实例列表区分启动选择与浏览详情：单击选择、Enter / 双击管理、F2 重命名。详情与目录操作绑定查看的实例，返回保留搜索和滚动。默认联机页仅显示未启用状态，社团服务留给后续插件；首次向导只走通用本地流程。
 
-| 文件 | 责任 |
+## 当前能力
+
+| 真实实现 | 边界 |
 |---|---|
-| `crates/launcher-runtime/` | 插件宿主：工厂目录、类型擦除服务注册表、依赖拓扑、作用域清理 |
-| `crates/launcher-api/` | 业务契约：设置、实例记录与服务键 |
-| `crates/launcher-settings/` | JSON 设置提供者插件（`settings-json`），apply 无 I/O |
-| `crates/launcher-instances/` | JSON 实例仓库插件（`instances-json`）：列表、创建、重命名 |
-| `crates/launcher-java/` | 本机 Java 检测插件（`java-local`）：候选发现、进程探测、版本/厂商/架构解析 |
-| `src/main.rs` | LXMCL 入口：装配 → 运行 Shell → join 设置线程（关闭新请求、写完最后快照）→ 宿主清理 |
-| `src/composition.rs` | 产品装配：定位 `product.toml`、解析数据目录、注册工厂、运行 Shell |
-| `src/settings_bridge.rs` | 设置线程桥：有界邮筒、合并待保存快照、退出写完最后快照 + `invoke_from_event_loop` 回 UI |
-| `src/instances_bridge.rs` | 实例线程桥：单工作线程、容量 1、关闭时写完已接受命令并返回最后写入错误 |
-| `src/java_bridge.rs` | Java 检测线程桥：容量 1、退出取消、探测超时由提供者处理 |
-| `product.toml` | LXMCL 产品装配配置（产品 ID、启用的插件与各自 config） |
-| `examples/custom-settings/` | 第三方 TOML 设置提供者示例（`settings-toml-example`） |
-| `examples/minimal-launcher/` | 独立最小启动器示例：自带窗口与线程桥，不依赖 LXMCL 控制器 |
+| 设置与界面偏好保存 | 两份数据分别落盘，不是跨文件事务 |
+| 实例配置列表、创建、选择与重命名 | 只保存配置；不安装游戏文件；删除入口仍为演示 |
+| Java 候选检测、手动验证、选择保存 | 运行本机 Java 探测，单次超时 5 秒；不安装 Java、不修改系统环境 |
+| 打开实例目录、扩展只读目录检查 | 检查真实路径；批量检查最多 100 个实例，不判断游戏完整性 |
+| 原生窗口、皮肤、可选壁纸、帮助与搜索 | Windows 窗控合入导航顶栏，其他平台保留系统装饰；轻透表面由应用绘制 |
 
-设置数据分两份：界面偏好仍写 `%LOCALAPPDATA%\LXMCL\ui-preferences.json`；业务设置由设置插件写入 `%LOCALAPPDATA%\org.caucraft.lxmcl\launcher-settings.json`（产品 ID 决定命名空间）。保存设置时两份数据合并为一条提示展示。实例记录由 `instances-json` 写入同目录 `instances.json`；Java 选择保存在设置的 `java_path`，空值表示自动选择。
+认证、游戏下载 / 安装、Java 安装、资源管理、游戏启动、服务器、联机房间、网络诊断仍是演示。来源标记与错误恢复入口应跟随真实服务接入逐项更新。
 
-现有页面编号 0–8 为日常入口，9 为向导，10 为准备检查。教程 ID 固定为 `start`、`club`、`account`、`java`、`storage`、`resources`、`network`、`launch`；改变展示标题时不要破坏 ID 关联。当前搜索仍使用特殊整数 ID 路由，改为类型化动作是后续工作。
+## 产品配置与本机数据
 
-## 真实状态与模拟状态
+默认产品启用 `settings-json`、`instances-json`、`java-local`、`local-tools`、`launcher-application`、`slint-shell` 六个提供者。`product.toml` 只能选择已链接并注册的工厂；程序从可执行文件目录向上最多六层查找该文件。
 
-真实可用：原生 UI、皮肤渲染、主题 / 导航动画、FFmpeg 视频、关键词搜索、路径格式校验、界面偏好落盘、实例记录创建 / 列表 / 选择 / 重命名与 JSON 重启恢复，以及本机 Java 候选检测、手动路径验证和选择持久化。偏好文件默认位于 `%LOCALAPPDATA%\LXMCL\ui-preferences.json`。
+| 数据 | Windows 默认位置 |
+|---|---|
+| 业务设置 | `%LOCALAPPDATA%\org.caucraft.lxmcl\launcher-settings.json` |
+| 实例记录 | `%LOCALAPPDATA%\org.caucraft.lxmcl\instances.json` |
+| Shell 外观偏好 | `%LOCALAPPDATA%\LXMCL\ui-preferences.json` |
+| 新用户的游戏根目录 | 产品数据目录下的 `games`，已保存值保持不变 |
 
-仅演示：账号、游戏文件安装、资源目录、下载任务、Java 下载 / 安装、启动、服务器和诊断。实例记录只保存配置，不创建或修改游戏文件；Java 检测不修改系统 `JAVA_HOME` / `PATH`。向导保留本次运行中的草稿，没有跨重启恢复；尚未自动识别首次启动。文件存在、权限和空间都没有由路径格式校验验证。
+产品 ID 决定业务数据目录，改 ID 不会自动迁移旧数据。路径策略由产品负责；不要把开发者的绝对路径写入共享配置。
 
-准备服务测试已约束目标快照、配置修订、幂等请求和旧结果失效。当前 `PreparationPort` 是同步的内存端口；真实 I/O 需要工作线程 / 调度桥，再通过 Slint 事件循环更新状态。不要直接把同步下载放进 UI 回调。实例记录已有持久化的单调修订；启动准备仍只比较演示配置，持久幂等、任务取消与事件流尚未实现。
+## 按改动验证
 
-## 建议接续顺序
-
-1. 先补 [待复验项](validation.md)，根据实际窗口反馈收敛密度、换行、焦点与 DPI 适配。
-2. 设置持久化与实例仓库 → Java 检测 / 安装计划 → 独立游戏目录和创建流程。
-3. 账号状态机与社团认证协议 → 服务器清单 → 真实启动会话。
-4. 持久下载及依赖计划 → 资源操作 → 备份 / 删除恢复 → 日志和分服务诊断。
-
-真实服务仍需确认社团认证协议、服务器版本清单、下载 / 皮肤站 API、更新清单与签名机制。它们不能从演示账号或示例地址推断。完整未来边界见 [接口设计](ui/service-contracts.md)。
-
-## 构建与验证
-
-工具链与首次运行见 [README](../README.md)。Windows 链接前关闭当前运行的 `lxmcl.exe`，避免文件锁。首次或修改 Slint 后生成 / 编译可能较慢；上轮全量构建约 10 分钟，这不是界面运行帧率。
+纯文档只检查链接、格式及忽略规则。Rust 改动选择相关 crate 的测试；公共契约、依赖或产品装配改动再覆盖受影响消费者。常用命令：
 
 ```powershell
-cargo fmt --check
-cargo test --locked --lib
-cargo clippy --locked --all-targets -- -D warnings
-cargo test --locked
+cargo fmt --all --check
+cargo test --locked -p launcher-runtime
+cargo clippy --workspace --locked --all-targets -- -D warnings
 cargo build --locked
 ```
 
-按改动选验证范围，不必每次纯文档修改都重新构建。状态 / 契约改动验证目标固定、未知不放行、旧报告拒绝、重复提交与重试；视觉修改用实际窗口验证，不能只以编译通过代表布局正确。
-
-可选性能和媒体检查（`--ignored` 显式执行平时跳过的慢 / 环境相关测试）：
+需要完整回归时用 `cargo test --workspace --locked`。示例是独立工作区，API 变动时单独检查：
 
 ```powershell
-cargo test --locked benchmark_tracking_frames -- --ignored --nocapture
-cargo test --locked decoder_loops_pauses_and_resumes_without_an_unbounded_queue -- --ignored --nocapture
-target/debug/lxmcl.exe --ui-benchmark target/ui-benchmark.json
+cargo check --manifest-path examples/minimal-launcher/Cargo.toml --locked
 ```
 
-媒体测试需要 FFmpeg 和 LFS 视频。性能探针有限执行 27 次程序化切页后退出，不保存偏好；报告分别记录回调、开始绘制和 CPU 提交，不能解释成鼠标到屏幕的延迟。现有报告见 `docs/performance/`。
+Windows 链接前退出运行中的 lxmcl.exe。改 Slint 后核对涉及的原生窗口操作；编译成功不代表交互或流畅度通过。慢速媒体测试只在相关改动时显式运行，需 FFmpeg 与 LFS 视频。
 
-## 资产与历史工具
+开发模式提供两项有限探针，输出放在已忽略的 `target/`：
 
-当前 UI 编译输入、Logo、皮肤、封面及图标均在仓库中。七段 MP4 由 `.gitattributes` 指定 Git LFS；更新视频后检查 `git lfs status`，不要把 LFS 指针误当成可播放文件。FFmpeg 独立安装，不依赖私人下载目录。
+```powershell
+target/debug/lxmcl.exe --ui-capture target/ui-capture-day04
+target/debug/lxmcl.exe --ui-benchmark target/ui-benchmark-day04.json
+```
 
-`scripts/create-glass-assets.py` 与 `scripts/prepare-wallpapers.ps1` 为已有生成工具，后续有需要再迁移为 Rust；不新增第二套语言工具链。普通界面开发不需要运行它们。`design/archive/v0.1/` 中的 HTML、JS、Python 与 Figma 插件仅保留历史，不应重新进入产品运行路径。
-
-项目技能位于 [.agents/skills/lxmcl-ui](../.agents/skills/lxmcl-ui/SKILL.md)，从 [AGENTS.md](../AGENTS.md) 可以发现。改设计时更新对应规范；仅当形成可复用决策或约束时更新 Skill，避免复制整份文档产生两套标准。
+截图探针导出十幅原生渲染画面后退出，包含实例概览与重命名对话框；后两项使用仓库中首条实例，建议提供隔离的验收数据。探针不提交表单或保存偏好，不覆盖系统标题栏或真实键盘输入。导航测量不是鼠标到屏幕延迟或游戏 FPS。实际执行结果在交付说明 / PR 中报告；本机过程日志与导出存放 `.local/` 或 `target/`，不纳入公开文档。

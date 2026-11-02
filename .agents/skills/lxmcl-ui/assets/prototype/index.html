@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+ <meta charset="utf-8">
+ <meta name="viewport" content="width=device-width,initial-scale=1">
+ <meta name="color-scheme" content="light dark">
+ <title>LXMCL · 日光 04 / 连贯桌面界面</title>
+ <link rel="icon" href="../../../../../ui/assets/launcher-logo.png">
+ <link rel="stylesheet" href="desktop.css">
+ <link rel="stylesheet" href="controls.css">
+ <link rel="stylesheet" href="workspace.css">
+ <script src="controls.js" defer></script>
+ <script src="motion.js" defer></script>
+ <script src="desktop.js" defer></script>
+</head>
+<body>
+<div class="review" id="review-tools" hidden>
+ <div class="review-name"><strong>日光 04 · 设计评审</strong><span>示例数据，不执行真实登录、下载或启动。</span></div>
+ <div class="review-options">
+  <label>场景<select id="scenario"><option value="normal">正常</option><option value="empty">没有实例</option><option value="java">缺少 Java</option><option value="account">账号过期</option><option value="failure">准备失败</option></select></label>
+  <label>动效<select id="motion"><option value="normal">正常速度</option><option value="slow">慢速观察</option><option value="off">减少动态效果</option></select></label>
+  <button id="control-gallery">控件样本</button>
+  <button id="replay" title="重播当前页面过渡">重播</button>
+ </div>
+</div>
+<main id="app" class="app" aria-label="LXMCL 完整界面交互原型">
+ <header class="titlebar">
+  <div class="brand"><img src="../../../../../ui/assets/launcher-logo.png" alt="LXMCL 标识"><strong>LXMCL</strong><button class="preview-toggle" id="review-toggle" aria-controls="review-tools" aria-expanded="false" title="设计预览 · 评审工具">预览</button></div>
+  <nav id="main-nav" class="main-nav" aria-label="主导航"><span class="nav-indicator" aria-hidden="true"></span></nav>
+  <div class="titlebar-right"><button class="account-trigger" id="account-trigger" aria-label="账号菜单" aria-expanded="false" aria-controls="account-menu"><span class="face"></span><span>孪枭</span><span data-icon="chevron"></span></button><div class="caption-controls" role="img" aria-label="Windows 窗控位置示意"><span>−</span><span>□</span><span>×</span></div></div>
+ </header>
+ <div id="content-host" class="content-host">
+  <div class="workspace-atmosphere" aria-hidden="true"></div>
+  <section id="home" class="home" aria-label="主页">
+   <div id="launch-panel" class="launch-panel">
+    <div id="instance-menu" class="popover instance-menu" hidden aria-label="游戏实例"></div>
+    <button id="instance-trigger" class="instance-trigger" aria-expanded="false" aria-controls="instance-menu"><span data-icon="cube"></span><strong id="instance-label">1.21.1 · Fabric</strong><span data-icon="chevron"></span></button>
+    <button id="launch" class="launch"><span data-icon="play"></span><span id="launch-label">启动游戏</span></button>
+    <div class="launch-tools"><button data-action="folder" aria-label="打开游戏文件夹" title="打开游戏文件夹"><span data-icon="folder"></span></button><button data-action="instance-config" aria-label="当前实例设置" title="当前实例设置"><span data-icon="sliders"></span></button></div>
+   </div>
+  </section>
+  <section id="work" class="work" hidden aria-label="工作区"><div id="local-bar" class="local-bar"></div><div id="view" class="view"></div></section>
+  <div id="account-menu" class="popover account-menu" hidden></div>
+  <div id="context-menu" class="popover context-menu" hidden aria-label="实例操作"></div>
+  <div id="toast" class="toast" role="status" hidden></div>
+  <div id="savebar" class="savebar" hidden><span>有未保存的预览设置</span><div><button class="button" data-action="discard">撤销</button><button class="button primary" data-action="save">保存预览</button></div></div>
+ </div>
+</main>
+<footer class="review-foot"><span>交互设计稿 · 示例数据 · 不执行真实登录、下载或游戏启动</span><span><kbd>Ctrl K</kbd> 搜索 <kbd>F1</kbd> 帮助 <kbd>Esc</kbd> 返回</span></footer>
+<dialog id="modal" class="modal" aria-labelledby="modal-title"><div id="modal-content"></div></dialog>
+<dialog id="drawer" class="drawer" aria-labelledby="drawer-title"><div id="drawer-content"></div></dialog>
+<dialog id="command" class="command" aria-label="全局搜索"><div class="command-input"><span data-icon="search"></span><input id="command-query" placeholder="搜索游戏、设置、教程…" aria-label="搜索游戏、设置、教程"><kbd>Esc</kbd></div><div id="command-results"></div><div class="command-foot">↑ ↓ 选择　Enter 打开</div></dialog>
+</body>
+</html>

@@ -10,3 +10,18 @@
 **/__pycache__/
 *.pyc
 /ui-preferences.json
+
+# 本机工作记录、截图、临时导出；可复用的项目资料放进源码或 Skill。
+/.local/
+/tmp/
+/temp/
+/ui-capture*/
+/ui-benchmark*.json
+*.tmp
+*.swp
+*~
+Thumbs.db
+
+# Agent 的本机配置和隔离工作区；共享 Skill 与协作入口继续纳入版本管理。
+/.claude/settings.local.json
+/.claude/worktrees/
