@@ -5,11 +5,8 @@
 //! 不把点击无限追加到后台。
 
 use launcher_api::{InstanceError, InstanceRecord, InstanceRepository, NewInstance};
-use std::sync::{
-    Arc, Mutex, MutexGuard, PoisonError,
-    mpsc::{self, SyncSender, TrySendError},
-};
-use std::thread::JoinHandle;
+use launcher_runtime::{BoundedWorker, ShutdownPolicy, SubmitError, WorkerExit, WorkerSender};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError, mpsc};
 
 enum Command {
     Load(mpsc::Sender<Result<Vec<InstanceRecord>, InstanceError>>),
@@ -17,18 +14,12 @@ enum Command {
         draft: NewInstance,
         on_done: Box<dyn FnOnce(Result<InstanceRecord, InstanceError>) + Send>,
     },
-    Rename {
-        id: i32,
-        name: String,
-        on_done: Box<dyn FnOnce(Result<InstanceRecord, InstanceError>) + Send>,
-    },
-    Shutdown,
 }
 
 /// 可克隆进界面回调的发送端。
 #[derive(Clone)]
 pub struct InstanceBridge {
-    commands: SyncSender<Command>,
+    commands: WorkerSender<Command>,
 }
 
 /// `join` 的最后结果：线程异常，或退出前最后一次实例写入失败。
@@ -58,8 +49,7 @@ impl std::error::Error for InstanceWorkerError {
 
 /// 实例工作线程；窗口关闭后由产品显式 `join`。
 pub struct InstanceWorker {
-    handle: Option<JoinHandle<()>>,
-    commands: SyncSender<Command>,
+    worker: Option<BoundedWorker<Command>>,
     last_write_error: Arc<Mutex<Option<String>>>,
 }
 
@@ -69,30 +59,29 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 
 impl InstanceBridge {
     pub fn start(service: Arc<dyn InstanceRepository>) -> std::io::Result<(Self, InstanceWorker)> {
-        let (commands, pending) = mpsc::sync_channel(1);
         let last_write_error = Arc::new(Mutex::new(None));
         let worker_error = Arc::clone(&last_write_error);
-        let handle = std::thread::Builder::new()
-            .name("instances".into())
-            .spawn(move || run_worker(service, pending, worker_error))?;
+        let worker = BoundedWorker::spawn("instances", 1, move |command, _cancelled| {
+            run_command(&*service, command, &worker_error);
+        })?;
+        let commands = worker.sender();
         Ok((
-            Self {
-                commands: commands.clone(),
-            },
+            Self { commands },
             InstanceWorker {
-                handle: Some(handle),
-                commands,
+                worker: Some(worker),
                 last_write_error,
             },
         ))
     }
-
     /// 启动时的首次列表读取；窗口创建前由工作线程完成。
     pub fn load_blocking(&self) -> Result<Vec<InstanceRecord>, InstanceError> {
         let (reply, result) = mpsc::channel();
         self.commands
-            .send(Command::Load(reply))
-            .map_err(|_| InstanceError::Unavailable)?;
+            .try_submit(Command::Load(reply))
+            .map_err(|error| match error {
+                SubmitError::Busy(_) => InstanceError::Busy,
+                SubmitError::Closed(_) => InstanceError::Unavailable,
+            })?;
         result
             .recv()
             .map_err(|_| InstanceError::Unavailable)
@@ -108,64 +97,37 @@ impl InstanceBridge {
             draft,
             on_done: Box::new(on_done),
         };
-        match self.commands.try_send(command) {
+        match self.commands.try_submit(command) {
             Ok(()) => {}
-            Err(TrySendError::Full(command)) => reject(command, InstanceError::Busy),
-            Err(TrySendError::Disconnected(command)) => reject(command, InstanceError::Unavailable),
-        }
-    }
-
-    pub fn rename_async(
-        &self,
-        id: i32,
-        name: String,
-        on_done: impl FnOnce(Result<InstanceRecord, InstanceError>) + Send + 'static,
-    ) {
-        let command = Command::Rename {
-            id,
-            name,
-            on_done: Box::new(on_done),
-        };
-        match self.commands.try_send(command) {
-            Ok(()) => {}
-            Err(TrySendError::Full(command)) => reject(command, InstanceError::Busy),
-            Err(TrySendError::Disconnected(command)) => reject(command, InstanceError::Unavailable),
+            Err(SubmitError::Busy(command)) => reject(command, InstanceError::Busy),
+            Err(SubmitError::Closed(command)) => reject(command, InstanceError::Unavailable),
         }
     }
 }
 
 fn reject(command: Command, error: InstanceError) {
     match command {
-        Command::Create { on_done, .. } | Command::Rename { on_done, .. } => on_done(Err(error)),
-        Command::Load(_) | Command::Shutdown => {}
+        Command::Create { on_done, .. } => on_done(Err(error)),
+        Command::Load(_) => {}
     }
 }
 
-fn run_worker(
-    service: Arc<dyn InstanceRepository>,
-    pending: mpsc::Receiver<Command>,
-    last_write_error: Arc<Mutex<Option<String>>>,
+fn run_command(
+    service: &dyn InstanceRepository,
+    command: Command,
+    last_write_error: &Mutex<Option<String>>,
 ) {
-    while let Ok(command) = pending.recv() {
-        match command {
-            Command::Load(reply) => {
-                let _ = reply.send(service.list());
-            }
-            Command::Create { draft, on_done } => {
-                let result = service.create(&draft);
-                record_write(&last_write_error, &result);
-                complete(on_done, result);
-            }
-            Command::Rename { id, name, on_done } => {
-                let result = service.rename(id, &name);
-                record_write(&last_write_error, &result);
-                complete(on_done, result);
-            }
-            Command::Shutdown => break,
+    match command {
+        Command::Load(reply) => {
+            let _ = reply.send(service.list());
+        }
+        Command::Create { draft, on_done } => {
+            let result = service.create(&draft);
+            record_write(last_write_error, &result);
+            complete(on_done, result);
         }
     }
 }
-
 fn record_write(
     last_write_error: &Mutex<Option<String>>,
     result: &Result<InstanceRecord, InstanceError>,
@@ -189,17 +151,24 @@ fn complete(
 impl InstanceWorker {
     /// 写完已接受的命令后关闭工作线程。关闭后不再接受新的实例操作。
     pub fn join(&mut self) -> Result<(), InstanceWorkerError> {
-        let _ = self.commands.send(Command::Shutdown);
-        let thread_result = match self.handle.take() {
-            Some(handle) => handle.join().map_err(|_| {
-                InstanceWorkerError::Thread(std::io::Error::other("实例工作线程异常退出"))
-            }),
-            None => Ok(()),
-        };
-        thread_result?;
+        if let Some(worker) = self.worker.take()
+            && worker.shutdown(ShutdownPolicy::Drain) == WorkerExit::Panicked
+        {
+            return Err(InstanceWorkerError::Thread(std::io::Error::other(
+                "实例工作线程异常退出",
+            )));
+        }
         match lock(&self.last_write_error).take() {
             Some(message) => Err(InstanceWorkerError::FinalWrite(message)),
             None => Ok(()),
+        }
+    }
+}
+
+impl Drop for InstanceWorker {
+    fn drop(&mut self) {
+        if let Err(error) = self.join() {
+            eprintln!("{error}");
         }
     }
 }
@@ -208,6 +177,7 @@ impl InstanceWorker {
 mod tests {
     use super::*;
     use std::path::PathBuf;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     struct FailingRepo;
 
@@ -220,7 +190,12 @@ mod tests {
             Err(InstanceError::Invalid("disk full".into()))
         }
 
-        fn rename(&self, _id: i32, _name: &str) -> Result<InstanceRecord, InstanceError> {
+        fn rename(
+            &self,
+            _id: i32,
+            _expected_revision: u64,
+            _name: &str,
+        ) -> Result<InstanceRecord, InstanceError> {
             Err(InstanceError::Invalid("disk full".into()))
         }
     }
@@ -244,5 +219,83 @@ mod tests {
             Err(other) => panic!("expected final write error, got {other}"),
             Ok(()) => panic!("expected final write error, got success"),
         }
+    }
+
+    #[test]
+    fn shutdown_closes_all_bridge_clones() {
+        let (bridge, mut worker) = InstanceBridge::start(Arc::new(FailingRepo)).unwrap();
+        let cloned = bridge.clone();
+        assert!(bridge.load_blocking().unwrap().is_empty());
+        worker.join().unwrap();
+        for sender in [bridge, cloned] {
+            assert!(matches!(
+                sender.load_blocking(),
+                Err(InstanceError::Unavailable)
+            ));
+            let (reply, received) = mpsc::channel();
+            sender.create_async(
+                NewInstance {
+                    name: "closed".into(),
+                    version: "1.21.1".into(),
+                    loader: "Fabric".into(),
+                    game_root: PathBuf::from("unused"),
+                },
+                move |result| {
+                    reply.send(result).unwrap();
+                },
+            );
+            assert!(matches!(
+                received.recv().unwrap(),
+                Err(InstanceError::Unavailable)
+            ));
+        }
+    }
+
+    struct CountingRepo(Arc<AtomicUsize>);
+    impl InstanceRepository for CountingRepo {
+        fn list(&self) -> Result<Vec<InstanceRecord>, InstanceError> {
+            Ok(Vec::new())
+        }
+        fn create(&self, draft: &NewInstance) -> Result<InstanceRecord, InstanceError> {
+            self.0.fetch_add(1, Ordering::SeqCst);
+            Ok(InstanceRecord {
+                id: 1,
+                name: draft.name.clone(),
+                version: draft.version.clone(),
+                loader: draft.loader.clone(),
+                game_directory: draft.game_root.clone(),
+                revision: 1,
+            })
+        }
+        fn rename(
+            &self,
+            _id: i32,
+            _expected_revision: u64,
+            _name: &str,
+        ) -> Result<InstanceRecord, InstanceError> {
+            unreachable!()
+        }
+    }
+
+    #[test]
+    fn dropping_worker_drains_accepted_write_on_early_return() {
+        let writes = Arc::new(AtomicUsize::new(0));
+        let (bridge, worker) =
+            InstanceBridge::start(Arc::new(CountingRepo(writes.clone()))).unwrap();
+        bridge.create_async(
+            NewInstance {
+                name: "saved".into(),
+                version: "1.21.1".into(),
+                loader: "Fabric".into(),
+                game_root: PathBuf::from("D:\\Games"),
+            },
+            |_| {},
+        );
+        drop(worker);
+        assert_eq!(writes.load(Ordering::SeqCst), 1);
+        assert!(matches!(
+            bridge.load_blocking(),
+            Err(InstanceError::Unavailable)
+        ));
     }
 }

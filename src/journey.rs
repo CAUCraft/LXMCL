@@ -39,13 +39,7 @@ fn context(ui: &AppWindow, state: &State) -> Result<LaunchContext, String> {
         loader: game.loader.clone(),
         game_directory: game.game_directory.clone(),
         java_directory: guide.get_java_directory().trim().into(),
-        target: if guide.get_club() {
-            LaunchTarget::ClubServer {
-                server_id: "caucraft-preview".into(),
-            }
-        } else {
-            LaunchTarget::SinglePlayer
-        },
+        target: LaunchTarget::SinglePlayer,
     })
 }
 
@@ -75,7 +69,7 @@ fn display(ui: &AppWindow, report: &CheckReport) {
     let target = if matches!(report.context.target, LaunchTarget::SinglePlayer) {
         "本地游玩"
     } else {
-        "CAUCRAFT 示例服务器"
+        "服务器"
     };
     guide.set_target_summary(
         format!(
@@ -153,9 +147,9 @@ fn fail(ui: &AppWindow, message: impl Into<slint::SharedString>) {
     guide.set_check_message(message.into());
 }
 
-fn run_check(ui: &AppWindow, state: Rc<RefCell<State>>, data: Rc<RefCell<Journey>>, club: bool) {
+fn run_check(ui: &AppWindow, state: Rc<RefCell<State>>, data: Rc<RefCell<Journey>>, _club: bool) {
     let guide = ui.global::<Guidance>();
-    guide.set_club(club);
+    guide.set_club(false);
     guide.set_completed(false);
     guide.set_can_launch(false);
     guide.set_has_plan(false);
@@ -237,6 +231,7 @@ fn search_help(ui: &AppWindow, query: &str) {
     ui.global::<Guidance>().set_articles(model(
         help::search(query)
             .iter()
+            .filter(|&&i| help::ARTICLES[i].id != "club")
             .map(|&i| GuideArticle {
                 id: i as i32,
                 title: help::ARTICLES[i].title.into(),
@@ -274,6 +269,7 @@ pub fn connect(ui: &AppWindow, state: Rc<RefCell<State>>) {
         }};
     }
     bind!(on_open_guide, |ui, _state, _data| {
+        ui.global::<Guidance>().set_club(false);
         ui.global::<Guidance>().set_guide_started(true);
         ui.global::<AppState>().set_page(9);
         ui.global::<AppState>().set_search_open(false);
@@ -423,7 +419,7 @@ pub fn connect(ui: &AppWindow, state: Rc<RefCell<State>>) {
     bind!(on_context_help, |ui, _state, _data| {
         let id = match ui.global::<AppState>().get_page() {
             1 | 3 => "resources",
-            2 => "club",
+            2 => "network",
             4 => "network",
             5 => "account",
             6 => "storage",

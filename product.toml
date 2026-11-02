@@ -12,7 +12,7 @@ provider = "settings-json"
 file_name = "launcher-settings.json"
 
 [plugins.config.defaults]
-game_root = 'D:\Games\LXMCL'
+game_root = 'games'
 
 [[plugins]]
 id = "instances"
@@ -24,3 +24,15 @@ file_name = "instances.json"
 [[plugins]]
 id = "java"
 provider = "java-local"
+
+[[plugins]]
+id = "tools"
+provider = "local-tools"
+
+[[plugins]]
+id = "shell"
+provider = "slint-shell"
+
+[[plugins]]
+id = "application"
+provider = "launcher-application"

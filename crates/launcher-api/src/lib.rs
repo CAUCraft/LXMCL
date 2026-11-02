@@ -6,7 +6,8 @@
 //! 重新导出插件开发所需的宿主类型，第三方插件只依赖本 crate 即可。
 
 pub use launcher_runtime::{
-    Context, Plugin, PluginDescriptor, RuntimeError, ServiceKey, ServiceRequirement,
+    Context, Contribution, ContributionKey, Plugin, PluginDescriptor, RuntimeError, ServiceKey,
+    ServiceRequirement,
 };
 
 use std::fmt;
@@ -128,6 +129,11 @@ pub enum InstanceError {
     NotFound {
         id: i32,
     },
+    RevisionConflict {
+        id: i32,
+        expected: u64,
+        actual: u64,
+    },
     /// 工作线程忙，未接受本次请求。
     Busy,
     /// 工作线程已退出。
@@ -150,6 +156,14 @@ impl fmt::Display for InstanceError {
             Self::Invalid(reason) => write!(f, "实例配置无效：{reason}"),
             Self::DuplicateName { name } => write!(f, "已有同名实例：{name}"),
             Self::NotFound { id } => write!(f, "实例 {id} 不存在"),
+            Self::RevisionConflict {
+                id,
+                expected,
+                actual,
+            } => write!(
+                f,
+                "实例 {id} 已更新（预期修订 {expected}，当前 {actual}），请刷新后重试"
+            ),
             Self::Busy => write!(f, "已有实例操作正在执行"),
             Self::Unavailable => write!(f, "实例仓库不可用"),
         }
@@ -169,7 +183,62 @@ impl std::error::Error for InstanceError {
 pub trait InstanceRepository: Send + Sync {
     fn list(&self) -> Result<Vec<InstanceRecord>, InstanceError>;
     fn create(&self, draft: &NewInstance) -> Result<InstanceRecord, InstanceError>;
-    fn rename(&self, id: i32, name: &str) -> Result<InstanceRecord, InstanceError>;
+    fn rename(
+        &self,
+        id: i32,
+        expected_revision: u64,
+        name: &str,
+    ) -> Result<InstanceRecord, InstanceError>;
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RenameInstance {
+    pub instance_id: i32,
+    pub expected_revision: u64,
+    pub name: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct RequestId(pub u64);
+
+#[derive(Debug)]
+pub struct RenameCompleted {
+    pub request_id: RequestId,
+    pub instance_id: i32,
+    pub result: Result<InstanceRecord, InstanceError>,
+    /// 修订冲突后的最新记录；刷新失败时为 None，原始冲突错误仍保留。
+    pub current: Option<InstanceRecord>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ApplicationSubmitError {
+    Busy,
+    Closed,
+}
+
+impl fmt::Display for ApplicationSubmitError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Busy => "已有实例操作正在执行，请稍后重试",
+            Self::Closed => "应用服务已关闭",
+        })
+    }
+}
+impl std::error::Error for ApplicationSubmitError {}
+
+pub trait ApplicationService: Send + Sync {
+    /// 拒绝不调用回调；接受后仅在后台线程通知完成。
+    fn rename(
+        &self,
+        command: RenameInstance,
+        on_done: Box<dyn FnOnce(RenameCompleted) + Send>,
+    ) -> Result<RequestId, ApplicationSubmitError>;
+}
+
+pub struct Application;
+impl ServiceKey for Application {
+    type Service = dyn ApplicationService;
+    const NAME: &'static str = "launcher.application";
 }
 
 /// 实例仓库的服务键。
@@ -259,4 +328,22 @@ pub struct JavaRuntime;
 impl ServiceKey for JavaRuntime {
     type Service = dyn JavaRuntimeService;
     const NAME: &'static str = "launcher.java";
+}
+
+mod ui;
+pub use ui::{
+    MainArea, SettingsSection, UiAction, UiCommand, UiContribution, UiContributions, UiPlacement,
+    UiRoute, VersionSection,
+};
+
+/// A replaceable native shell. The product calls `run` on its main thread;
+/// UI toolkits such as Slint must never be launched by the background worker.
+/// A shell consumes the host's services and contributions without owning its lifetime.
+pub trait ApplicationShell: Send + Sync {
+    fn run(&self, host: &launcher_runtime::PluginHost) -> Result<(), Box<dyn std::error::Error>>;
+}
+pub struct Shell;
+impl ServiceKey for Shell {
+    type Service = dyn ApplicationShell;
+    const NAME: &'static str = "launcher.shell";
 }

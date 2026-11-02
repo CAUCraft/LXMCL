@@ -1,5 +1,6 @@
-export struct GameItem { id: int, name: string, version: string, loader: string, detail: string, tint: color }
-export struct InstanceUpdate { id: int, name: string, version: string, loader: string, game-directory: string, revision: int }
+export struct ExtensionItem { id: string, title: string, detail: string, status: string, placement: string, action-label: string }
+export struct GameItem { id: int, name: string, version: string, loader: string, selector-label: string, detail: string, tint: color }
+export struct InstanceUpdate { id: int, name: string, version: string, loader: string, game-directory: string, revision: string }
 export struct JavaCandidateItem { path: string, title: string, detail: string }
 export struct ModItem { id: int, name: string, detail: string, source: string, enabled: bool, updatable: bool }
 export struct ResourceItem { id: int, name: string, description: string, detail: string, source: string, tint: color, compatible: bool, installed: bool }
@@ -9,11 +10,21 @@ export struct SearchItem { id: int, name: string, detail: string, category: stri
 
 export struct WallpaperItem { id: int, name: string, poster: image }
 export global AppState {
+    in-out property <bool> instance-detail-open: false;
+    in-out property <int> instance-section: 0;
+    in-out property <int> settings-category: 0;
+    in-out property <int> server-section: 0;
+    in-out property <length> library-scroll-y: 0px;
+    in-out property <[ExtensionItem]> extensions;
+    callback extension-action(string);
+    callback extension-open-instance-settings(int, string);
+    in-out property <bool> extension-busy: false;
+    in-out property <string> extension-status;
     in-out property <[WallpaperItem]> wallpapers;
     in-out property <image> wallpaper-frame;
     in-out property <bool> wallpaper-ready;
     in-out property <int> wallpaper-index: 0;
-    in-out property <bool> wallpaper-enabled: true;
+    in-out property <bool> wallpaper-enabled: false;
     in-out property <bool> wallpaper-paused: false;
     in-out property <string> wallpaper-status;
     callback select-wallpaper(int);
@@ -26,7 +37,11 @@ export global AppState {
     callback track-mascot(float, float, bool);
     in-out property <int> page: 0;
     in-out property <[GameItem]> games;
+    // Complete instance list for selectors, independent of the versions-page filter.
+    in-out property <[GameItem]> installed-instances;
     in-out property <GameItem> current-game;
+    in-out property <GameItem> inspected-game;
+    in-out property <string> inspected-directory;
     in-out property <[string]> game-names;
     in-out property <int> current-game-index;
     in-out property <string> game-filter;
@@ -44,6 +59,7 @@ export global AppState {
     in-out property <bool> launching;
     in-out property <string> launch-status;
     in-out property <string> toast;
+    in-out property <int> toast-generation: 0;
     in-out property <string> modal;
     in-out property <string> modal-title;
     in-out property <string> modal-body;
@@ -72,9 +88,15 @@ export global AppState {
     in-out property <bool> diagnosing;
     callback navigate(int);
     callback choose-game(int);
+    callback open-instance(int);
+    callback back-to-instances();
+    callback open-instance-folder(int);
+    callback launch-instance(int);
+    callback open-game-folder();
+    callback open-game-settings();
     callback choose-game-at(int);
     callback instance-created(InstanceUpdate);
-    callback instance-renamed(InstanceUpdate);
+    callback rename-completed();
     callback instance-error(string);
     callback filter-games(string);
     callback open-modal(string, int);

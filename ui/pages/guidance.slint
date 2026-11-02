@@ -2,17 +2,17 @@ import { ScrollView, LineEdit, ComboBox } from "std-widgets.slint";
 import { Theme } from "../theme.slint";
 import { AppState } from "../models.slint";
 import { Guidance } from "../guidance-models.slint";
-import { Label, Muted, Heading, Panel, AppButton, Badge, Divider, EmptyState } from "../components.slint";
+import { PageSurface, Label, Muted, Heading, Panel, AppButton, Badge, Divider, EmptyState } from "../components.slint";
 
-export component OnboardingPage inherits Rectangle {
+export component OnboardingPage inherits PageSurface {
     background: transparent;
     VerticalLayout {
         padding: 24px; spacing: 16px;
         HorizontalLayout { Heading { text: "第一次玩，一步步准备"; font-size: 23px; } AppButton { text: "稍后继续"; quiet: true; clicked => { AppState.navigate(0); } } }
-        Muted { text: "可以随时返回修改；本次会话保留填写内容。不会下载或改动真实文件。"; wrap: word-wrap; }
+        Muted { text: "可以随时返回修改；本次会话保留填写内容。创建实例只保存配置；检查与启动仍为演示。"; wrap: word-wrap; }
         HorizontalLayout {
             spacing: 10px;
-            for title[i] in ["1  选玩法", "2  确认身份", "3  存储与环境", "4  检查启动"]:
+            for title[i] in ["1  选择实例", "2  确认身份", "3  存储与环境", "4  检查启动"]:
                 Rectangle {
                     height: 38px; background: Guidance.step == i ? Theme.accent-soft : Theme.panel;
                     border-width: Guidance.step == i ? 1px : 0px; border-color: Theme.accent;
@@ -27,42 +27,23 @@ export component OnboardingPage inherits Rectangle {
                     padding: 20px; spacing: 12px;
                     if(Guidance.step == 0): VerticalLayout {
                         spacing: 12px; vertical-stretch: 0;
-                        Label { text: "你想怎么玩？"; font-size: 21px; font-weight: 600; }
-                        HorizontalLayout {
-                            spacing: 16px;
-                            Panel {
-                                width: (root.width - 108px) / 2; height: 142px;
-                                VerticalLayout {
-                                    padding: 18px; spacing: 10px;
-                                    Label { text: "和社团伙伴一起玩"; font-size: 17px; font-weight: 600; }
-                                    Muted { text: "按服务器要求匹配游戏、加载器与账号。"; wrap: word-wrap; }
-                                    AppButton { text: Guidance.club ? "已选：进入社团服" : "选择社团服"; primary: Guidance.club; clicked => { Guidance.club = true; } }
-                                }
-                            }
-                            Panel {
-                                width: (root.width - 108px) / 2; height: 142px;
-                                VerticalLayout {
-                                    padding: 18px; spacing: 10px;
-                                    Label { text: "先玩自己的世界"; font-size: 17px; font-weight: 600; }
-                                    Muted { text: "选择一个独立游戏，模组与存档分别管理。"; wrap: word-wrap; }
-                                    AppButton { text: !Guidance.club ? "已选：自己玩" : "选择自己玩"; primary: !Guidance.club; clicked => { Guidance.club = false; } }
-                                }
-                            }
-                        }
+                        Label { text: "选择本地游戏实例"; font-size: 21px; font-weight: 600; }
+                        Label { text: "先玩自己的世界"; font-size: 17px; font-weight: 600; }
+                        Muted { text: "选择独立实例，分别管理模组与存档。联机服务后续由插件提供。"; wrap: word-wrap; }
                         HorizontalLayout {
                             spacing: 14px;
                             Label { text: "使用哪个游戏"; width: 110px; }
                             ComboBox { model: AppState.game-names; current-index: AppState.current-game-index; selected(_) => { AppState.choose-game-at(self.current-index); } }
-                            AppButton { text: "创建游戏"; clicked => { AppState.open-modal("create", 0); } }
+                            AppButton { text: "创建实例"; clicked => { AppState.open-modal("create", 0); } }
                         }
-                        Muted { text: Guidance.club ? "示例服务器要求 1.21.1 / Fabric；不匹配时会提示处理，不覆盖已有游戏。" : "原版不需要模组加载器；整合包应创建为独立游戏。"; wrap: word-wrap; }
+                        Muted { text: "原版不需要模组加载器；整合包应创建为独立游戏。"; wrap: word-wrap; }
                     }
                     if(Guidance.step == 1): VerticalLayout {
                         spacing: 12px; vertical-stretch: 0;
                         Label { text: "确认将使用的身份"; font-size: 21px; font-weight: 600; }
                         HorizontalLayout { Label { text: AppState.account-name; font-size: 28px; font-weight: 700; } AppButton { text: "管理账号"; clicked => { AppState.navigate(5); } } }
                         HorizontalLayout { spacing: 12px; Badge { text: "本地预览身份 · 尚未认证"; warning: true; } AppButton { text: "了解账号区别"; quiet: true; clicked => { Guidance.open-article("account"); } } Rectangle { horizontal-stretch: 1; } }
-                        Label { text: Guidance.club ? "社团服可能要求指定认证服务。正式接入后会检查入服资格，登录过期时保留当前目标并引导重新认证。" : "微软、第三方和本地身份适用的服务不同。本地预览身份仅用于体验这套交互。"; wrap: word-wrap; }
+                        Label { text: "微软、第三方和本地身份适用的服务不同。本地预览身份仅用于体验这套交互。"; wrap: word-wrap; }
                         Divider {}
                         Muted { text: "登录相关操作集中在账号页。向导不会要求你在这里填写学校或微软密码。"; wrap: word-wrap; }
                     }
@@ -82,7 +63,7 @@ export component OnboardingPage inherits Rectangle {
                         Label { text: "准备好了，先检查再启动"; font-size: 21px; font-weight: 600; }
                         Label { text: "游戏：" + AppState.current-game.name + "  ·  " + AppState.current-game.version + " / " + AppState.current-game.loader; wrap: word-wrap; }
                         Label { text: "身份：" + AppState.account-name; }
-                        Label { text: "玩法：" + (Guidance.club ? "进入 CAUCRAFT 示例服务器" : "本地游玩"); }
+                        Label { text: "玩法：本地游玩"; }
                         Divider {}
                         Muted { text: "游戏目录：" + Guidance.game-directory; wrap: word-wrap; }
                         Muted { text: "Java 目录：" + Guidance.java-directory; wrap: word-wrap; }
@@ -98,12 +79,12 @@ export component OnboardingPage inherits Rectangle {
             AppButton { text: "上一步"; enabled: Guidance.step > 0; clicked => { Guidance.advance(-1); } }
             Rectangle { horizontal-stretch: 1; }
             AppButton { text: "查看教程"; quiet: true; clicked => { Guidance.open-article("start"); } }
-            AppButton { text: Guidance.step == 3 ? "打开启动检查" : "下一步"; primary: true; enabled: Guidance.step != 2 || Guidance.path-error == ""; clicked => { if(Guidance.step == 3) { Guidance.start-check(Guidance.club); } else { Guidance.advance(1); } } }
+            AppButton { text: Guidance.step == 3 ? "打开启动检查" : "下一步"; primary: true; enabled: Guidance.step != 2 || Guidance.path-error == ""; clicked => { if(Guidance.step == 3) { Guidance.start-check(false); } else { Guidance.advance(1); } } }
         }
     }
 }
 
-export component PreparationPage inherits Rectangle {
+export component PreparationPage inherits PageSurface {
     background: transparent;
     VerticalLayout {
         padding: 24px; spacing: 14px;
@@ -170,7 +151,7 @@ export component PreparationPage inherits Rectangle {
         HorizontalLayout {
             spacing: 10px;
             AppButton { text: "修改准备选项"; enabled: !Guidance.busy; clicked => { Guidance.open-guide(); } }
-            AppButton { text: "重新检查"; enabled: !Guidance.busy; clicked => { Guidance.start-check(Guidance.club); } }
+            AppButton { text: "重新检查"; enabled: !Guidance.busy; clicked => { Guidance.start-check(false); } }
             Rectangle { horizontal-stretch: 1; }
             if(Guidance.has-plan && !Guidance.show-plan): AppButton { text: "预览准备清单"; primary: true; enabled: !Guidance.busy; clicked => { Guidance.show-plan = true; } }
             if(!Guidance.has-plan): AppButton { text: Guidance.completed ? "启动预演已完成" : "预演启动"; primary: true; enabled: Guidance.can-launch && !Guidance.busy && !Guidance.completed; clicked => { Guidance.launch-preview(); } }
@@ -178,7 +159,7 @@ export component PreparationPage inherits Rectangle {
     }
 }
 
-export component KnowledgePage inherits Rectangle {
+export component KnowledgePage inherits PageSurface {
     background: transparent;
     VerticalLayout {
         padding: 24px; spacing: 16px;
@@ -190,7 +171,7 @@ export component KnowledgePage inherits Rectangle {
         if(Guidance.article < 0): VerticalLayout {
             spacing: 16px;
             Muted { text: "按你想完成的事查找；遇到问题时按 F1 打开当前页面的教程。"; wrap: word-wrap; }
-            LineEdit { text: Guidance.help-query; placeholder-text: "搜索：进服、Java、材质、下载慢、登录过期…"; edited(t) => { Guidance.search-help(t); } }
+            LineEdit { text: Guidance.help-query; placeholder-text: "搜索：Java、材质、下载慢、登录过期…"; edited(t) => { Guidance.search-help(t); } }
             ScrollView {
                 horizontal-scrollbar-policy: always-off;
                 VerticalLayout {

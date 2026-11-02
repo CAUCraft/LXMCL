@@ -1,6 +1,14 @@
 import { Theme } from "theme.slint";
 import { PixelGlass } from "pixel-glass.slint";
 
+// One target-driven appearance transition; reduced motion settles immediately.
+export component PageSurface inherits Rectangle {
+    property <bool> revealed: false;
+    init => { root.revealed = true; }
+    opacity: root.revealed ? 1 : 0;
+    animate opacity { duration: Theme.animations-ready && !Theme.reduce-motion ? 100ms : 0ms; easing: cubic-bezier(0.22, 0.8, 0.24, 1); }
+}
+
 export component Label inherits Text {
     color: Theme.text;
     font-size: 14px;
@@ -8,16 +16,91 @@ export component Label inherits Text {
     overflow: elide;
 }
 
+// Shared controls for the native minimal shell. Legacy controls below remain
+// available to the migrated management pages and their existing callbacks.
+export component GlassPanel inherits Rectangle {
+    background: Theme.surface-glass;
+    border-radius: 26px;
+    border-width: 1px;
+    border-color: Theme.border-soft;
+    drop-shadow-color: #101c2920;
+    drop-shadow-blur: 22px;
+    drop-shadow-offset-y: 6px;
+}
+
+export component NativeButton inherits Rectangle {
+    in property <string> text;
+    in property <string> description;
+    in property <image> icon;
+    in property <bool> with-icon: false;
+    in property <bool> trailing-arrow: false;
+    in property <bool> selected: false;
+    in property <bool> launch: false;
+    in property <bool> quiet: false;
+    in property <bool> enabled: true;
+    in property <bool> left-aligned: false;
+    in property <bool> show-tooltip: false;
+    in property <bool> request-focus: false;
+    changed request-focus => { if(root.request-focus) { focus.focus(); } }
+    in property <length> text-size: 13px;
+    in property <length> icon-size: 20px;
+    callback clicked();
+    public function focus-button() { focus.focus(); }
+    min-height: Theme.control-height;
+    min-width: 34px;
+    border-radius: Theme.control-radius;
+    background: !root.enabled ? Theme.hover : root.launch ? (touch.pressed ? Theme.launch-pressed : touch.has-hover ? Theme.launch-hover : Theme.launch-green) : touch.pressed ? Theme.hover : root.selected ? Theme.surface-control : touch.has-hover ? Theme.hover : root.quiet ? transparent : Theme.surface-control;
+    animate background { duration: Theme.animations-ready && !Theme.reduce-motion ? 90ms : 0ms; }
+    border-width: focus.has-focus ? 2px : 0px;
+    border-color: Theme.focus-ring;
+    opacity: root.enabled ? 1 : 0.45;
+    forward-focus: focus;
+    accessible-role: button;
+    accessible-label: root.description != "" ? root.description : root.text;
+    accessible-enabled: root.enabled;
+    accessible-action-default => { if(root.enabled) { root.clicked(); } }
+    // Keep flexible centering space out of the caption's intrinsic measurement.
+    // Layout spacers plus inter-item spacing previously elided two-character tabs.
+    Rectangle {
+        property <length> icon-space: root.with-icon ? root.icon-size + (root.text != "" ? 10px : 0px) : 0px;
+        width: min(root.width - (root.text == "" ? 0px : 20px), self.icon-space + caption.preferred-width + (root.trailing-arrow ? 16px : 0px));
+        height: root.height;
+        x: root.left-aligned ? 10px : (root.width - self.width) / 2;
+        if(root.with-icon): Image {
+            source: root.icon; width: root.icon-size; height: root.icon-size;
+            x: 0px; y: (parent.height - self.height) / 2; colorize: root.launch ? white : Theme.text;
+        }
+        caption := Label {
+            text: root.text; font-size: root.text-size; font-weight: root.launch || root.selected ? 600 : 500;
+            color: root.launch ? white : Theme.text;
+            x: parent.icon-space; width: max(0px, parent.width - self.x - (root.trailing-arrow ? 16px : 0px)); height: parent.height;
+        }
+    }
+    if(root.trailing-arrow): Image {
+        source: @image-url("icons/chevron.svg"); width: 16px; height: 16px;
+        x: parent.width - self.width - 10px; y: (parent.height - self.height) / 2; colorize: Theme.text;
+    }
+    focus := FocusScope {
+        enabled: root.enabled;
+        key-pressed(event) => {
+            if(event.text == Key.Return || event.text == " ") { root.clicked(); return accept; }
+            reject
+        }
+    }
+    touch := TouchArea { enabled: root.enabled; mouse-cursor: pointer; clicked => { focus.focus(); root.clicked(); } }
+    if(root.show-tooltip): Tooltip { text: @markdown("\{root.description}"); }
+}
+
 export component Muted inherits Label { color: Theme.muted; font-size: 12px; }
 
-export component Heading inherits Label { font-size: 25px; font-weight: 700; }
+export component Heading inherits Label { font-size: 17px; font-weight: 600; }
 
 export component Panel inherits Rectangle {
     in property <bool> opaque: false;
     background: Theme.pixel-glass ? transparent : root.opaque ? Theme.solid-panel : Theme.panel;
     border-color: Theme.line;
     border-width: Theme.pixel-glass ? 0px : 1px;
-    border-radius: Theme.pixel-glass ? 0px : 14px;
+    border-radius: Theme.pixel-glass ? 0px : Theme.group-radius;
     if(Theme.pixel-glass): PixelGlass { tint: root.opaque ? Theme.solid-panel : Theme.panel; step: 6px; }
 }
 
@@ -33,18 +116,18 @@ export component AppButton inherits Rectangle {
     in property <image> icon;
     callback clicked();
     public function focus-button() { focus.focus(); }
-    min-height: 36px;
-    preferred-height: 36px;
+    min-height: Theme.control-height;
+    preferred-height: Theme.control-height;
     preferred-width: max(82px, caption.preferred-width + 28px + (root.with-icon ? 24px : 0px));
     max-width: max(root.min-width, root.preferred-width);
     max-height: max(root.min-height, root.preferred-height);
     horizontal-stretch: 0;
-    border-radius: Theme.pixel-glass ? 0px : 8px;
+    border-radius: Theme.control-radius;
     border-width: Theme.pixel-glass ? 0px : focus.has-focus ? 2px : (root.quiet || root.primary ? 0px : 1px);
     border-color: focus.has-focus ? Theme.accent : root.primary ? #e1edff66 : Theme.line;
     property <color> surface: !root.enabled ? Theme.hover : root.inverted ? (touch.has-hover ? #ffffff : #edf2ff) : root.primary ? (touch.pressed ? Theme.accent-pressed : touch.has-hover ? Theme.accent-hover : Theme.accent-fill) : touch.has-hover ? Theme.hover : root.quiet ? transparent : Theme.panel;
     background: Theme.pixel-glass ? transparent : root.surface;
-    animate surface { duration: 70ms; }
+    animate surface { duration: Theme.reduce-motion ? 0ms : 90ms; }
     opacity: root.enabled ? 1 : 0.5;
     forward-focus: focus;
     accessible-role: button;
@@ -92,7 +175,7 @@ export component NavItem inherits Rectangle {
     background: Theme.pixel-glass ? transparent : root.selected ? Theme.accent-soft : touch.has-hover ? Theme.hover : transparent;
     border-width: !Theme.pixel-glass && focus.has-focus ? 1px : 0px;
     border-color: focus.has-focus ? Theme.accent : Theme.glass-rim;
-    animate background { duration: 120ms; }
+    animate background { duration: Theme.reduce-motion ? 0ms : 90ms; }
     forward-focus: focus;
     accessible-role: button;
     accessible-label: root.text;
@@ -132,7 +215,7 @@ export component Progress inherits Rectangle {
     height: 5px;
     background: Theme.line;
     border-radius: 2px;
-    Rectangle { x: 0px; y: 0px; width: parent.width * min(100, max(0, root.value)) / 100; height: parent.height; border-radius: 2px; background: Theme.accent; animate width { duration: 160ms; } }
+    Rectangle { x: 0px; y: 0px; width: parent.width * min(100, max(0, root.value)) / 100; height: parent.height; border-radius: 2px; background: Theme.accent; animate width { duration: Theme.reduce-motion ? 0ms : 160ms; } }
 }
 
 export component Divider inherits Rectangle { height: 1px; background: Theme.line; }
@@ -146,5 +229,16 @@ export component EmptyState inherits Rectangle {
         alignment: center; spacing: 12px; padding: 20px;
         Label { text: root.title; font-size: 18px; font-weight: 600; horizontal-alignment: center; }
         Muted { text: root.description; horizontal-alignment: center; wrap: word-wrap; }
+    }
+}
+
+// Compact property row shared by settings and desktop property forms.
+export component SettingRow inherits Rectangle {
+    in property <string> label;
+    min-height: 40px;
+    HorizontalLayout {
+        spacing: 12px;
+        Label { text: root.label; min-width: 160px; horizontal-stretch: 1; }
+        @children
     }
 }

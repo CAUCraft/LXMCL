@@ -6,7 +6,10 @@ use crate::instances_bridge::InstanceBridge;
 use crate::java_bridge::JavaBridge;
 use crate::settings_bridge::SettingsBridge;
 use crate::{AppWindow, Theme, mascot_motion, pixel_motion, wallpaper};
-use launcher_api::{Instances, JavaRuntime, Settings};
+use launcher_api::{
+    Application, ApplicationShell, Context, Instances, JavaRuntime, Plugin, PluginDescriptor,
+    ServiceRequirement, Settings, Shell,
+};
 use launcher_instances::{JsonInstancesConfig, JsonInstancesPlugin};
 use launcher_java::LocalJavaPlugin;
 use launcher_runtime::{PluginCatalog, PluginHost, ProductConfig, RuntimeError};
@@ -95,12 +98,53 @@ fn plugin_catalog(data_root: &Path) -> Result<PluginCatalog, RuntimeError> {
     catalog.register("java-local", move |_config| {
         Ok(Box::new(LocalJavaPlugin::new()))
     })?;
+    catalog.register("local-tools", |_| {
+        Ok(Box::new(lxmcl::shell_plugins::LocalToolsPlugin))
+    })?;
+    catalog.register("slint-shell", |_| Ok(Box::new(DefaultShellPlugin)))?;
+    catalog.register("launcher-application", |_| {
+        Ok(Box::new(lxmcl::application::ApplicationPlugin::new()))
+    })?;
     Ok(catalog)
+}
+
+struct DefaultShellPlugin;
+struct SlintShell {
+    application: Arc<dyn launcher_api::ApplicationService>,
+}
+
+impl Plugin for DefaultShellPlugin {
+    fn descriptor(&self) -> PluginDescriptor {
+        PluginDescriptor {
+            id: "slint-shell",
+            provides: vec![ServiceRequirement::of::<Shell>()],
+            requires: vec![
+                ServiceRequirement::of::<Settings>(),
+                ServiceRequirement::of::<Instances>(),
+                ServiceRequirement::of::<JavaRuntime>(),
+                ServiceRequirement::of::<Application>(),
+            ],
+        }
+    }
+    fn apply(&mut self, ctx: &Context) -> Result<(), RuntimeError> {
+        ctx.provide::<Shell>(Arc::new(SlintShell {
+            application: ctx.get::<Application>()?,
+        }))
+    }
+}
+
+impl ApplicationShell for SlintShell {
+    fn run(&self, host: &PluginHost) -> Result<(), Box<dyn Error>> {
+        run_shell(host, self.application.clone())
+    }
 }
 
 /// 运行 Slint Shell：从设置服务取初始值，保存走工作线程桥。
 /// 返回前窗口已关闭、设置工作线程已结束；宿主清理由调用方执行。
-pub fn run_shell(host: &PluginHost) -> Result<(), Box<dyn Error>> {
+pub fn run_shell(
+    host: &PluginHost,
+    application: Arc<dyn launcher_api::ApplicationService>,
+) -> Result<(), Box<dyn Error>> {
     let settings = host.service::<Settings>()?;
     let (bridge, mut worker) = SettingsBridge::start(Arc::clone(&settings))?;
     let initial = bridge.load_blocking()?;
@@ -111,6 +155,7 @@ pub fn run_shell(host: &PluginHost) -> Result<(), Box<dyn Error>> {
     let (java_bridge, mut java_worker) = JavaBridge::start(Arc::clone(&java))?;
 
     let ui = AppWindow::new()?;
+    ui.set_integrated_titlebar(cfg!(target_os = "windows"));
     let timer = controller::connect(
         &ui,
         bridge,
@@ -118,12 +163,16 @@ pub fn run_shell(host: &PluginHost) -> Result<(), Box<dyn Error>> {
         instance_bridge,
         initial_instances,
         java_bridge,
+        application,
     );
+    let mut extension_worker = crate::shell_extensions::connect(&ui, host)?;
     let _motion = pixel_motion::connect(&ui);
     let _mascot = mascot_motion::connect(&ui);
     let _wallpaper = wallpaper::connect(&ui);
     #[cfg(debug_assertions)]
     let _probe = crate::perf_probe::install_if_requested(&ui);
+    #[cfg(debug_assertions)]
+    let _visual_probe = crate::visual_probe::install_if_requested(&ui)?;
     ui.show()?;
     let weak = ui.as_weak();
     // Sync once after the first layout; later geometry changes track themselves.
@@ -141,8 +190,32 @@ pub fn run_shell(host: &PluginHost) -> Result<(), Box<dyn Error>> {
     let settings_join = worker.join();
     let instances_join = instance_worker.join();
     let java_join = java_worker.join();
+    let extensions_join = extension_worker.join();
     settings_join?;
     instances_join?;
     java_join?;
+    extensions_join?;
     Ok(run_result?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn product_resolves_shell_and_plugin_actions_without_running_ui() {
+        let product =
+            ProductConfig::load(&PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("product.toml"))
+                .unwrap();
+        let catalog = plugin_catalog(Path::new("unused-test-data-root")).unwrap();
+        let host = PluginHost::start(&catalog, &product.plugins).unwrap();
+        assert!(host.service::<Shell>().is_ok());
+        let entries = host
+            .contributions::<launcher_api::UiContributions>()
+            .unwrap();
+        assert_eq!(entries.len(), 3);
+        assert!(entries.iter().all(|entry| entry.owner == "tools"));
+        assert_eq!(entries[2].id, "lxmcl.inspect-directories");
+        host.shutdown().unwrap();
+    }
 }

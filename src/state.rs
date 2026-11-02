@@ -70,8 +70,10 @@ pub struct Download {
 #[serde(default)]
 pub struct Preferences {
     pub dark: bool,
+    pub reduce_motion: bool,
     pub pixel_glass: bool,
     pub wallpaper_index: i32,
+    #[serde(default = "legacy_wallpaper_enabled")]
     pub wallpaper_enabled: bool,
     pub wallpaper_paused: bool,
     pub folder: String,
@@ -82,13 +84,19 @@ pub struct Preferences {
     pub source: i32,
 }
 
+// Existing files without this field used the former dynamic-background default.
+fn legacy_wallpaper_enabled() -> bool {
+    true
+}
+
 impl Default for Preferences {
     fn default() -> Self {
         Self {
             dark: false,
+            reduce_motion: false,
             pixel_glass: false,
             wallpaper_index: 0,
-            wallpaper_enabled: true,
+            wallpaper_enabled: false,
             wallpaper_paused: false,
             folder: "D:\\Games\\LXMCL".into(),
             memory: 4,
@@ -130,6 +138,7 @@ impl Preferences {
 pub struct State {
     pub games: Vec<Game>,
     pub selected: i32,
+    pub inspected: i32,
     pub catalog: Vec<Resource>,
     pub downloads: Vec<Download>,
     pub accounts: Vec<(i32, String)>,
@@ -137,7 +146,6 @@ pub struct State {
     pub java_path: Option<PathBuf>,
     pub next_id: i32,
     pub pending: Option<(String, i32, i32, i32)>,
-    pub toast_until: Option<std::time::Instant>,
     pub launch: Option<i32>,
     pub diagnostic: Option<(i32, i32)>,
 }
@@ -148,7 +156,7 @@ impl Default for State {
             games: vec![
                 Game {
                     id: 10,
-                    name: "社团生存".into(),
+                    name: "Fabric 生存".into(),
                     version: "1.21.1".into(),
                     loader: "Fabric".into(),
                     game_directory: PathBuf::new(),
@@ -163,7 +171,7 @@ impl Default for State {
                         },
                         Content {
                             id: 101,
-                            name: "社团自定义模组".into(),
+                            name: "本地示例模组".into(),
                             category: 0,
                             source: "本地导入".into(),
                             enabled: false,
@@ -190,6 +198,7 @@ impl Default for State {
                 },
             ],
             selected: 10,
+            inspected: 10,
             catalog: vec![
                 Resource {
                     id: 100,
@@ -233,13 +242,13 @@ impl Default for State {
                 },
                 Resource {
                     id: 110,
-                    name: "社团轻量整合包",
-                    alias: "社团 优化",
-                    description: "社团环境演示配置，包含基础优化资源。",
+                    name: "轻量整合包",
+                    alias: "轻量 优化",
+                    description: "整合包演示配置，包含基础优化资源。",
                     category: 1,
                     version: "1.21.1",
                     loader: "Fabric",
-                    source: "社团目录",
+                    source: "演示资源",
                 },
                 Resource {
                     id: 120,
@@ -273,12 +282,11 @@ impl Default for State {
                 },
             ],
             downloads: vec![],
-            accounts: vec![(1, "本地玩家".into()), (2, "社团玩家".into())],
+            accounts: vec![(1, "本地玩家".into())],
             account: 1,
             java_path: None,
             next_id: 1000,
             pending: None,
-            toast_until: None,
             launch: None,
             diagnostic: None,
         }
@@ -290,15 +298,26 @@ impl State {
     pub fn replace_instances(&mut self, instances: Vec<InstanceRecord>) {
         self.games = instances.into_iter().map(Game::from).collect();
         self.selected = self.games.first().map_or(-1, |game| game.id);
+        self.inspected = self.selected;
         self.downloads.clear();
         self.pending = None;
         self.launch = None;
     }
 
-    /// 创建或重命名成功后更新单条记录；不补演示模组或下载任务。
+    /// 创建成功后更新单条记录并选择该实例；不补演示模组或下载任务。
     pub fn apply_instance(&mut self, record: InstanceRecord) {
         let id = record.id;
+        self.update_instance(record);
+        self.selected = id;
+    }
+
+    /// Apply a captured operation without changing the user's current selection.
+    pub fn update_instance(&mut self, record: InstanceRecord) {
+        let id = record.id;
         if let Some(game) = self.games.iter_mut().find(|game| game.id == id) {
+            if record.revision < game.revision {
+                return;
+            }
             game.name = record.name;
             game.version = record.version;
             game.loader = record.loader;
@@ -307,7 +326,6 @@ impl State {
         } else {
             self.games.push(Game::from(record));
         }
-        self.selected = id;
     }
 
     pub fn id(&mut self) -> i32 {
@@ -317,6 +335,17 @@ impl State {
     }
     pub fn game(&self) -> Option<&Game> {
         self.games.iter().find(|g| g.id == self.selected)
+    }
+    pub fn inspected_game(&self) -> Option<&Game> {
+        self.games.iter().find(|g| g.id == self.inspected)
+    }
+    pub fn inspect(&mut self, id: i32) -> bool {
+        if self.games.iter().any(|g| g.id == id) {
+            self.inspected = id;
+            true
+        } else {
+            false
+        }
     }
     pub fn select(&mut self, id: i32) {
         if self.games.iter().any(|g| g.id == id) {
@@ -328,6 +357,9 @@ impl State {
         self.downloads.retain(|d| d.target != id);
         if self.selected == id {
             self.selected = self.games.first().map_or(-1, |g| g.id);
+        }
+        if self.inspected == id {
+            self.inspected = -1;
         }
     }
     pub fn queue(&mut self, resource_id: i32, target: i32) -> Result<(), &'static str> {
@@ -401,6 +433,26 @@ impl State {
 mod tests {
     use super::*;
     #[test]
+    fn inspecting_and_renaming_another_instance_preserves_launch_target() {
+        let mut state = State::default();
+        assert!(state.inspect(20));
+        assert_eq!(state.game().unwrap().id, 10);
+        assert_eq!(state.inspected_game().unwrap().id, 20);
+        state.update_instance(InstanceRecord {
+            id: 20,
+            name: "Renamed B".into(),
+            version: "1.21.1".into(),
+            loader: "原版".into(),
+            game_directory: "games/b".into(),
+            revision: 2,
+        });
+        assert_eq!(state.selected, 10);
+        assert_eq!(state.inspected, 20);
+        assert_eq!(state.inspected_game().unwrap().name, "Renamed B");
+        state.select(30);
+        assert_eq!(state.inspected, 20);
+    }
+    #[test]
     fn older_preferences_get_wallpaper_defaults_and_new_choices_round_trip() {
         let mut p: Preferences = serde_json::from_str(r#"{"dark":true,"memory":8}"#).unwrap();
         assert!(p.dark && p.wallpaper_enabled && !p.wallpaper_paused);
@@ -413,6 +465,22 @@ mod tests {
         assert_eq!(restored.wallpaper_index, 6);
         assert_eq!(restored.memory, 8);
     }
+    #[test]
+    fn first_launch_is_static_and_saved_wallpaper_choices_are_preserved() {
+        assert!(!Preferences::default().wallpaper_enabled);
+        for enabled in [false, true] {
+            let saved: Preferences = serde_json::from_str(&format!(
+                r#"{{"wallpaper_enabled":{enabled},"wallpaper_index":4,"wallpaper_paused":true}}"#
+            ))
+            .unwrap();
+            let restored: Preferences =
+                serde_json::from_slice(&serde_json::to_vec(&saved).unwrap()).unwrap();
+            assert_eq!(restored.wallpaper_enabled, enabled);
+            assert_eq!(restored.wallpaper_index, 4);
+            assert!(restored.wallpaper_paused);
+        }
+    }
+
     #[test]
     fn download_keeps_original_target_when_selection_changes() {
         let mut state = State::default();

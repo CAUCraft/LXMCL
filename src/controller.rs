@@ -10,9 +10,10 @@ use launcher_api::{InstanceRecord, JavaCandidate, JavaScanResult, LauncherSettin
 use slint::{Color, ComponentHandle, Model, ModelRc, SharedString, Timer, TimerMode, VecModel};
 use std::{
     cell::RefCell,
-    path::PathBuf,
+    path::{Path, PathBuf},
+    process::{Command, Stdio},
     rc::Rc,
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 fn model<T: Clone + 'static>(values: Vec<T>) -> ModelRc<T> {
@@ -54,9 +55,73 @@ fn game_item(g: &Game) -> GameItem {
         name: g.name.clone().into(),
         version: g.version.clone().into(),
         loader: g.loader.clone().into(),
+        selector_label: format!("{} · {}", g.version, g.loader).into(),
         detail: detail.into(),
         tint: tint(g.id),
     }
+}
+
+fn installed_instance_items(games: &[Game]) -> Vec<GameItem> {
+    games
+        .iter()
+        .map(|game| {
+            let mut item = game_item(game);
+            if games.iter().any(|other| {
+                other.id != game.id && other.version == game.version && other.loader == game.loader
+            }) {
+                // IDs distinguish even imported instances with identical names and versions.
+                item.selector_label = format!(
+                    "{} · {} · {} (#{})",
+                    game.version, game.loader, game.name, game.id
+                )
+                .into();
+            }
+            item
+        })
+        .collect()
+}
+
+fn filtered_game_items(games: &[Game], page: i32, filter: &str) -> Vec<GameItem> {
+    let filter = filter.to_lowercase();
+    games
+        .iter()
+        .filter(|game| {
+            page != 1
+                || format!("{} {} {}", game.name, game.version, game.loader)
+                    .to_lowercase()
+                    .contains(&filter)
+        })
+        .map(game_item)
+        .collect()
+}
+
+fn open_directory(path: &Path) -> Result<(), String> {
+    if path.as_os_str().is_empty() {
+        return Err("实例尚未配置游戏目录".into());
+    }
+    let metadata = std::fs::metadata(path)
+        .map_err(|error| format!("无法访问目录 {}：{error}", path.display()))?;
+    if !metadata.is_dir() {
+        return Err(format!("{} 不是文件夹", path.display()));
+    }
+    // Pass the actual instance path as one argument, without a command shell.
+    #[cfg(target_os = "windows")]
+    let mut command = Command::new("explorer.exe");
+    #[cfg(target_os = "macos")]
+    let mut command = Command::new("open");
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    let mut command = Command::new("xdg-open");
+    let status = command
+        .arg(path)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map_err(|error| format!("无法调用系统文件管理器：{error}"))?;
+    if !status.success() {
+        return Err(format!("系统文件管理器未能打开目录（{status}）"));
+    }
+    Ok(())
 }
 
 fn sync_guide_directory(ui: &AppWindow, game: &Game) {
@@ -67,6 +132,41 @@ fn sync_guide_directory(ui: &AppWindow, game: &Game) {
         .set_game_directory(game.game_directory.display().to_string().into());
 }
 
+fn open_instance_directory(ui: &AppWindow, s: &mut State, id: i32) {
+    let Some(game) = s.games.iter().find(|game| game.id == id) else {
+        toast(ui, s, "实例已不存在，请重新选择");
+        return;
+    };
+    let path = game.game_directory.clone();
+    let name = game.name.clone();
+    let weak = ui.as_weak();
+    if let Err(error) = std::thread::Builder::new()
+        .name("open-game-folder".into())
+        .spawn(move || {
+            if let Err(reason) = open_directory(&path) {
+                let message = format!("无法打开「{name}」的游戏文件夹：{reason}");
+                let _ = weak.upgrade_in_event_loop(move |ui| {
+                    crate::settings_bridge::toast_detached(&ui.as_weak(), message);
+                });
+            }
+        })
+    {
+        toast(ui, s, format!("无法开始打开游戏文件夹：{error}"));
+    }
+}
+
+fn inspect_instance(ui: &AppWindow, s: &mut State, id: i32, section: i32) {
+    if s.inspect(id) {
+        let app = ui.global::<AppState>();
+        app.set_instance_detail_open(true);
+        app.set_instance_section(section);
+        app.set_game_tab(if section == 0 { 0 } else { section - 1 });
+        app.set_page(1);
+        app.set_search_open(false);
+        ui.invoke_focus_main();
+    }
+}
+
 fn instance_update(record: InstanceRecord) -> InstanceUpdate {
     InstanceUpdate {
         id: record.id,
@@ -74,19 +174,20 @@ fn instance_update(record: InstanceRecord) -> InstanceUpdate {
         version: record.version.into(),
         loader: record.loader.into(),
         game_directory: record.game_directory.display().to_string().into(),
-        revision: record.revision.min(i32::MAX as u64) as i32,
+        revision: record.revision.to_string().into(),
     }
 }
 
-fn instance_record(update: InstanceUpdate) -> InstanceRecord {
-    InstanceRecord {
+fn instance_record(update: InstanceUpdate) -> Result<InstanceRecord, std::num::ParseIntError> {
+    let revision = update.revision.parse::<u64>()?;
+    Ok(InstanceRecord {
         id: update.id,
         name: update.name.to_string(),
         version: update.version.to_string(),
         loader: update.loader.to_string(),
         game_directory: PathBuf::from(update.game_directory.as_str()),
-        revision: update.revision.max(0) as u64,
-    }
+        revision,
+    })
 }
 
 fn java_candidate_item(candidate: &JavaCandidate) -> JavaCandidateItem {
@@ -147,9 +248,9 @@ fn persist_java(ui: &AppWindow, settings: &SettingsBridge, path: Option<PathBuf>
         },
     );
 }
-fn toast(ui: &AppWindow, s: &mut State, message: impl Into<SharedString>) {
-    ui.global::<AppState>().set_toast(message.into());
-    s.toast_until = Some(Instant::now() + Duration::from_secs(5));
+fn toast(ui: &AppWindow, _s: &mut State, message: impl Into<SharedString>) {
+    let message: SharedString = message.into();
+    crate::settings_bridge::toast_detached(&ui.as_weak(), message.to_string());
 }
 fn category_for_tab(tab: i32) -> i32 {
     match tab {
@@ -197,21 +298,15 @@ fn refresh_downloads(ui: &AppWindow, s: &State) {
     }
     app.set_active_downloads(s.downloads.iter().filter(|t| !t.done).count() as i32);
 }
-fn refresh(ui: &AppWindow, s: &State) {
+pub(crate) fn refresh(ui: &AppWindow, s: &State) {
     let app = ui.global::<AppState>();
-    let filter = app.get_game_filter().to_lowercase();
     app.set_games(update_model(
         app.get_games(),
-        s.games
-            .iter()
-            .filter(|g| {
-                app.get_page() != 1
-                    || format!("{} {} {}", g.name, g.version, g.loader)
-                        .to_lowercase()
-                        .contains(&filter)
-            })
-            .map(game_item)
-            .collect(),
+        filtered_game_items(&s.games, app.get_page(), app.get_game_filter().as_str()),
+    ));
+    app.set_installed_instances(update_model(
+        app.get_installed_instances(),
+        installed_instance_items(&s.games),
     ));
     app.set_game_names(update_model(
         app.get_game_names(),
@@ -228,18 +323,34 @@ fn refresh(ui: &AppWindow, s: &State) {
     );
     app.set_current_game(s.game().map(game_item).unwrap_or_else(|| GameItem {
         id: -1,
-        name: "还没有游戏".into(),
+        name: "尚无实例".into(),
         version: "—".into(),
-        loader: "请先创建游戏".into(),
+        loader: "请先创建实例".into(),
+        selector_label: "尚无实例".into(),
         detail: "".into(),
         tint: tint(0),
     }));
+    app.set_inspected_game(
+        s.inspected_game()
+            .map(game_item)
+            .unwrap_or_else(|| GameItem {
+                id: -1,
+                ..Default::default()
+            }),
+    );
+    app.set_inspected_directory(
+        s.inspected_game()
+            .map_or_else(String::new, |game| {
+                game.game_directory.display().to_string()
+            })
+            .into(),
+    );
     if let Some(game) = s.game() {
         sync_guide_directory(ui, game);
     }
     app.set_mods(update_model(
         app.get_mods(),
-        s.game()
+        s.inspected_game()
             .map(|g| {
                 g.content
                     .iter()
@@ -316,22 +427,24 @@ fn open_modal(ui: &AppWindow, s: &mut State, kind: &str, id: i32) {
     let app = ui.global::<AppState>();
     let game = if matches!(kind, "delete" | "rename") {
         s.games.iter().find(|g| g.id == id)
+    } else if kind == "import" {
+        s.inspected_game()
     } else {
         s.game()
     }
     .map_or_else(|| "未选择游戏".to_string(), |g| g.name.clone());
     let (title,body)=match kind {
-        "create"=>("创建游戏","为游戏取一个容易辨认的名字，再选择版本和加载器。创建会保存一条实例配置，并在全局游戏目录下分配独立目录；不会安装游戏文件，也不会生成演示模组或下载任务。".into()),
-        "rename"=>("重命名实例",format!("修改「{game}」的显示名称。实例目录不变，成功后配置修订号会递增。")),
+        "create"=>("创建实例","创建独立实例配置，游戏文件安装尚未接入。".into()),
+        "rename"=>("重命名实例",format!("修改「{game}」的显示名称，不移动实例目录。")),
         "delete"=>("删除游戏",format!("将删除「{game}」的演示条目、资源条目和关联任务。\n\n输入完整游戏名称确认对象。当前不会删除磁盘文件；正式删除应另行展示存档保留与备份选项。")),
         "import"=>("导入资源 · 交互预览",format!("向「{game}」添加一个本地导入的演示条目。真实文件选择与导入尚未接入。")),
-        "account"=>("添加本地账号","输入用于界面预览的角色名称。微软与社团账号登录会在接入认证服务后提供。".into()),
+        "account"=>("添加本地账号","输入用于界面预览的角色名称。在线账号登录会在接入认证服务后提供。".into()),
         "install"=>{
             let Some(r)=s.catalog.iter().find(|r|r.id==id) else {return};
             ("确认安装资源",format!("{}\n\n目标游戏：{game}\n版本：{} / {}\n来源：{}\n\n确认后加入模拟下载队列，完成后出现在目标游戏中。",r.name,r.version,r.loader,r.source))
         },
         "notice"=>("社团公告","欢迎加入社团世界。\n\n此处将展示版本变更、维护通知和社区活动。当前没有连接公告服务。".into()),
-        "room"=>("临时联机","后续将在这里接入房间创建、房间码和连接状态。\n\n现在可先通过「社团联机 → 准备并进入」体验环境准备流程。".into()),
+        "room"=>("临时联机 · 演示","房间创建、房间码和连接服务尚未接入。当前不会创建真实房间。".into()),
         "java"=>("Java 环境管理","后续支持发现已有 Java、选择安装目录、下载与切换版本。\n\n当前展示 Java 21 示例配置，没有扫描或修改本机环境。".into()),
         "skin"=>("孪枭的皮肤与披风","当前使用美术部提供的孪枭原始 PNG，支持双层立体预览、鼠标跟随和手动旋转。\n\n基础层与帽层、衣服和四肢外层按原始透明度叠加。皮肤站绑定、应用到账号和披风切换将在后续接入。".into()),
         _=>return,
@@ -339,7 +452,11 @@ fn open_modal(ui: &AppWindow, s: &mut State, kind: &str, id: i32) {
     s.pending = Some((
         kind.into(),
         id,
-        s.selected,
+        if kind == "import" {
+            s.inspected
+        } else {
+            s.selected
+        },
         category_for_tab(app.get_game_tab()),
     ));
     app.set_search_open(false);
@@ -358,10 +475,13 @@ fn open_modal(ui: &AppWindow, s: &mut State, kind: &str, id: i32) {
     ui.invoke_focus_modal();
 }
 fn close_modal(ui: &AppWindow, s: &mut State) {
-    if ui.global::<AppState>().get_instance_saving() {
+    if ui.global::<AppState>().get_instance_saving()
+        && ui.global::<AppState>().get_modal() != "rename"
+    {
         return;
     }
     s.pending = None;
+    ui.global::<AppState>().set_instance_saving(false);
     ui.global::<AppState>().set_modal("".into());
     ui.invoke_focus_main();
 }
@@ -427,39 +547,6 @@ fn confirm(ui: &AppWindow, s: &mut State, instances: &InstanceBridge) {
                     Err(error) => ui
                         .global::<AppState>()
                         .invoke_instance_error(format!("创建失败：{error}").into()),
-                }
-            });
-            return;
-        }
-        "rename" => {
-            let Some(game) = s.games.iter().find(|game| game.id == id) else {
-                app.set_form_error("实例不存在，请刷新后重试。".into());
-                return;
-            };
-            if game.name == name {
-                close_modal(ui, s);
-                toast(ui, s, "名称未变化");
-                return;
-            }
-            if s.games
-                .iter()
-                .any(|game| game.id != id && game.name.eq_ignore_ascii_case(&name))
-            {
-                app.set_form_error("已有同名游戏，请换一个名称。".into());
-                return;
-            }
-            app.set_form_error("".into());
-            app.set_instance_saving(true);
-            let weak = ui.as_weak();
-            instances.rename_async(id, name, move |result| {
-                let Some(ui) = weak.upgrade() else { return };
-                match result {
-                    Ok(record) => ui
-                        .global::<AppState>()
-                        .invoke_instance_renamed(instance_update(record)),
-                    Err(error) => ui
-                        .global::<AppState>()
-                        .invoke_instance_error(format!("重命名失败：{error}").into()),
                 }
             });
             return;
@@ -537,7 +624,7 @@ fn search(ui: &AppWindow, s: &State, query: &str) {
         })
         .collect();
     for (id, name, detail) in [
-        (-2, "社团联机", "服务器与环境准备"),
+        (-2, "联机", "服务器与联机房间"),
         (-3, "资源中心", "模组、整合包、资源包、光影、世界"),
         (-4, "下载任务", "暂停、继续与取消"),
         (-5, "账号与装扮", "切换账号与皮肤管理"),
@@ -554,20 +641,12 @@ fn search(ui: &AppWindow, s: &State, query: &str) {
             });
         }
     }
-    for (id, name, detail, category) in [
-        (
-            -100,
-            "CAUCRAFT 社团生存服",
-            "民航 进服 联机 · 检查当前游戏与入服环境",
-            "服务器",
-        ),
-        (
-            -101,
-            "首次游玩向导",
-            "新手 教程 入门 · 玩法、身份、目录与检查",
-            "引导",
-        ),
-    ] {
+    for (id, name, detail, category) in [(
+        -101,
+        "首次游玩向导",
+        "新手 教程 入门 · 玩法、身份、目录与检查",
+        "引导",
+    )] {
         if format!("{name} {detail}").to_lowercase().contains(&query) {
             results.push(SearchItem {
                 id,
@@ -579,6 +658,9 @@ fn search(ui: &AppWindow, s: &State, query: &str) {
     }
     for index in lxmcl::help::search(&query) {
         let article = &lxmcl::help::ARTICLES[index];
+        if article.id == "club" {
+            continue;
+        }
         results.push(SearchItem {
             id: -2000 - index as i32,
             name: article.title.into(),
@@ -596,19 +678,23 @@ pub fn connect(
     instances: InstanceBridge,
     initial_instances: Vec<InstanceRecord>,
     java: JavaBridge,
-) -> Timer {
+    application: std::sync::Arc<dyn launcher_api::ApplicationService>,
+) -> Rc<Timer> {
     let state = Rc::new(RefCell::new({
         let mut state = State::default();
         state.replace_instances(initial_instances);
         state.java_path = initial.java_path.clone();
         state
     }));
+    let rename =
+        crate::presentation::rename::RenamePresentation::connect(ui, state.clone(), application);
     let p = Preferences::load();
     let app = ui.global::<AppState>();
     ui.global::<Theme>().set_dark(p.dark);
+    ui.global::<Theme>().set_reduce_motion(p.reduce_motion);
     ui.global::<Theme>()
         .set_darkness(if p.dark { 1.0 } else { 0.0 });
-    ui.global::<Theme>().set_pixel_glass(p.pixel_glass);
+    ui.global::<Theme>().set_pixel_glass(false);
     ui.invoke_sync_theme();
     // 游戏目录以业务设置（设置插件）为准；界面偏好里的 folder 仅作为旧字段继续写入。
     app.set_folder(initial.game_root.display().to_string().into());
@@ -630,34 +716,105 @@ pub fn connect(
     app.set_wallpaper_paused(p.wallpaper_paused);
     crate::journey::connect(ui, state.clone());
     refresh(ui, &state.borrow());
+    let demo_timer = Rc::new(Timer::default());
     macro_rules! bind {
         ($callback:ident, |$ui:ident,$s:ident $(,$arg:ident)*| $body:block)=>{{
-            let weak=ui.as_weak();let data=state.clone();
-            app.$callback(move |$($arg),*|{if let Some($ui)=weak.upgrade(){let $s=&mut *data.borrow_mut();$body refresh(&$ui,$s);}});
+            let weak=ui.as_weak();let data=state.clone();let ticker=demo_timer.clone();
+            app.$callback(move |$($arg),*|{if let Some($ui)=weak.upgrade(){let $s=&mut *data.borrow_mut();$body refresh(&$ui,$s); wake_demo_timer($ui.as_weak(),data.clone(),ticker.clone());}});
         }};
     }
     macro_rules! bind_view {
         ($callback:ident, |$ui:ident,$s:ident $(,$arg:ident)*| $body:block)=>{{
-            let weak=ui.as_weak();let data=state.clone();
-            app.$callback(move |$($arg),*|{if let Some($ui)=weak.upgrade(){let $s=&mut *data.borrow_mut();$body}});
+            let weak=ui.as_weak();let data=state.clone();let ticker=demo_timer.clone();
+            app.$callback(move |$($arg),*|{if let Some($ui)=weak.upgrade(){let $s=&mut *data.borrow_mut();$body wake_demo_timer($ui.as_weak(),data.clone(),ticker.clone());}});
         }};
     }
+    let rename_navigation = rename.clone();
     bind!(on_navigate, |ui, s, page| {
         let app = ui.global::<AppState>();
+        rename_navigation.dismiss();
+        if app.get_modal() == "rename" {
+            app.set_instance_saving(false);
+        }
         if page == 8 {
             ui.global::<Guidance>().set_article(-1);
+        }
+        if (page == 7 || page == 8) && app.get_page() != 7 && app.get_page() != 8 {
             ui.global::<Guidance>().set_help_return_page(app.get_page());
         }
         if app.get_page() == 1 && page == 3 {
             app.set_resource_category(category_for_tab(app.get_game_tab()));
         }
-        app.set_page(page.clamp(0, 8));
+        app.set_page(if page == 6 && app.get_settings_category() == 5 {
+            5
+        } else {
+            page.clamp(0, 8)
+        });
         s.pending = None;
         app.set_modal("".into());
     });
     bind!(on_choose_game, |ui, s, id| {
-        s.select(id);
-        toast(&ui, s, "已切换当前实例");
+        if s.games.iter().any(|game| game.id == id) {
+            s.select(id);
+        } else {
+            toast(&ui, s, "实例已不存在，请重新选择");
+        }
+    });
+    bind!(on_open_game_settings, |ui, s| {
+        if s.game().is_some() {
+            s.inspect(s.selected);
+            let app = ui.global::<AppState>();
+            app.set_instance_detail_open(true);
+            app.set_instance_section(5);
+            app.set_game_tab(5);
+            app.set_page(1);
+            app.set_search_open(false);
+            ui.invoke_focus_main();
+        } else {
+            toast(&ui, s, "请先创建或选择实例");
+        }
+    });
+    bind!(
+        on_extension_open_instance_settings,
+        |ui, s, id, revision| {
+            let valid = s
+                .games
+                .iter()
+                .any(|game| game.id == id && game.revision.to_string() == revision.as_str());
+            let app = ui.global::<AppState>();
+            if valid {
+                s.inspect(id);
+                app.set_instance_detail_open(true);
+                app.set_instance_section(5);
+                app.set_game_tab(5);
+                app.set_page(1);
+                app.set_search_open(false);
+            } else {
+                app.set_extension_status("实例目标快照已过期，请重新选择实例后重试。".into());
+            }
+        }
+    );
+    bind_view!(on_open_game_folder, |ui, s| {
+        open_instance_directory(&ui, s, s.selected);
+    });
+    bind_view!(on_open_instance_folder, |ui, s, id| {
+        open_instance_directory(&ui, s, id);
+    });
+    bind!(on_open_instance, |ui, s, id| {
+        inspect_instance(&ui, s, id, 0);
+    });
+    bind!(on_back_to_instances, |ui, s| {
+        let app = ui.global::<AppState>();
+        app.set_instance_detail_open(false);
+        app.set_page(1);
+        ui.invoke_focus_main();
+        let _ = s;
+    });
+    bind!(on_launch_instance, |ui, s, id| {
+        if s.games.iter().any(|game| game.id == id) {
+            s.select(id);
+            launch(&ui, s);
+        }
     });
     bind!(on_choose_game_at, |ui, s, index| {
         if let Some(g) = s.games.get(index as usize) {
@@ -673,18 +830,39 @@ pub fn connect(
         ui.global::<AppState>().set_game_tab(tab);
         let _ = s;
     });
-    bind_view!(on_open_modal, |ui, s, kind, id| {
-        open_modal(&ui, s, kind.as_str(), id);
-    });
+    {
+        let weak = ui.as_weak();
+        let data = state.clone();
+        let rename = rename.clone();
+        app.on_open_modal(move |kind, id| {
+            let Some(ui) = weak.upgrade() else { return };
+            rename.dismiss();
+            let mut state = data.borrow_mut();
+            if kind == "rename" {
+                let Some(game) = state.games.iter().find(|game| game.id == id) else {
+                    return;
+                };
+                rename.open(game.id, game.revision, game.name.clone());
+            }
+            open_modal(&ui, &mut state, kind.as_str(), id);
+        });
+    }
     {
         let weak = ui.as_weak();
         let data = state.clone();
         let instances = instances.clone();
+        let ticker = demo_timer.clone();
+        let rename = rename.clone();
         app.on_confirm_modal(move || {
             let Some(ui) = weak.upgrade() else { return };
+            if ui.global::<AppState>().get_modal() == "rename" {
+                rename.submit(&ui);
+                return;
+            }
             let mut s = data.borrow_mut();
             confirm(&ui, &mut s, &instances);
             refresh(&ui, &s);
+            wake_demo_timer(ui.as_weak(), data.clone(), ticker.clone());
         });
     }
     {
@@ -695,30 +873,23 @@ pub fn connect(
             let app = ui.global::<AppState>();
             app.set_instance_saving(false);
             let mut s = data.borrow_mut();
-            s.apply_instance(instance_record(update));
+            let record = match instance_record(update) {
+                Ok(record) => record,
+                Err(_) => {
+                    app.set_form_error("实例修订无效，未更新当前记录。".into());
+                    return;
+                }
+            };
+            s.apply_instance(record);
+            s.inspected = s.selected;
             s.pending = None;
-            app.set_game_filter("".into());
+
             app.set_page(1);
             app.set_game_tab(0);
+            app.set_instance_detail_open(true);
+            app.set_instance_section(0);
             refresh(&ui, &s);
             toast(&ui, &mut s, "实例配置已保存");
-            drop(s);
-            app.set_modal("".into());
-            ui.invoke_focus_main();
-        });
-    }
-    {
-        let weak = ui.as_weak();
-        let data = state.clone();
-        app.on_instance_renamed(move |update| {
-            let Some(ui) = weak.upgrade() else { return };
-            let app = ui.global::<AppState>();
-            app.set_instance_saving(false);
-            let mut s = data.borrow_mut();
-            s.apply_instance(instance_record(update));
-            s.pending = None;
-            refresh(&ui, &s);
-            toast(&ui, &mut s, "实例已重命名");
             drop(s);
             app.set_modal("".into());
             ui.invoke_focus_main();
@@ -862,14 +1033,23 @@ pub fn connect(
             toast(&ui, &mut s, message);
         });
     }
-    bind_view!(on_close_modal, |ui, s| {
-        close_modal(&ui, s);
-    });
+    {
+        let weak = ui.as_weak();
+        let data = state.clone();
+        let rename = rename.clone();
+        app.on_close_modal(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            if ui.global::<AppState>().get_modal() == "rename" {
+                rename.dismiss();
+            }
+            close_modal(&ui, &mut data.borrow_mut());
+        });
+    }
     bind!(on_toggle_mod, |ui, s, id| {
         if let Some(c) = s
             .games
             .iter_mut()
-            .find(|g| g.id == s.selected)
+            .find(|g| g.id == s.inspected)
             .and_then(|g| g.content.iter_mut().find(|c| c.id == id))
         {
             c.enabled = !c.enabled;
@@ -900,7 +1080,7 @@ pub fn connect(
         if let Some(task) = s.downloads.iter().find(|t| t.id == id) {
             let target = task.target;
             let category = task.content.as_ref().map_or(0, |c| c.category);
-            s.select(target);
+            s.inspect(target);
             let app = ui.global::<AppState>();
             app.set_game_tab(match category {
                 1 => 4,
@@ -909,7 +1089,13 @@ pub fn connect(
                 4 => 3,
                 _ => 0,
             });
-            app.set_game_filter("".into());
+            app.set_instance_detail_open(true);
+            app.set_instance_section(if category == 1 {
+                1
+            } else {
+                app.get_game_tab() + 1
+            });
+
             app.set_page(1);
         }
     });
@@ -954,6 +1140,7 @@ pub fn connect(
             }
             let p = Preferences {
                 dark: ui.global::<Theme>().get_dark(),
+                reduce_motion: ui.global::<Theme>().get_reduce_motion(),
                 pixel_glass: ui.global::<Theme>().get_pixel_glass(),
                 wallpaper_index: app.get_wallpaper_index(),
                 wallpaper_enabled: app.get_wallpaper_enabled(),
@@ -969,19 +1156,20 @@ pub fn connect(
                 toast(&ui, s, "请填写游戏存放目录");
                 return;
             }
-            let prefs_note = match p.save() {
-                Ok(()) => "界面偏好已保存到本机".to_string(),
-                Err(e) => format!("界面偏好保存失败：{e}"),
-            };
             // 绑定点击时的快照；结果经事件循环回到界面线程后合并展示。
             let weak = ui.as_weak();
             let java_path = s.java_path.clone();
-            bridge.save_async(
+            bridge.save_with_preferences_async(
                 LauncherSettings {
-                    game_root: p.folder.into(),
+                    game_root: p.folder.clone().into(),
                     java_path,
                 },
-                move |result| {
+                p,
+                move |result, preferences_result| {
+                    let prefs_note = match preferences_result {
+                        Ok(()) => "界面偏好已保存到本机".to_string(),
+                        Err(error) => format!("界面偏好保存失败：{error}"),
+                    };
                     let settings_note = match result {
                         Ok(()) => "游戏设置已保存".to_string(),
                         Err(e) => format!("游戏设置保存失败：{e}"),
@@ -1029,9 +1217,10 @@ pub fn connect(
                 ui.global::<Guidance>().set_article(-1);
             }
         } else {
-            s.select(id);
+            s.inspect(id);
             app.set_page(1);
-            app.set_game_filter("".into());
+            app.set_instance_detail_open(true);
+            app.set_instance_section(0);
         }
         ui.invoke_focus_main();
     });
@@ -1045,16 +1234,99 @@ pub fn connect(
             app.set_diagnostic_text("正在演示检查过程…".into());
         }
     });
-    let timer = Timer::default();
-    let weak = ui.as_weak();
+    wake_demo_timer(ui.as_weak(), state, demo_timer.clone());
+    demo_timer
+}
+
+fn wake_demo_timer(weak: slint::Weak<AppWindow>, state: Rc<RefCell<State>>, timer: Rc<Timer>) {
+    if timer.running() {
+        return;
+    }
+    let weak_timer = Rc::downgrade(&timer);
     timer.start(TimerMode::Repeated,Duration::from_millis(200),move||{
         let Some(ui)=weak.upgrade() else{return};let mut s=state.borrow_mut();let app=ui.global::<AppState>();
         let active=s.downloads.iter().any(|d|!d.done && !d.paused);let completed=s.tick_downloads();
         for(name,join,target)in &completed{toast(&ui,&mut s,format!("{name}：模拟任务已完成"));if *join{s.select(*target);app.set_page(0);launch(&ui,&mut s);}}
         if !completed.is_empty(){refresh(&ui,&s);}else if active{refresh_downloads(&ui,&s);}
         if let Some(progress)=s.launch{let progress=progress+5;app.set_launch_progress(progress);app.set_launch_status((if progress<35{"检查账号与游戏配置（演示）…"}else if progress<70{"检查 Java 与资源（演示）…"}else{"准备启动（演示）…"}).into());if progress>=100{s.launch=None;app.set_launching(false);toast(&ui,&mut s,"启动流程演示完成，尚未接入游戏启动");}else{s.launch=Some(progress);}}
-        if let Some((kind,step))=s.diagnostic{if step>=7{s.diagnostic=None;app.set_diagnosing(false);app.set_diagnostic_text((if kind==0{"环境检查 · 演示结果\n\n✓ 已选择游戏与账号\n✓ Java 21 示例配置匹配\n✓ 内存配置有效\n\n未扫描本机 Java 或验证真实游戏文件。"}else{"网络检查 · 演示结果\n\n此处将依次检查下载源、账号认证与社团服务器连接，并为失败项提供重试。\n\n当前没有发出网络请求，不代表真实网络状态。"}).into());}else{s.diagnostic=Some((kind,step+1));}}
-        if s.toast_until.is_some_and(|until|Instant::now()>=until){app.set_toast("".into());s.toast_until=None;}
+        if let Some((kind,step))=s.diagnostic{if step>=7{s.diagnostic=None;app.set_diagnosing(false);app.set_diagnostic_text((if kind==0{"环境检查 · 演示结果\n\n✓ 已选择游戏与账号\n✓ Java 21 示例配置匹配\n✓ 内存配置有效\n\n未扫描本机 Java 或验证真实游戏文件。"}else{"网络检查 · 演示结果\n\n此处将依次检查下载源、账号认证与服务器连接，并为失败项提供重试。\n\n当前没有发出网络请求，不代表真实网络状态。"}).into());}else{s.diagnostic=Some((kind,step+1));}}
+        let busy = s.downloads.iter().any(|d| !d.done && !d.paused)
+            || s.launch.is_some() || s.diagnostic.is_some();
+        if !busy && let Some(timer) = weak_timer.upgrade() { timer.stop(); }
     });
-    timer
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn instance_revision_roundtrips_without_truncating_u64_and_rejects_invalid_values() {
+        let record = InstanceRecord {
+            id: 99,
+            name: "revision test".into(),
+            version: "1.21.1".into(),
+            loader: "Fabric".into(),
+            game_directory: PathBuf::from("D:/Games/revision-test"),
+            revision: u64::MAX,
+        };
+        let update = instance_update(record.clone());
+        assert_eq!(instance_record(update.clone()).unwrap(), record);
+        for invalid in ["-1", "18446744073709551616", "invalid", ""] {
+            let mut broken = update.clone();
+            broken.revision = invalid.into();
+            assert!(instance_record(broken).is_err());
+        }
+    }
+
+    #[test]
+    fn home_selector_keeps_all_ids_when_versions_filter_hides_selected_instance() {
+        let mut state = State::default();
+        let visible = filtered_game_items(&state.games, 1, "原版");
+        assert_eq!(
+            visible.iter().map(|item| item.id).collect::<Vec<_>>(),
+            vec![20]
+        );
+
+        let options = installed_instance_items(&state.games);
+        assert_eq!(
+            options.iter().map(|item| item.id).collect::<Vec<_>>(),
+            vec![10, 20, 30]
+        );
+        state.select(options[2].id);
+        assert_eq!(state.game().unwrap().id, 30);
+        assert!(visible.iter().all(|item| item.id != state.selected));
+        assert_eq!(filtered_game_items(&state.games, 0, "原版").len(), 3);
+    }
+
+    #[test]
+    fn repeated_versions_and_names_have_distinct_selector_labels_and_targets() {
+        let mut state = State::default();
+        state.games[1].version = state.games[0].version.clone();
+        state.games[1].loader = state.games[0].loader.clone();
+        state.games[1].name = state.games[0].name.clone();
+        state.games[0].game_directory = PathBuf::from("D:/Games/first");
+        state.games[1].game_directory = PathBuf::from("D:/Games/second");
+        let options = installed_instance_items(&state.games);
+        assert_ne!(options[0].selector_label, options[1].selector_label);
+        assert!(options[0].selector_label.contains("#10"));
+        assert!(options[1].selector_label.contains("#20"));
+        assert_eq!(options[2].selector_label, "1.20.1 · Forge");
+        state.select(options[1].id);
+        assert_eq!(
+            state.game().unwrap().game_directory,
+            PathBuf::from("D:/Games/second")
+        );
+        state.select(9999);
+        assert_eq!(state.selected, 20);
+    }
+
+    #[test]
+    fn folder_action_rejects_empty_missing_and_regular_file_paths() {
+        assert!(open_directory(Path::new("")).is_err());
+        // This source is a known existing regular file; no external process is started.
+        let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/controller.rs");
+        assert!(open_directory(&source.join("missing-instance")).is_err());
+        assert!(open_directory(&source).unwrap_err().contains("不是文件夹"));
+    }
 }

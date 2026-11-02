@@ -36,7 +36,7 @@ pub fn install_if_requested(ui: &AppWindow) -> Option<Rc<Timer>> {
         return None;
     }
     let output = PathBuf::from(args.next().unwrap_or_else(|| "ui-benchmark.json".into()));
-    ui.global::<Theme>().set_pixel_glass(true);
+    ui.global::<Theme>().set_pixel_glass(false);
     let samples = Rc::new(RefCell::new(Samples::default()));
     let data = samples.clone();
     let supported = ui
@@ -81,7 +81,7 @@ pub fn install_if_requested(ui: &AppWindow) -> Option<Rc<Timer>> {
             let s = samples.borrow();
             let report = serde_json::json!({
                 "graphics_api": s.api, "render_notifier_available": supported,
-                "scenario": "27 programmatic page navigations, 1180x700 logical px, pixel glass, 280ms morph; NOT OS input-to-photon latency",
+                "scenario": "27 programmatic page navigations, Daylight 04 native shell; NOT OS input-to-photon latency",
                 "dispatch_to_before_render": summary(&s.dispatch_to_render),
                 "cpu_render_submission": summary(&s.submit),
                 "active_frame_interval_under_100ms": summary(&s.intervals),

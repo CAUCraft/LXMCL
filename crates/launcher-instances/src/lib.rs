@@ -11,7 +11,7 @@ use launcher_api::{
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct JsonInstancesConfig {
@@ -50,11 +50,15 @@ struct InstanceFile {
 
 pub struct JsonInstances {
     path: PathBuf,
+    writes: Mutex<()>,
 }
 
 impl JsonInstances {
     pub fn new(path: PathBuf) -> Self {
-        Self { path }
+        Self {
+            path,
+            writes: Mutex::new(()),
+        }
     }
 
     fn read(&self) -> Result<Vec<InstanceRecord>, InstanceError> {
@@ -151,6 +155,7 @@ impl InstanceRepository for JsonInstances {
     }
 
     fn create(&self, draft: &NewInstance) -> Result<InstanceRecord, InstanceError> {
+        let _write = self.writes.lock().unwrap();
         let mut instances = self.read()?;
         let name = valid_name(&draft.name, &instances, None)?;
         let version = draft.version.trim();
@@ -175,8 +180,25 @@ impl InstanceRepository for JsonInstances {
         Ok(record)
     }
 
-    fn rename(&self, id: i32, name: &str) -> Result<InstanceRecord, InstanceError> {
+    fn rename(
+        &self,
+        id: i32,
+        expected_revision: u64,
+        name: &str,
+    ) -> Result<InstanceRecord, InstanceError> {
+        let _write = self.writes.lock().unwrap();
         let mut instances = self.read()?;
+        let current = instances
+            .iter()
+            .find(|instance| instance.id == id)
+            .ok_or(InstanceError::NotFound { id })?;
+        if current.revision != expected_revision {
+            return Err(InstanceError::RevisionConflict {
+                id,
+                expected: expected_revision,
+                actual: current.revision,
+            });
+        }
         let name = valid_name(name, &instances, Some(id))?;
         let instance = instances
             .iter_mut()
@@ -222,13 +244,52 @@ mod tests {
         assert_eq!(created.revision, 1);
         assert_eq!(created.game_directory, games.join("instance-1"));
 
-        let renamed = service.rename(created.id, "新名字").unwrap();
+        let renamed = service
+            .rename(created.id, created.revision, "新名字")
+            .unwrap();
         assert_eq!(renamed.name, "新名字");
         assert_eq!(renamed.revision, 2);
         assert_eq!(renamed.game_directory, created.game_directory);
 
         let restarted = JsonInstances::new(file);
+        assert!(matches!(
+            service.rename(created.id, created.revision, "旧请求"),
+            Err(InstanceError::RevisionConflict { actual: 2, .. })
+        ));
+        assert_eq!(
+            service
+                .rename(renamed.id, renamed.revision, "新名字")
+                .unwrap(),
+            renamed
+        );
         assert_eq!(restarted.list().unwrap(), vec![renamed]);
+    }
+
+    #[test]
+    fn shared_repository_serializes_concurrent_writes() {
+        let dir = tempfile::tempdir().unwrap();
+        let service = Arc::new(JsonInstances::new(dir.path().join("instances.json")));
+        let barrier = Arc::new(std::sync::Barrier::new(8));
+        let threads: Vec<_> = (0..8)
+            .map(|index| {
+                let service = service.clone();
+                let barrier = barrier.clone();
+                let mut input = draft(dir.path());
+                input.name = format!("instance-{index}");
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    service.create(&input).unwrap()
+                })
+            })
+            .collect();
+        for thread in threads {
+            thread.join().unwrap();
+        }
+        let records = service.list().unwrap();
+        assert_eq!(records.len(), 8);
+        let mut ids: Vec<_> = records.iter().map(|record| record.id).collect();
+        ids.sort();
+        assert_eq!(ids, (1..=8).collect::<Vec<_>>());
     }
 
     #[test]

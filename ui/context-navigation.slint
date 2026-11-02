@@ -1,0 +1,57 @@
+import { ScrollView } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { AppState } from "models.slint";
+import { Guidance } from "guidance-models.slint";
+import { NativeButton, Muted } from "components.slint";
+
+// Every workspace uses this same rail. Instance and utility contexts replace it.
+export component ContextNavigation inherits Rectangle {
+    callback search();
+    property <bool> utility: AppState.page == 7 || AppState.page == 8;
+    property <bool> instance: AppState.page == 1 && AppState.instance-detail-open;
+    property <bool> settings: AppState.page == 5 || AppState.page == 6;
+    property <[string]> items: root.utility ? ["帮助", "诊断"] : root.instance ? ["概览", "模组", "资源包", "光影", "世界", "设置", "日志"] : root.settings ? ["常规", "游戏", "Java", "网络", "外观", "账号", "扩展", "关于"] : AppState.page == 2 ? ["联机"] : ["我的实例", "资源", "任务"];
+    property <int> selected-index: root.utility ? (AppState.page == 8 ? 0 : 1) : root.instance ? AppState.instance-section : root.settings ? (AppState.page == 5 ? 5 : AppState.settings-category) : AppState.page == 2 ? 0 : AppState.page == 3 ? 1 : AppState.page == 4 ? 2 : 0;
+    property <length> tab-width: root.settings || root.instance ? 66px : 92px;
+    height: 44px;
+    background: Theme.context-surface;
+    Rectangle { y: parent.height - 1px; height: 1px; background: Theme.border-soft; }
+    HorizontalLayout {
+        padding-left: 16px; padding-right: 16px; padding-top: 6px; padding-bottom: 6px; spacing: 8px;
+        if(root.instance || root.utility): NativeButton {
+            width: 34px; text: "‹"; description: "返回 Alt+Left"; quiet: true; show-tooltip: true;
+            clicked => {
+                if(root.instance) { AppState.back-to-instances(); }
+                else { AppState.page = Guidance.help-return-page == 7 || Guidance.help-return-page == 8 ? 6 : Guidance.help-return-page; }
+            }
+        }
+        if(root.instance): Muted { text: AppState.inspected-game.name; width: 100px; }
+        ScrollView {
+            min-width: 0px; horizontal-stretch: 1; vertical-scrollbar-policy: always-off;
+            content-width: root.items.length * root.tab-width; content-height: 32px;
+            Rectangle {
+                width: root.items.length * root.tab-width; height: 32px;
+            HorizontalLayout {
+                spacing: 0px;
+                for label[i] in root.items: NativeButton {
+                    width: root.tab-width; height: 32px; text: label; quiet: true; selected: i == root.selected-index;
+                    Rectangle { x: 12px; y: parent.height - 2px; width: parent.width - 24px; height: 2px; background: i == root.selected-index ? Theme.accent : transparent; }
+                    clicked => {
+                        if(root.utility) { AppState.navigate(i == 0 ? 8 : 7); }
+                        else if(root.instance) {
+                            AppState.instance-section = i;
+                            if(i >= 1 && i <= 4) { AppState.switch-game-tab(i - 1); }
+                            if(i == 5) { AppState.switch-game-tab(5); }
+                        }
+                        else if(root.settings) { AppState.settings-category = i; AppState.navigate(i == 5 ? 5 : 6); }
+                        else if(AppState.page != 2) { AppState.navigate(i == 0 ? 1 : i == 1 ? 3 : 4); }
+                    }
+                }
+            }
+        }
+        }
+        NativeButton { width: 34px; with-icon: true; icon: @image-url("icons/pixel/search.svg"); quiet: true; description: "搜索 Ctrl+K"; show-tooltip: true; clicked => { root.search(); } }
+        NativeButton { width: 34px; text: "?"; quiet: true; description: "上下文帮助 F1"; show-tooltip: true; clicked => { Guidance.context-help(); } }
+        NativeButton { width: 34px; with-icon: true; icon: @image-url("icons/diagnostics.svg"); quiet: true; description: "诊断与工具"; show-tooltip: true; clicked => { AppState.navigate(7); } }
+    }
+}

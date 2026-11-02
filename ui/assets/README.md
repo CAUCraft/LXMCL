@@ -4,7 +4,7 @@
 
 | 项目文件 | 原始素材 | 使用位置 |
 | --- | --- | --- |
-| `launcher-logo.png` | 美术部 `Logo_128x128.png` | 侧栏、窗口图标 |
+| `launcher-logo.png` | 美术部 `Logo_128x128.png` | 顶部品牌、窗口图标 |
 | `club-logo.svg` | 美术部 `logo (1).svg` | 社团卡片、联机页 |
 | `luanxiao.png` | 美术部补充的 `luanxiao.png` | 孪枭的双层立体皮肤 |
 | `club-skin.png` | 早期提供的扁平化皮肤 | 保留参考，已不参与渲染 |
@@ -30,3 +30,23 @@
 这里记录素材来源，不将外部视频或美术部作品声明为程序代码原创。当前仓库尚未选定统一许可证。
 
 孪枭原始文件 SHA-256：`FE277C62DE9915ADCFB984562BB7E9E399C5D5BEA8DA8567CD7E0E62FCC68F61`。素材维护时可以据此确认没有意外改写原件。旧 `club-skin.png` 虽使用 PNG 扩展名，实际是 JPEG，不能用于需要透明通道的双层渲染。
+
+## 日光 04 默认背景
+
+`daylight-river.png` 是设计阶段生成并确认的独立河谷场景，供原生 Shell 和 UI Skill 中的参考原型共用。它是 AI 生成的背景素材，不包含控件、Windows 桌面或任务栏。原 Logo、皮肤及其许可保持不变。布局、皮肤和媒体渲染要求见 [UI Skill](../../.agents/skills/lxmcl-ui/SKILL.md)。
+
+## 静态风景与生成器
+
+`scenic-home.png` 是专为本项目制作的 **1920 × 1080 RGB 静态体素河谷风景**：蓝天、立方云、两岸树林、曲折河流与远山。几何、像素材质、光照、阴影及水面反射均由 [`tools/scenic-background.rs`](../../tools/scenic-background.rs) 中的确定性 Rust 程序生成，未使用 Minecraft 游戏贴图、外部图片、原有 Logo / 皮肤，也未裁切、采样或复用首页参考截图的像素。参考图只用于构图方向。
+
+**来源与许可：** 此生成器及其输出风景为 LXMCL 本轮新增原创贡献，以 **CC0-1.0（公有领域贡献）** 提供；此许可仅适用于 `scenic-home.png` 与该生成器，不改变本目录既有美术、视频或整个仓库的许可状态。CC0 法律文本：<https://creativecommons.org/publicdomain/zero/1.0/legalcode>。
+
+生成器默认仅依赖 Rust 标准库，输出 PPM；可用 FFmpeg 转为 PNG：
+
+```powershell
+rustc --edition 2021 -O tools/scenic-background.rs -o target/scenic-background.exe
+target/scenic-background.exe target/scenic-home.ppm
+ffmpeg -y -i target/scenic-home.ppm ui/assets/scenic-home.png
+```
+
+背景离线生成，中间产物放在已忽略的 `target/`，不增加应用运行时的渲染或动画成本。

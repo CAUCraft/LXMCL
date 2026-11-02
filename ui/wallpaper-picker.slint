@@ -13,7 +13,7 @@ export component WallpaperPicker inherits Panel {
             AppButton { text: "视频壁纸"; primary: AppState.wallpaper-enabled; clicked => { AppState.configure-wallpaper(true, AppState.wallpaper-paused); } }
             AppButton { text: AppState.wallpaper-paused ? "继续播放" : "暂停画面"; enabled: AppState.wallpaper-enabled; clicked => { AppState.configure-wallpaper(true, !AppState.wallpaper-paused); } }
         }
-        Muted { text: "选择一个世界，让风景在像素玻璃后流动。"; }
+        Muted { text: "只在主页播放；其他页面和最小化时暂停刷新。"; }
         Rectangle {
             height: 266px;
             for item[i] in AppState.wallpapers: Rectangle {

@@ -8,6 +8,7 @@
 //! 正在执行的保存最多一个。窗口关闭后不再接受新请求，但已接受的最后一份
 //! 保存快照仍会写完，然后工作线程才退出。
 
+use crate::state::Preferences;
 use launcher_api::{LauncherSettings, SettingsError, SettingsService};
 use std::collections::VecDeque;
 use std::sync::{
@@ -22,8 +23,11 @@ const MAX_PENDING_LOADS: usize = 4;
 /// 一次待执行的保存：快照与它对应的 UI 回调一起被新点击覆盖。
 struct SaveJob {
     settings: LauncherSettings,
-    on_done: Box<dyn FnOnce(Result<(), SettingsError>) + Send>,
+    preferences: Option<Preferences>,
+    on_done: SaveCallback,
 }
+
+type SaveCallback = Box<dyn FnOnce(Result<(), SettingsError>, Result<(), String>) + Send>;
 
 #[derive(Default)]
 struct MailboxState {
@@ -157,18 +161,51 @@ impl SettingsBridge {
     ) {
         let job = SaveJob {
             settings,
-            on_done: Box::new(on_done),
+            preferences: None,
+            on_done: Box::new(move |result, _preferences| on_done(result)),
         };
-        {
+        self.enqueue_save(job);
+    }
+
+    /// Saves both click-time snapshots on the existing coalescing worker.
+    /// They share one pending slot, but the two files are not an atomic transaction.
+    pub fn save_with_preferences_async(
+        &self,
+        settings: LauncherSettings,
+        preferences: Preferences,
+        on_done: impl FnOnce(Result<(), SettingsError>, Result<(), String>) + Send + 'static,
+    ) {
+        self.enqueue_save(SaveJob {
+            settings,
+            preferences: Some(preferences),
+            on_done: Box::new(on_done),
+        });
+    }
+
+    fn enqueue_save(&self, mut job: SaveJob) {
+        let replaced = {
             let mut state = lock(&self.core.mailbox.state);
             if state.closed {
                 drop(state);
                 // 工作线程已停止：直接在调用线程报告失败。
-                (job.on_done)(Err(SettingsError::Unavailable));
+                (job.on_done)(
+                    Err(SettingsError::Unavailable),
+                    Err("设置工作线程不可用".into()),
+                );
                 return;
             }
+            let mut replaced = state.save.take();
+            // A Java-only update must not discard the latest accepted UI preferences.
+            if job.preferences.is_none() {
+                job.preferences = replaced
+                    .as_mut()
+                    .and_then(|previous| previous.preferences.take());
+            }
             state.save = Some(job);
-        }
+            replaced
+        };
+        // Callback captures may own resources; dispose of superseded jobs outside the lock.
+        drop(replaced);
         self.core.mailbox.ready.notify_one();
     }
 
@@ -188,6 +225,7 @@ fn run_worker(
         Save(SaveJob),
     }
 
+    let mut last_preferences_error = None;
     loop {
         let job = {
             let mut state = lock(&mailbox.state);
@@ -212,13 +250,26 @@ fn run_worker(
                 // 读取方可能已放弃等待；发送失败不影响后续命令。
                 let _ = reply.send(service.load());
             }
-            Job::Save(SaveJob { settings, on_done }) => {
+            Job::Save(SaveJob {
+                settings,
+                preferences,
+                on_done,
+            }) => {
                 let result = service.save(&settings);
-                // 只保留最后一次写入的结果，供 join 在退出时如实返回。
-                let failure = result.as_ref().err().map(ToString::to_string);
+                let preferences_result = preferences
+                    .as_ref()
+                    .map(|preferences| preferences.save().map_err(|error| error.to_string()));
+                let failure = save_failures(
+                    &result,
+                    preferences_result.as_ref(),
+                    &mut last_preferences_error,
+                );
                 *lock(&last_save_error) = failure.clone();
+                let preferences_result = preferences_result.unwrap_or(Ok(()));
                 // 窗口可能已关闭；无法回传时至少把失败原因写入日志。
-                if slint::invoke_from_event_loop(move || on_done(result)).is_err() {
+                if slint::invoke_from_event_loop(move || on_done(result, preferences_result))
+                    .is_err()
+                {
                     match failure {
                         Some(error) => eprintln!("设置保存失败且结果无法回传：{error}"),
                         None => eprintln!("设置保存结果无法回传：Slint 事件循环已退出"),
@@ -227,6 +278,24 @@ fn run_worker(
             }
         }
     }
+}
+
+fn save_failures(
+    settings: &Result<(), SettingsError>,
+    preferences: Option<&Result<(), String>>,
+    last_preferences_error: &mut Option<String>,
+) -> Option<String> {
+    if let Some(result) = preferences {
+        *last_preferences_error = result.as_ref().err().cloned();
+    }
+    let mut errors = Vec::new();
+    if let Err(error) = settings {
+        errors.push(format!("游戏设置：{error}"));
+    }
+    if let Some(error) = last_preferences_error {
+        errors.push(format!("界面偏好：{error}"));
+    }
+    (!errors.is_empty()).then(|| errors.join("；"))
 }
 
 impl SettingsWorker {
@@ -251,6 +320,15 @@ impl SettingsWorker {
     }
 }
 
+impl Drop for SettingsWorker {
+    fn drop(&mut self) {
+        // Startup/window errors must flush accepted settings just like normal exit.
+        if let Err(error) = self.join() {
+            eprintln!("{error}");
+        }
+    }
+}
+
 /// 结果回调里展示提示用：不依赖 `State`（它不是 `Send`），
 /// 定时器只清除内容未变的那条提示，不会覆盖后续新提示。
 pub fn toast_detached(ui: &slint::Weak<crate::AppWindow>, message: String) {
@@ -258,11 +336,13 @@ pub fn toast_detached(ui: &slint::Weak<crate::AppWindow>, message: String) {
     if let Some(ui) = ui.upgrade() {
         use slint::ComponentHandle;
         let app = ui.global::<crate::AppState>();
-        app.set_toast(message.clone().into());
+        app.set_toast(message.into());
+        let generation = app.get_toast_generation().wrapping_add(1);
+        app.set_toast_generation(generation);
         let weak = ui.as_weak();
         slint::Timer::single_shot(std::time::Duration::from_secs(5), move || {
             if let Some(ui) = weak.upgrade()
-                && ui.global::<crate::AppState>().get_toast().as_str() == message
+                && ui.global::<crate::AppState>().get_toast_generation() == generation
             {
                 ui.global::<crate::AppState>().set_toast("".into());
             }
@@ -499,6 +579,76 @@ mod tests {
             Some("third".to_string())
         );
         assert_eq!(state.loads.len(), 0);
+    }
+
+    #[test]
+    fn combined_snapshots_coalesce_together_and_java_updates_retain_preferences() {
+        let mailbox = Arc::new(Mailbox {
+            state: Mutex::new(MailboxState::default()),
+            ready: Condvar::new(),
+        });
+        let bridge = SettingsBridge {
+            core: Arc::new(BridgeCore {
+                mailbox: Arc::clone(&mailbox),
+            }),
+        };
+        let first = Preferences {
+            folder: "first-ui".into(),
+            ..Preferences::default()
+        };
+        let latest = Preferences {
+            folder: "latest-ui".into(),
+            memory: 8,
+            ..Preferences::default()
+        };
+        bridge.save_with_preferences_async(settings("first-business"), first, |_, _| {});
+        bridge.save_with_preferences_async(settings("latest-business"), latest, |_, _| {});
+        bridge.save_async(settings("java-only"), |_| {});
+        let state = lock(&mailbox.state);
+        let pending = state.save.as_ref().unwrap();
+        assert_eq!(pending.settings.game_root.to_string_lossy(), "java-only");
+        let preferences = pending.preferences.as_ref().unwrap();
+        assert_eq!(preferences.folder, "latest-ui");
+        assert_eq!(preferences.memory, 8);
+        assert!(state.loads.is_empty());
+    }
+
+    #[test]
+    fn preferences_failure_survives_business_only_success_until_preferences_retry() {
+        let mut previous = None;
+        let failed = Err("preferences disk full".to_string());
+        let failure = save_failures(&Ok(()), Some(&failed), &mut previous).unwrap();
+        assert!(failure.contains("preferences disk full"));
+        assert!(
+            save_failures(&Ok(()), None, &mut previous)
+                .unwrap()
+                .contains("preferences disk full")
+        );
+        let both = save_failures(
+            &Err(SettingsError::Encode("settings disk full".into())),
+            None,
+            &mut previous,
+        )
+        .unwrap();
+        assert!(both.contains("preferences disk full") && both.contains("settings disk full"));
+        assert!(save_failures(&Ok(()), Some(&Ok(())), &mut previous).is_none());
+    }
+
+    #[test]
+    fn closed_mailbox_rejects_both_snapshots_without_writing_preferences() {
+        let (bridge, mut worker) = SettingsBridge::start(service()).unwrap();
+        worker.join().unwrap();
+        let (reply, received) = mpsc::channel();
+        bridge.save_with_preferences_async(
+            settings("closed"),
+            Preferences::default(),
+            move |business, preferences| {
+                reply.send((business, preferences)).unwrap();
+            },
+        );
+        let (business, preferences) = received.recv_timeout(Duration::from_secs(2)).unwrap();
+        assert!(matches!(business, Err(SettingsError::Unavailable)));
+        assert!(preferences.is_err());
     }
 
     #[test]

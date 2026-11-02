@@ -1,13 +1,13 @@
 import { ScrollView, LineEdit, ComboBox, CheckBox } from "std-widgets.slint";
 import { Theme } from "../theme.slint";
 import { AppState } from "../models.slint";
-import { Label, Muted, Heading, Panel, AppButton, Badge, Progress, Divider, EmptyState } from "../components.slint";
+import { PageSurface, Label, Muted, Heading, Panel, AppButton, Badge, Progress, Divider, EmptyState } from "../components.slint";
 import { MascotStage } from "../branding.slint";
 
-export component ResourcesPage inherits Rectangle {
+export component ResourcesPage inherits PageSurface {
     background: transparent;
     VerticalLayout {
-        padding: 28px; spacing: 18px;
+        padding: 20px; spacing: 12px;
         Heading { text: "资源中心"; }
         HorizontalLayout {
             spacing: 12px;
@@ -17,23 +17,25 @@ export component ResourcesPage inherits Rectangle {
         }
         HorizontalLayout {
             spacing: 6px;
-            for label[i] in ["模组", "整合包", "资源包", "光影", "世界"]: AppButton { text: label; primary: AppState.resource-category == i; clicked => { AppState.filter-resources(AppState.resource-query, i, AppState.compatible-only); } }
+            ComboBox { width: 180px; height: 34px; model: ["模组", "整合包", "资源包", "光影", "世界"]; current-index: AppState.resource-category; selected(_) => { AppState.filter-resources(AppState.resource-query, self.current-index, AppState.compatible-only); } }
             Rectangle { horizontal-stretch: 1; }
             CheckBox { text: "仅看兼容"; checked: AppState.compatible-only; toggled => { AppState.filter-resources(AppState.resource-query, AppState.resource-category, self.checked); } }
         }
-        HorizontalLayout { Muted { text: AppState.resources.length + " 项资源  ·  演示目录"; } Muted { text: "目标：" + AppState.current-game.version + " / " + AppState.current-game.loader; horizontal-alignment: right; } }
+        HorizontalLayout { Muted { text: AppState.resources.length + " 项资源  ·  演示目录"; } Muted { text: "目标：" + AppState.current-game.name + " · #" + AppState.current-game.id + " · " + AppState.current-game.version + " / " + AppState.current-game.loader; horizontal-alignment: right; } }
+        Panel {
+        border-radius: 8px;
         ScrollView {
             horizontal-scrollbar-policy: always-off;
             VerticalLayout {
-                spacing: 12px;
-                for item in AppState.resources: Panel {
-                    height: 118px;
+                spacing: 0px;
+                for item in AppState.resources: Rectangle {
+                    height: 92px;
                     HorizontalLayout {
-                        padding: 18px; spacing: 18px;
-                        Rectangle { width: 48px; height: 48px; border-radius: Theme.pixel-glass ? 0px : 12px; background: item.tint; Image { x: 12px; y: 12px; width: 24px; height: 24px; source: @image-url("../icons/resources.svg"); colorize: white; } }
+                        padding: 12px; spacing: 12px;
+                        Rectangle { width: 36px; height: 36px; border-radius: 6px; background: item.tint; Image { x: 8px; y: 8px; width: 20px; height: 20px; source: @image-url("../icons/resources.svg"); colorize: white; } }
                         VerticalLayout {
-                            spacing: 6px;
-                            HorizontalLayout { Label { text: item.name; font-size: 17px; font-weight: 600; } Rectangle { horizontal-stretch: 1; } Badge { text: item.source; } }
+                            spacing: 4px;
+                            HorizontalLayout { Label { text: item.name; font-size: 14px; font-weight: 600; } Rectangle { horizontal-stretch: 1; } Badge { text: item.source; } }
                             Label { text: item.description; font-size: 13px; }
                             Muted { text: item.detail; }
                         }
@@ -43,30 +45,32 @@ export component ResourcesPage inherits Rectangle {
                             AppButton { text: item.installed ? "已安装" : "查看并安装"; enabled: !item.installed && item.compatible; clicked => { AppState.install-resource(item.id); } }
                         }
                     }
+                    Divider { y: parent.height - 1px; }
                 }
                 if(AppState.resources.length == 0): EmptyState { title: "没有匹配的资源"; description: "试试其他关键词，或关闭「仅看兼容」查看全部演示条目。"; }
                 Rectangle { vertical-stretch: 1; }
             }
         }
+        }
     }
 }
 
-export component DownloadsPage inherits Rectangle {
+export component DownloadsPage inherits PageSurface {
     background: transparent;
     VerticalLayout {
-        padding: 28px; spacing: 20px;
+        padding: 20px; spacing: 12px;
         HorizontalLayout { Heading { text: "下载任务"; } AppButton { text: "清除已完成"; enabled: AppState.downloads.length > 0; clicked => { AppState.clear-downloads(); } } }
-        Muted { text: "当前使用模拟进度，方便测试暂停、继续、取消及安装后的界面变化。"; wrap: word-wrap; }
+        Muted { text: "当前仅展示模拟资源任务，尚未接入真实下载。"; wrap: word-wrap; }
         ScrollView {
             horizontal-scrollbar-policy: always-off;
             VerticalLayout {
-                spacing: 12px;
+                spacing: 6px;
                 for item in AppState.downloads: Panel {
-                    height: 128px;
+                    height: 104px; border-radius: 8px;
                     VerticalLayout {
-                        padding: 18px; spacing: 12px;
+                        padding: 12px; spacing: 6px;
                         HorizontalLayout {
-                            VerticalLayout { spacing: 6px; Label { text: item.name; font-weight: 600; font-size: 16px; } Muted { text: item.detail; } }
+                            VerticalLayout { spacing: 4px; Label { text: item.name; font-weight: 600; font-size: 14px; } Muted { text: item.detail; } }
                             Badge { text: item.state; positive: item.done; }
                             AppButton { text: item.done ? "查看游戏" : item.paused ? "继续" : "暂停"; clicked => { if(item.done) { AppState.view-download(item.id); } else { AppState.toggle-download(item.id); } } }
                             if(!item.done): AppButton { text: "取消"; quiet: true; clicked => { AppState.cancel-download(item.id); } }
@@ -76,11 +80,11 @@ export component DownloadsPage inherits Rectangle {
                     }
                 }
                 if(AppState.downloads.length == 0): Panel {
-                    height: 290px;
+                    height: 184px; border-radius: 8px;
                     VerticalLayout {
-                        padding: 35px; spacing: 18px;
-                        EmptyState { title: "暂时没有下载任务"; description: "安装资源或准备进入社团服时，任务会出现在这里。"; }
-                        HorizontalLayout { Rectangle {} AppButton { text: "去资源中心看看"; primary: true; clicked => { AppState.navigate(3); } } Rectangle {} }
+                        padding: 16px; spacing: 12px;
+                        EmptyState { title: "暂无模拟任务"; description: "在资源中心操作演示条目后，可在这里查看模拟进度。"; }
+                        HorizontalLayout { Rectangle {} AppButton { text: "打开资源中心"; clicked => { AppState.navigate(3); } } Rectangle {} }
                     }
                 }
                 Rectangle { vertical-stretch: 1; }
@@ -89,35 +93,35 @@ export component DownloadsPage inherits Rectangle {
     }
 }
 
-export component AccountsPage inherits Rectangle {
+export component AccountsPage inherits PageSurface {
     background: transparent;
     ScrollView {
         horizontal-scrollbar-policy: always-off;
         VerticalLayout {
-            padding: 28px; spacing: 20px;
+            padding: 20px; spacing: 12px;
             HorizontalLayout { Heading { text: "账号与装扮"; } AppButton { text: "＋ 添加账号"; primary: true; clicked => { AppState.open-modal("account", 0); } } }
             Muted { text: "切换游戏身份；皮肤和披风统一在这里管理。"; }
             for account in AppState.accounts: Panel {
-                height: 90px;
+                height: 76px; border-radius: 8px;
                 HorizontalLayout {
-                    padding: 18px; spacing: 16px;
-                    Rectangle { width: 44px; height: 44px; border-radius: Theme.pixel-glass ? 0px : 14px; background: Theme.accent-soft; Image { source: @image-url("../icons/account.svg"); width: 22px; height: 22px; x: 11px; y: 11px; colorize: Theme.accent; } }
-                    VerticalLayout { spacing: 6px; Label { text: account.name; font-size: 17px; font-weight: 600; } Muted { text: account.kind; } }
+                    padding: 12px; spacing: 12px;
+                    Rectangle { width: 36px; height: 36px; border-radius: 6px; background: Theme.accent-soft; Image { source: @image-url("../icons/account.svg"); width: 20px; height: 20px; x: 8px; y: 8px; colorize: Theme.accent; } }
+                    VerticalLayout { spacing: 4px; Label { text: account.name; font-size: 14px; font-weight: 600; } Muted { text: account.kind; } }
                     if(account.active): Badge { text: "当前账号"; positive: true; }
                     AppButton { text: "使用此账号"; enabled: !account.active; clicked => { AppState.select-account(account.id); } }
                 }
             }
             Panel {
-                height: 328px;
+                height: 304px; border-radius: 8px;
                 HorizontalLayout {
-                    padding: 20px; spacing: 28px;
+                    padding: 16px; spacing: 20px;
                     Rectangle { width: 230px; border-radius: Theme.pixel-glass ? 0px : 12px; background: Theme.canvas; MascotStage { x: 4px; y: 0px; width: parent.width - 8px; height: parent.height - 4px; controls: true; } }
                     VerticalLayout {
                         padding-top: 22px; padding-bottom: 22px; spacing: 14px;
                         HorizontalLayout { Badge { text: "社团形象"; } Rectangle { horizontal-stretch: 1; } }
                         Label { text: "孪枭"; font-size: 28px; font-weight: 700; }
                         Muted { text: "美术部提供  /  64 × 64 双层经典模型"; }
-                        Label { text: "转动看看，每一面都有小细节。"; }
+                        Label { text: "模型预览"; font-size: 14px; }
                         Muted { text: "使用下方方向按钮旋转，点击复位恢复初始视角。"; wrap: word-wrap; }
                         Rectangle { vertical-stretch: 1; }
                         Muted { text: "仅本地预览，尚未应用到游戏账号。"; color: Theme.sky; wrap: word-wrap; }
