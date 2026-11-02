@@ -14,6 +14,7 @@ pub(crate) struct ServiceRecord {
 
 #[derive(Default)]
 pub(crate) struct ServiceRegistry {
+    pub(crate) contributions: crate::contribution::ContributionRegistry,
     services: Mutex<HashMap<&'static str, ServiceRecord>>,
 }
 
@@ -22,7 +23,7 @@ impl ServiceRegistry {
     pub(crate) fn provide<K: ServiceKey>(
         &self,
         service: Arc<K::Service>,
-        owner: &'static str,
+        owner: &str,
     ) -> Result<(), (Arc<K::Service>, RuntimeError)> {
         let mut services = self.lock();
         if let Some(existing) = services.get(K::NAME) {
@@ -62,13 +63,6 @@ impl ServiceRegistry {
             .downcast::<Arc<K::Service>>()
             .map(|outer| (*outer).clone())
             .map_err(|_| RuntimeError::ServiceTypeMismatch { service: K::NAME })
-    }
-
-    /// 确认某插件声明的服务确实以预期类型注册。
-    pub(crate) fn has_service(&self, service: &'static str, service_type: TypeId) -> bool {
-        self.lock()
-            .get(service)
-            .is_some_and(|record| record.service_type == service_type)
     }
 
     /// 锁外析构指定服务；调用方负责保证名称属于同一作用域。

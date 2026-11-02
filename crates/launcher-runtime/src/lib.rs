@@ -10,12 +10,14 @@
 
 mod catalog;
 mod context;
+mod contribution;
 mod error;
 mod host;
 mod key;
 mod plugin;
 mod product;
 mod registry;
+mod worker;
 
 pub use catalog::{PluginCatalog, PluginFactory};
 pub use context::Context;
@@ -24,3 +26,8 @@ pub use host::{PluginHost, PluginStatus};
 pub use key::{ServiceKey, ServiceRequirement};
 pub use plugin::{Plugin, PluginDescriptor, PluginState};
 pub use product::{PluginConfig, PluginEntry, ProductConfig, ProductIdentity};
+
+pub use contribution::{Contribution, ContributionKey};
+pub use worker::{
+    BoundedWorker, ShutdownPolicy, SubmitError, WorkerExit, WorkerSender, WorkerStatus,
+};

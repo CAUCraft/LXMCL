@@ -83,8 +83,12 @@ impl PluginHost {
             for requirement in &pending.descriptor.provides {
                 if let Some((_, expected)) = providers.get(requirement.service) {
                     return Err(if *expected != requirement.service_type {
-                        RuntimeError::ServiceTypeMismatch {
-                            service: requirement.service,
+                        RuntimeError::PluginFailed {
+                            id: pending.entry_id.clone(),
+                            reason: RuntimeError::ServiceTypeMismatch {
+                                service: requirement.service,
+                            }
+                            .to_string(),
                         }
                     } else {
                         RuntimeError::DuplicateService {
@@ -111,8 +115,12 @@ impl PluginHost {
                     });
                 };
                 if provider_type != requirement.service_type {
-                    return Err(RuntimeError::ServiceTypeMismatch {
-                        service: requirement.service,
+                    return Err(RuntimeError::PluginFailed {
+                        id: pending.entry_id.clone(),
+                        reason: RuntimeError::ServiceTypeMismatch {
+                            service: requirement.service,
+                        }
+                        .to_string(),
                     });
                 }
                 if provider_index != index {
@@ -158,15 +166,24 @@ impl PluginHost {
                 descriptor,
                 mut plugin,
             } = pending;
-            let plugin_id = descriptor.id;
-            let context = Context::new(plugin_id, Arc::clone(&registry));
-            let failure = match plugin.apply(&context) {
+            let context = Context::with_descriptor(
+                descriptor.clone(),
+                entry_id.clone(),
+                Arc::clone(&registry),
+            );
+            let applied =
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| plugin.apply(&context)))
+                    .unwrap_or_else(|_| {
+                        Err(RuntimeError::PluginFailed {
+                            id: entry_id.clone(),
+                            reason: "apply panicked".into(),
+                        })
+                    });
+            let failure = match applied {
                 Ok(()) => descriptor
                     .provides
                     .iter()
-                    .find(|requirement| {
-                        !registry.has_service(requirement.service, requirement.service_type)
-                    })
+                    .find(|requirement| !context.has_provided(requirement))
                     .map(|requirement| RuntimeError::PluginFailed {
                         id: entry_id.clone(),
                         reason: format!(
@@ -212,6 +229,13 @@ impl PluginHost {
     /// 按服务契约获取服务。服务必须在装配描述中已由某插件提供。
     pub fn service<K: ServiceKey>(&self) -> Result<Arc<K::Service>, RuntimeError> {
         self.registry.get::<K>()
+    }
+
+    /// Enumerates typed entries in stable (order, registration order) order.
+    pub fn contributions<K: crate::ContributionKey>(
+        &self,
+    ) -> Result<Vec<crate::Contribution<K::Entry>>, RuntimeError> {
+        self.registry.contributions.list::<K>()
     }
 
     /// 当前所有插件的状态快照。
@@ -482,5 +506,91 @@ mod tests {
                 "provider-instance",
             ]
         );
+    }
+}
+
+#[cfg(test)]
+mod contribution_rollback_tests {
+    use super::*;
+    use crate::{ContributionKey, PluginConfig};
+    use std::sync::{
+        Mutex,
+        atomic::{AtomicUsize, Ordering},
+    };
+    struct Entries;
+    struct Entry(Arc<AtomicUsize>);
+    impl Drop for Entry {
+        fn drop(&mut self) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+    impl ContributionKey for Entries {
+        type Entry = Entry;
+        const NAME: &'static str = "test.rollback";
+    }
+    struct Fails {
+        retained: Arc<Mutex<Option<Context>>>,
+        drops: Arc<AtomicUsize>,
+        panic: bool,
+    }
+    impl Plugin for Fails {
+        fn descriptor(&self) -> PluginDescriptor {
+            PluginDescriptor {
+                id: "same",
+                provides: vec![],
+                requires: vec![],
+            }
+        }
+        fn apply(&mut self, context: &Context) -> Result<(), RuntimeError> {
+            *self.retained.lock().unwrap() = Some(context.clone());
+            context.contribute::<Entries>("first", 0, Entry(self.drops.clone()))?;
+            context.contribute::<Entries>("second", 0, Entry(self.drops.clone()))?;
+            if self.panic {
+                panic!("apply failed");
+            }
+            Err(RuntimeError::PluginFailed {
+                id: "same".into(),
+                reason: "expected".into(),
+            })
+        }
+    }
+    #[test]
+    fn result_and_panic_failure_roll_back_all_contributions_and_close_retained_context() {
+        for panic in [false, true] {
+            let retained = Arc::new(Mutex::new(None));
+            let drops = Arc::new(AtomicUsize::new(0));
+            let saved = retained.clone();
+            let counter = drops.clone();
+            let mut catalog = PluginCatalog::new();
+            catalog
+                .register("fails", move |_| {
+                    Ok(Box::new(Fails {
+                        retained: saved.clone(),
+                        drops: counter.clone(),
+                        panic,
+                    }))
+                })
+                .unwrap();
+            assert!(
+                PluginHost::start(
+                    &catalog,
+                    &[PluginEntry {
+                        id: "product-id".into(),
+                        provider: "fails".into(),
+                        config: PluginConfig::empty("fails")
+                    }]
+                )
+                .is_err()
+            );
+            assert_eq!(drops.load(Ordering::SeqCst), 2);
+            let retained = retained.lock().unwrap();
+            assert!(matches!(
+                retained
+                    .as_ref()
+                    .unwrap()
+                    .contribute::<Entries>("late", 0, Entry(drops.clone())),
+                Err(RuntimeError::ContextClosed { .. })
+            ));
+        }
     }
 }
