@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"strconv"
 	"strings"
 
@@ -36,7 +35,7 @@ func button(c *ui.Context, label string, variant action.ButtonVariant, disabled 
 }
 
 func icon(c *ui.Context, svg *ui.SVG, label string, disabled bool) bool {
-	return action.ActionIcon(c, svg, action.ActionIconProps{Title: label}).Disabled(disabled).Clicked()
+	return action.ActionIcon(c, svg, action.ActionIconProps{Title: label, BlockSize: 28}).Disabled(disabled).Clicked()
 }
 
 func muted(c *ui.Context, label string) ui.Element {
@@ -68,12 +67,10 @@ func surface(c *ui.Context) ui.Element {
 	return layout.Block(c, layout.BlockProps{Variant: layout.BlockOutlined}).Radius(12)
 }
 
-func heading(c *ui.Context, title, sub string, controls ...func()) {
-	ui.Row(c).Gap(16).AlignItems(ui.Center).Shrink(0).Children(func() {
-		ui.Column(c).Gap(5).Grow(1).MinWidth(0).Children(func() {
-			display.Text(c, title, display.TextProps{Heading: 2}).Ellipsis("…")
-			muted(c, sub)
-		})
+func heading(c *ui.Context, title string, controls ...func()) {
+	ui.Row(c).Gap(12).AlignItems(ui.Center).Shrink(0).Children(func() {
+		display.Text(c, title, display.TextProps{Strong: true, FontSize: 19, Rows: 1}).
+			Grow(1).MinWidth(0).Ellipsis("…")
 		if len(controls) != 0 {
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(controls[0])
 		}
@@ -84,7 +81,7 @@ const searchHotkey = "mod+k"
 
 func (a *desktop) view(c *ui.Context) {
 	theme.Apply(c)
-	if a.ready && !a.form.open && !a.logOpen {
+	if a.ready && !a.form.open && !a.logOpen && !a.licensesOpen {
 		if mods, key, ok := display.HotkeyBinding(searchHotkey, display.HotkeyAuto); ok && c.Shortcut(mods, key) {
 			a.page, a.libraryPage, a.inspected = pageLibrary, 0, 0
 			a.focusSearch = len(a.state.Instances) > 0
@@ -133,6 +130,7 @@ func (a *desktop) view(c *ui.Context) {
 		}
 		a.editor(c.Key("instance-editor"))
 		a.logDialog(c.Key("game-log"))
+		a.licensesDialog(c.Key("third-party-licenses"))
 	})
 }
 
@@ -158,58 +156,51 @@ func (a *desktop) noticeBar(c *ui.Context) {
 	})
 }
 
+const titleBarHeight = 42
+
 func (a *desktop) topBar(c *ui.Context) {
 	tk, bar := theme.TokensOf(c), c.TitleBar()
 	w, _ := c.Size()
-	ui.Row(c).Height(max(bar.Height, 54)).Padding(0, bar.Right+14, 0, bar.Left+18).
-		Gap(15).AlignItems(ui.Center).Background(tk.BgContainer).Shrink(0).Children(func() {
-		ui.Row(c).Height(52).Gap(9).AlignItems(ui.Center).DragWindow().Children(func() {
-			ui.Image(c, a.logo).Size(29, 29).Fit(ui.Contain)
-			display.Text(c, "LXMCL", display.TextProps{Strong: true, FontSize: 16})
+	height := max(bar.Height, titleBarHeight)
+	ui.Box(c).Height(height).FillWidth().Background(tk.BgContainer).Shrink(0).DragWindow().Children(func() {
+		ui.Row(c).Absolute().Left(0).Right(0).Top(0).Bottom(0).
+			Justify(ui.Center).AlignItems(ui.Center).Children(func() {
+			nav.Tabs(c, &a.page, nav.TabsProps{Items: mainTabs, Variant: nav.TabsRounded, Size: theme.Small}, nil).
+				Label("主导航").AlignSelf(ui.Center).Shrink(0)
 		})
-		nav.Tabs(c, &a.page, nav.TabsProps{Items: mainTabs, Variant: nav.TabsRounded}, nil).AlignSelf(ui.Center)
-		ui.Row(c).Grow(1).Height(52).DragWindow()
-		name := a.state.Settings.Player
-		if name == "" {
-			name = "离线账号"
-		}
-		account := action.StyleButton(c, ui.ButtonBase(c).Label("离线账号"), "", action.ButtonProps{Variant: action.Text}).
-			PaddingX(6).Gap(7).Disabled(!a.ready)
-		account.Children(func() {
-			ink, wash := brand(c)
-			display.Avatar(c, name, display.AvatarProps{
-				Size: 24, Shape: display.AvatarCircle, Fallback: display.AvatarText, Background: wash,
+		ui.Row(c).Absolute().Left(bar.Left + 14).Top(0).Bottom(0).
+			Gap(7).AlignItems(ui.Center).Children(func() {
+			ui.Image(c, a.logo).Size(23, 23).Fit(ui.Contain)
+			display.Text(c, "LXMCL", display.TextProps{Strong: true, FontSize: 14})
+		})
+		ui.Row(c).Absolute().Right(bar.Right + 10).Top(0).Bottom(0).
+			AlignItems(ui.Center).Children(func() {
+			name := a.state.Settings.Player
+			if name == "" {
+				name = "离线账号"
+			}
+			account := action.StyleButton(c, ui.ButtonBase(c).Label("离线账号"), "",
+				action.ButtonProps{Variant: action.Text, Size: theme.Small}).PaddingX(5).Gap(6).Shrink(0).Disabled(!a.ready)
+			account.Children(func() {
+				ink, wash := brand(c)
+				display.Avatar(c, name, display.AvatarProps{
+					Size: 20, Shape: display.AvatarCircle, Fallback: display.AvatarText, Background: wash,
+				})
+				if w >= 920 {
+					display.Text(c, name, display.TextProps{FontSize: 12, Rows: 1}).MaxWidth(88).Ellipsis("…").TextColor(ink)
+				}
 			})
-			if w >= 920 {
-				display.Text(c, name, display.TextProps{FontSize: 13, Rows: 1}).MaxWidth(110).Ellipsis("…").TextColor(ink)
+			if account.Clicked() {
+				a.page, a.settingsPage = pageSettings, 2
 			}
 		})
-		if account.Clicked() {
-			a.page, a.settingsPage = pageSettings, 2
-		}
 	})
 }
 
 func (a *desktop) home(c *ui.Context) {
-	w, h := c.Size()
 	ui.Box(c).Grow(1).MinHeight(0).Clip().Background(ui.Hex("#19352e")).Children(func() {
 		ui.Image(c, a.hero).Absolute().Top(0).Left(0).Right(0).Bottom(0).Fit(ui.Cover)
-		ui.Box(c).Absolute().Top(0).Left(0).Right(0).Bottom(0).
-			Gradient(ui.Transparent, ui.Hex("#122b20").Alpha(0.75), 180)
-		ui.Column(c).Absolute().Bottom(34).Left(32).Width(min(510, w-410)).Gap(8).Children(func() {
-			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-				ui.Icon(c, lucide.Trees()).FontSize(17).TextColor(ui.Hex("#cce9d2"))
-				display.Text(c, "MINECRAFT  /  JAVA EDITION", display.TextProps{Strong: true, FontSize: 13, Rows: 1}).
-					TextColor(ui.Hex("#e2f3e7"))
-			})
-			display.Text(c, "从河谷出发", display.TextProps{Strong: true, FontSize: min(52, w/22), Rows: 1}).
-				TextColor(ui.Hex("#ffffff"))
-			if h >= 600 {
-				display.Text(c, "选择一个实例，继续你的世界。", display.TextProps{FontSize: 16}).
-					TextColor(ui.Hex("#edf5ed"))
-			}
-		})
-		card := surface(c).Absolute().Bottom(26).Right(26).Width(352).Padding(18).Gap(12).
+		card := surface(c).Absolute().Bottom(22).Right(22).Width(324).Padding(12).Gap(8).
 			Shadow(0, 10, 28, 0, ui.Hex("#0e221a").Alpha(0.28))
 		card.Children(func() { a.launchCard(c) })
 	})
@@ -217,16 +208,9 @@ func (a *desktop) home(c *ui.Context) {
 
 func (a *desktop) launchCard(c *ui.Context) {
 	i, ok := a.state.Find(a.state.Selected)
-	ui.Row(c).Gap(11).AlignItems(ui.Center).Children(func() {
-		leadIcon(c, lucide.Gamepad2(), 40)
-		ui.Column(c).Gap(3).Grow(1).MinWidth(0).Children(func() {
-			display.Text(c, "启动游戏", display.TextProps{Heading: 4})
-			muted(c, "选择本次启动的实例").FontSize(12)
-		})
-	})
 	if len(a.state.Instances) == 0 {
-		muted(c, "创建首个原版实例后，即可下载游戏并离线游玩。")
-		if launchButton(c, "创建首个实例", lucide.Plus(), a.busy) {
+		muted(c, "暂无实例")
+		if launchButton(c, "新建实例", lucide.Plus(), a.busy) {
 			a.create()
 		}
 		return
@@ -240,30 +224,30 @@ func (a *desktop) launchCard(c *ui.Context) {
 	for _, item := range a.state.Instances {
 		options = append(options, field.SelectOption{Value: strconv.Itoa(item.ID), Label: item.Name + " · " + item.Version})
 	}
-	field.Select(c, &selection, field.SelectProps{Options: options, Placeholder: "选择游戏实例", Disabled: a.busy, Size: theme.Large}).
+	selectBox := field.Select(c, &selection, field.SelectProps{Options: options, Placeholder: "选择实例", Disabled: a.busy}).
 		Label("启动实例")
+	if a.busy {
+		selectBox.TextColor(theme.TokensOf(c).TextSecondary)
+	}
 	if selection != previous {
 		id, _ := strconv.Atoi(selection)
 		a.choose(id)
 	}
 	label := "下载并启动"
 	if a.installed[i.ID] {
-		label = "进入游戏"
+		label = "启动游戏"
 	}
 	if a.running != nil {
 		label = "游戏运行中"
 	} else if a.task.Stage != "" {
 		label = "任务进行中"
 	}
-	if launchButton(c, label, lucide.Play(), !ok || a.busy || a.running != nil) {
-		a.play(i, false)
-	}
-	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-		if ok {
-			status, tone := a.instanceStatus(i)
-			display.Tag(c, status, display.TagProps{Color: tone, Size: theme.Small, Round: true})
-		}
-		ui.Spacer(c).Grow(1)
+	ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+		ui.Column(c).Grow(1).MinWidth(0).Children(func() {
+			if launchButton(c, label, lucide.Play(), !ok || a.busy || a.running != nil) {
+				a.play(i, false)
+			}
+		})
 		if icon(c, lucide.FolderOpen(), "打开游戏目录", !ok) {
 			a.openPath(i.GameDir, true)
 		}
@@ -276,7 +260,7 @@ func (a *desktop) launchCard(c *ui.Context) {
 // Keep Lobe's button focus, hit testing and transition; tint the one primary hero action.
 func launchButton(c *ui.Context, label string, glyph *ui.SVG, disabled bool) bool {
 	b := action.StyleButton(c, ui.ButtonBase(c).Label(label), "", action.ButtonProps{Variant: action.Primary, Size: theme.Large}).
-		Height(45).FillWidth().Disabled(disabled)
+		Height(36).FillWidth().Disabled(disabled)
 	if !disabled {
 		bg := ui.Hex("#24684b")
 		switch {
@@ -286,6 +270,9 @@ func launchButton(c *ui.Context, label string, glyph *ui.SVG, disabled bool) boo
 			bg = ui.Hex("#2c7656")
 		}
 		b.Background(bg).Border(1, bg).TextColor(ui.Hex("#ffffff"))
+	} else {
+		tk := theme.TokensOf(c)
+		b.Background(tk.FillSecondary).Border(1, tk.BorderSecondary).TextColor(tk.TextSecondary)
 	}
 	b.Children(func() {
 		ui.Icon(c, glyph).FontSize(17)
@@ -295,7 +282,7 @@ func launchButton(c *ui.Context, label string, glyph *ui.SVG, disabled bool) boo
 }
 
 func contextTabs(c *ui.Context, selected *int, items []nav.TabItem) {
-	nav.Tabs(c, selected, nav.TabsProps{Items: items, Variant: nav.TabsSquare}, nil)
+	nav.Tabs(c, selected, nav.TabsProps{Items: items, Variant: nav.TabsSquare, Size: theme.Small}, nil)
 	layout.Divider(c, layout.DividerProps{})
 }
 
@@ -305,7 +292,7 @@ func workspace(c *ui.Context, content func()) {
 	if w > 1060 {
 		padding = max(34, (w-1160)/2)
 	}
-	ui.Column(c).Grow(1).MinHeight(0).Padding(20, padding).Gap(16).Children(content)
+	ui.Column(c).Grow(1).MinHeight(0).Padding(12, padding).Gap(10).Children(content)
 }
 
 var libraryTabs = []nav.TabItem{
@@ -315,38 +302,40 @@ var libraryTabs = []nav.TabItem{
 
 func (a *desktop) library(c *ui.Context) {
 	workspace(c, func() {
+		if i, ok := a.state.Find(a.inspected); ok && a.libraryPage == 0 {
+			a.details(c, i)
+			return
+		}
 		contextTabs(c, &a.libraryPage, libraryTabs)
 		if a.libraryPage == 1 {
 			a.tasks(c)
 			return
 		}
-		if i, ok := a.state.Find(a.inspected); ok {
-			a.details(c, i)
-			return
-		}
-		heading(c, "我的实例", fmt.Sprintf("%d 个实例 · 每个实例使用独立的存档目录", len(a.state.Instances)), func() {
-			if button(c, "＋ 创建实例", action.Primary, a.busy) {
+		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+			if len(a.state.Instances) > 0 {
+				ui.Column(c).Grow(1).MinWidth(0).MaxWidth(340).Children(func() {
+					hotkey := searchHotkey
+					if a.form.open || a.logOpen {
+						hotkey = ""
+					}
+					search := field.SearchBar(c, &a.query, field.SearchBarProps{
+						Placeholder: "搜索实例", ShortKey: hotkey,
+					}).Label("搜索实例")
+					if a.focusSearch {
+						search.Focus()
+						a.focusSearch = false
+					}
+				})
+			}
+			ui.Spacer(c).Grow(1)
+			if button(c, "＋ 新建实例", action.Primary, a.busy) {
 				a.create()
 			}
 		})
 		if len(a.state.Instances) == 0 {
-			emptyPanel(c, lucide.PackageOpen(), "还没有实例",
-				"从一个原版 Minecraft Java 实例开始，游戏文件会在首次启动时下载。")
+			emptyPanel(c, lucide.PackageOpen(), "暂无实例")
 			return
 		}
-		ui.Column(c).MaxWidth(380).Children(func() {
-			hotkey := searchHotkey
-			if a.form.open || a.logOpen {
-				hotkey = ""
-			}
-			search := field.SearchBar(c, &a.query, field.SearchBarProps{
-				Placeholder: "搜索名称、版本或加载器", ShortKey: hotkey,
-			}).Label("搜索实例")
-			if a.focusSearch {
-				search.Focus()
-				a.focusSearch = false
-			}
-		})
 		layout.ScrollArea(c, layout.ScrollAreaProps{State: &a.scroll}, func() {
 			query := strings.ToLower(strings.TrimSpace(a.query))
 			var items []display.ListItem
@@ -356,22 +345,27 @@ func (a *desktop) library(c *ui.Context) {
 				}
 				status, _ := a.instanceStatus(i)
 				if i.ID == a.state.Selected {
-					status = "启动目标 · " + status
+					status = "启动目标"
 				}
 				items = append(items, display.ListItem{
 					Key: strconv.Itoa(i.ID), Label: i.Name,
-					Description: i.Version + "  /  " + loaderName(i) + "  ·  " + status,
-					Avatar:      func() { leadIcon(c, lucide.Package(), 34) },
-					Extra:       "查看 ›",
+					Description: i.Version + " · " + loaderName(i),
+					Avatar:      func() { leadIcon(c, lucide.Package(), 28) },
+					Extra:       status,
+					Actions: func() {
+						if icon(c, lucide.FolderOpen(), "打开 "+i.Name+" 的目录", false) {
+							a.openPath(i.GameDir, true)
+						}
+					},
 				})
 			}
 			if len(items) == 0 {
-				emptyPanel(c, lucide.SearchX(), "未找到匹配的实例", "试试其他名称、版本号或加载器。")
+				emptyPanel(c, lucide.SearchX(), "未找到实例")
 				return
 			}
 			surface(c).Padding(5).Children(func() {
 				clicked := display.List(c, display.ListProps{
-					Items: items, Active: strconv.Itoa(a.state.Selected),
+					Items: items, Active: strconv.Itoa(a.state.Selected), Compact: true,
 				})
 				if id, err := strconv.Atoi(clicked); err == nil {
 					if i, ok := a.state.Find(id); ok {
@@ -401,9 +395,9 @@ func (a *desktop) instanceStatus(i launcher.Instance) (string, display.TagColor)
 	}
 }
 
-func emptyPanel(c *ui.Context, glyph *ui.SVG, title, detail string) {
-	surface(c).Padding(23).Children(func() {
-		display.Empty(c, display.EmptyProps{Icon: glyph, Title: title, Description: detail, Page: true})
+func emptyPanel(c *ui.Context, glyph *ui.SVG, title string) {
+	surface(c).Padding(12).Children(func() {
+		display.Empty(c, display.EmptyProps{Icon: glyph, Title: title})
 	})
 }
 
@@ -426,10 +420,10 @@ func (a *desktop) editor(c *ui.Context) {
 			if a.form.mode == "remove" {
 				feedback.Alert(c, "移除「"+a.form.target.Name+"」的配置",
 					feedback.AlertProps{Type: feedback.Warning, Description: "游戏目录与存档会保留。"})
+				if a.form.err != "" {
+					feedback.Alert(c, a.form.err, feedback.AlertProps{Type: feedback.Error})
+				}
 				return
-			}
-			if a.form.mode == "create" {
-				muted(c, "原版 Java 版 · 游戏文件会在首次启动时下载。")
 			}
 			ui.Column(c).Gap(5).Children(func() {
 				display.Text(c, "实例名称", display.TextProps{Strong: true})
@@ -460,8 +454,6 @@ func (a *desktop) editor(c *ui.Context) {
 					if button(c, "重试获取版本列表", action.Text, a.busy) {
 						a.refreshCatalog()
 					}
-				default:
-					muted(c, "输入版本号，或从建议列表中选择。").FontSize(12)
 				}
 			}
 			if a.form.err != "" {

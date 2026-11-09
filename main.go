@@ -67,7 +67,7 @@ func main() {
 		}
 		if runtime.GOOS == "windows" {
 			opts.TitleBarStyle = mygo.TitleBarHidden
-			opts.TitleBarHeight = 54
+			opts.TitleBarHeight = titleBarHeight
 		}
 		a.window = mygo.NewWindow(opts)
 		a.window.OnClosed(cancel)
@@ -121,17 +121,19 @@ type desktop struct {
 	catalogErr                      string
 	javaInfo                        string
 
-	busy       bool
-	cancelTask context.CancelFunc
-	task       launcher.Progress
-	taskName   string
-	running    *launcher.Running
-	runningID  int
-	lastLog    string
-	history    []taskRecord
-	logOpen    bool
-	logText    string
-	logPath    string
-	logRequest uint64
-	pickerBusy bool
+	busy         bool
+	cancelTask   context.CancelFunc
+	task         launcher.Progress
+	taskName     string
+	running      *launcher.Running
+	runningID    int
+	lastLog      string
+	history      []taskRecord
+	logOpen      bool
+	logText      string
+	logPath      string
+	logRequest   uint64
+	licensesOpen bool
+	licenseFile  string
+	pickerBusy   bool
 }

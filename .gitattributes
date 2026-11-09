@@ -6,6 +6,9 @@ go.sum text eol=lf
 *.toml text eol=lf
 *.json text eol=lf
 *.svg text eol=lf
+# Keep the upstream license files verbatim, including NSIS line endings.
+licenses/*.txt -text
+licenses/nsis.txt whitespace=cr-at-eol,-blank-at-eol
 ui/assets/wallpapers/*.mp4 filter=lfs diff=lfs merge=lfs -text
 ui/assets/club-logo.svg -text
 design/archive/** linguist-generated=true

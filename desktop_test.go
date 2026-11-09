@@ -2,6 +2,7 @@ package main
 
 import (
 	"image/png"
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -33,6 +34,17 @@ func TestDesktopNavigationKeepsLaunchTarget(t *testing.T) {
 		t.Fatalf("browse target %d, launch target %d", a.inspected, a.state.Selected)
 	}
 	capture(t, tt, "instance-detail")
+	if err := tt.Click("更多实例操作"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := tt.Find("下载 / 校验"); !ok {
+		t.Fatal("verify action is missing from the instance menu")
+	}
+	capture(t, tt, "instance-menu")
+	tt.Key(0, ui.KeyEscape)
+	if a.inspected != 2 {
+		t.Fatal("Escape should dismiss the menu before leaving the instance")
+	}
 	tt.Key(0, ui.KeyF2)
 	if !a.form.open || a.form.target.ID != 2 {
 		t.Fatalf("F2 did not open the viewed instance: %+v", a.form)
@@ -92,6 +104,52 @@ func TestDesktopTasksReachableDuringDownload(t *testing.T) {
 	capture(t, tt, "settings-dark-compact")
 }
 
+func TestCompactTitleBarCentersNavigationWithWindowsControls(t *testing.T) {
+	_, tt := testDesktop(t)
+	for _, width := range []int{820, 1140} {
+		tt.SetSize(width, 580)
+		tt.Frame()
+		bounds, ok := tt.Find("主导航")
+		if !ok {
+			t.Fatalf("navigation missing at %d DIP", width)
+		}
+		middle := bounds.X + bounds.W/2
+		if math.Abs(float64(middle)-float64(width)/2) > 2 {
+			t.Fatalf("navigation center %.1f is not at window center %.1f", middle, float64(width)/2)
+		}
+	}
+}
+
+func TestCompactSettingsAndLicenses(t *testing.T) {
+	a, tt := testDesktop(t)
+	if err := tt.Click("设置"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := tt.Find("应用设置"); ok {
+		t.Fatal("save actions should only appear when there are pending changes")
+	}
+	a.memory = "6144"
+	tt.Frame()
+	if err := tt.Click("还原更改"); err != nil {
+		t.Fatal(err)
+	}
+	if a.memory != "4096" {
+		t.Fatalf("restored memory = %q", a.memory)
+	}
+	tt.Key(0, ui.KeyF1)
+	if err := tt.Click("查看许可证"); err != nil {
+		t.Fatal(err)
+	}
+	if !a.licensesOpen || a.licenseFile != "THIRD_PARTY_NOTICES.txt" {
+		t.Fatal("licenses did not open on the notice index")
+	}
+	capture(t, tt, "licenses")
+	tt.Key(0, ui.KeyEscape)
+	if a.licensesOpen {
+		t.Fatal("Escape did not dismiss the licenses")
+	}
+}
+
 func testDesktop(t *testing.T) (*desktop, *ui.Tester) {
 	t.Helper()
 	logo, err := ui.DecodeImage(logoPNG)
@@ -112,7 +170,7 @@ func testDesktop(t *testing.T) (*desktop, *ui.Tester) {
 	}
 	a.draft, a.memory = a.state.Settings, "4096"
 	tt := ui.NewTesterWith(a.view, 1140, 720, ui.TesterOptions{Preferences: ui.Preferences{ReduceMotion: true}})
-	tt.SetTitleBar(ui.TitleBar{Height: 54, Right: 138})
+	tt.SetTitleBar(ui.TitleBar{Height: titleBarHeight, Right: 138})
 	tt.Frame()
 	return a, tt
 }

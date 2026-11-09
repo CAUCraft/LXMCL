@@ -224,7 +224,10 @@ func (a *desktop) detectJava() {
 				a.javaInfo = ""
 				a.message("Java 检测失败", err)
 			} else {
-				a.draft.JavaPath, a.javaInfo = j.Path, fmt.Sprintf("已验证 Java %d", j.Major)
+				if strings.TrimSpace(path) != "" {
+					a.draft.JavaPath = j.Path
+				}
+				a.javaInfo = fmt.Sprintf("Java %d · %s", j.Major, j.Path)
 			}
 		})
 	}()

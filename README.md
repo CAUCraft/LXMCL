@@ -17,3 +17,5 @@ go tool mygo dev
 ```
 
 更多命令、数据目录和验证方式见[开发指南](docs/development.md)。代码边界见[架构](docs/architecture.md)，界面约定见 [UI Skill](.agents/skills/lxmcl-ui/SKILL.md)。
+
+[第三方许可证](THIRD_PARTY_NOTICES.txt)也可在应用的「设置 → 关于」查看。

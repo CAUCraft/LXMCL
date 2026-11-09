@@ -36,4 +36,4 @@ go tool mygo build -platform windows/amd64
 
 [GitHub Actions](https://github.com/CAUCraft/LXMCL/actions) 对提交到 `main`、`codex/**` 的改动以及发往 `main` 的 PR 执行检查。Windows x64 检查 Go 格式、依赖完整性、测试和 `go vet`，然后打包便携版与安装程序；Linux 并行运行启动器核心测试。两个作业都从 `go.mod` 读取 Go 版本，测试无需真实游戏账户或图形桌面。
 
-Windows 作业的 `lxmcl-windows-amd64` 产物含两个 EXE 和 `SHA256SUMS.txt`，保留 14 天。发布时先在 `mygo.json` 更新版本，再给已验证的提交推送与版本一致的 `v主.次.修订` 标签。通过两组检查后，流水线校验产物并创建附带安装包的 GitHub Release 草稿，由维护者审核后发布。
+Windows 作业的 `lxmcl-windows-amd64` 产物包含两个 EXE、第三方许可证压缩包和 `SHA256SUMS.txt`，保留 14 天。许可证也嵌入便携版，并随安装程序安装。调整依赖时，按 [第三方清单](../THIRD_PARTY_NOTICES.txt) 核对实际打包的版本与许可证原文。发布时在 `mygo.json` 更新版本，再推送相同版本的 `v主.次.修订` 标签。通过检查后，流水线创建 GitHub Release 草稿。

@@ -67,10 +67,23 @@ jobs:
           $package = 'target/ci-package/windows-amd64'
           $output = New-Item -ItemType Directory -Force -Path 'target/ci-artifacts'
           $files = @('LXMCL.exe', "lxmcl-setup-$version-amd64.exe")
-          $hashes = foreach ($name in $files) {
+          foreach ($name in $files) {
             $file = Get-Item -LiteralPath (Join-Path $package $name)
             if ($file.Length -le 0) { throw "Empty package file: $name" }
             Copy-Item -LiteralPath $file.FullName -Destination $output.FullName
+          }
+          $notices = Join-Path $package 'THIRD_PARTY_NOTICES.txt'
+          $licenses = Join-Path $package 'licenses'
+          $sources = @(Get-Item -LiteralPath 'THIRD_PARTY_NOTICES.txt'; Get-ChildItem -LiteralPath 'licenses' -File)
+          foreach ($source in $sources) {
+            $relative = [IO.Path]::GetRelativePath((Get-Location).Path, $source.FullName)
+            $original = Get-FileHash -Algorithm SHA256 -LiteralPath $source.FullName
+            $shipped = Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $package $relative)
+            if ($original.Hash -ne $shipped.Hash) { throw "Packaged license differs: $relative" }
+          }
+          Compress-Archive -LiteralPath @($notices, $licenses) -DestinationPath (Join-Path $output.FullName 'LXMCL-licenses.zip') -Force
+          $hashes = foreach ($name in ($files + 'LXMCL-licenses.zip')) {
+            $file = Get-Item -LiteralPath (Join-Path $output.FullName $name)
             $hash = Get-FileHash -Algorithm SHA256 -LiteralPath $file.FullName
             '{0}  {1}' -f $hash.Hash.ToLowerInvariant(), $name
           }
@@ -118,5 +131,5 @@ jobs:
         working-directory: target/release
         run: |
           sha256sum --check --strict SHA256SUMS.txt
-          gh release create "$RELEASE_TAG" ./*.exe SHA256SUMS.txt \
+          gh release create "$RELEASE_TAG" ./*.exe LXMCL-licenses.zip SHA256SUMS.txt \
             --draft --verify-tag --generate-notes --title "LXMCL $RELEASE_TAG"
