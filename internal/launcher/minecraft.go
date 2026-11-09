@@ -136,7 +136,7 @@ func (d *downloads) releases(ctx context.Context) ([]Version, error) {
 	}), nil
 }
 
-func allowed(rules []rule) bool {
+func allowed(rules []rule, features map[string]bool) bool {
 	if len(rules) == 0 {
 		return true
 	}
@@ -164,8 +164,8 @@ func allowed(rules []rule) bool {
 			}
 		}
 		matches := true
-		for _, want := range r.Features {
-			if want {
+		for feature, want := range r.Features {
+			if features[feature] != want {
 				matches = false
 				break
 			}
@@ -177,7 +177,7 @@ func allowed(rules []rule) bool {
 	return ok
 }
 
-func gameArgs(raw []json.RawMessage, values map[string]string) ([]string, error) {
+func gameArgs(raw []json.RawMessage, values map[string]string, features map[string]bool) ([]string, error) {
 	var args []string
 	for _, item := range raw {
 		var s string
@@ -192,7 +192,7 @@ func gameArgs(raw []json.RawMessage, values map[string]string) ([]string, error)
 		if err := json.Unmarshal(item, &entry); err != nil {
 			return nil, err
 		}
-		if !allowed(entry.Rules) {
+		if !allowed(entry.Rules, features) {
 			continue
 		}
 		if json.Unmarshal(entry.Value, &s) == nil {
@@ -324,7 +324,7 @@ func (g Game) binaries(m metadata) ([]fileDownload, []string, error) {
 	seen := make(map[string]artifact)
 	var cp []string
 	for _, lib := range m.Libraries {
-		if !allowed(lib.Rules) {
+		if !allowed(lib.Rules, nil) {
 			continue
 		}
 		if len(lib.Natives) != 0 {
@@ -405,23 +405,11 @@ func (g Game) install(ctx context.Context, i Instance, report func(Progress), d 
 		report = func(Progress) {}
 	}
 	report(Progress{Stage: "获取官方版本元数据"})
-	all, err := d.releases(ctx)
+	m, v, err := g.downloadVersion(ctx, i.Version, d)
 	if err != nil {
 		return err
 	}
-	index := slices.IndexFunc(all, func(v Version) bool { return v.ID == i.Version })
-	if index == -1 {
-		return fmt.Errorf("官方正式版本目录中没有 %s", i.Version)
-	}
-	v := all[index]
 	dir := g.versionDir(i.Version)
-	if err := d.file(ctx, filepath.Join(dir, "version.json"), artifact{URL: v.URL, SHA: v.SHA, Size: unknownSize}); err != nil {
-		return err
-	}
-	m, err := g.readVersion(i.Version, v.SHA)
-	if err != nil {
-		return err
-	}
 	files, _, err := g.binaries(m)
 	if err != nil {
 		return err
@@ -451,6 +439,23 @@ func (g Game) install(ctx context.Context, i Instance, report func(Progress), d 
 		return err
 	}
 	return writeFile(filepath.Join(dir, "verified"), receipt)
+}
+
+func (g Game) downloadVersion(ctx context.Context, id string, d *downloads) (metadata, Version, error) {
+	all, err := d.releases(ctx)
+	if err != nil {
+		return metadata{}, Version{}, err
+	}
+	index := slices.IndexFunc(all, func(v Version) bool { return v.ID == id })
+	if index == -1 {
+		return metadata{}, Version{}, fmt.Errorf("官方正式版本目录中没有 %s", id)
+	}
+	v := all[index]
+	if err := d.file(ctx, filepath.Join(g.versionDir(id), "version.json"), artifact{URL: v.URL, SHA: v.SHA, Size: unknownSize}); err != nil {
+		return metadata{}, Version{}, err
+	}
+	m, err := g.readVersion(id, v.SHA)
+	return m, v, err
 }
 
 func verifyArtifact(ctx context.Context, file fileDownload) error {
@@ -512,7 +517,11 @@ func (g Game) Start(ctx context.Context, i Instance, settings Settings) (Running
 	if !playerID.MatchString(settings.Player) {
 		return Running{}, errors.New("离线名称须为 3–16 位字母、数字或下划线")
 	}
-	if err := validateMemory(settings.Memory); err != nil {
+	if err := i.Launch.Validate(); err != nil {
+		return Running{}, err
+	}
+	memory := i.Launch.MaxMemory(settings.Memory)
+	if err := validateMemory(memory); err != nil {
 		return Running{}, err
 	}
 	m, cp, err := g.verifyInstalled(ctx, i)
@@ -527,7 +536,7 @@ func (g Game) Start(ctx context.Context, i Instance, settings Settings) (Running
 			return Running{}, fmt.Errorf("缓存目录不能包含 Java 类路径分隔符 %q", os.PathListSeparator)
 		}
 	}
-	j, err := FindJava(ctx, settings.JavaPath, m.JavaVersion.MajorVersion)
+	j, err := FindJava(ctx, i.Launch.JavaExecutable(settings.JavaPath), m.JavaVersion.MajorVersion)
 	if err != nil {
 		if ctx.Err() != nil {
 			return Running{}, ctx.Err()
@@ -553,15 +562,15 @@ func (g Game) Start(ctx context.Context, i Instance, settings Settings) (Running
 		"clientid": "", "auth_xuid": "", "user_type": "legacy", "version_type": m.Type,
 		"user_properties": "{}",
 	}
-	jvm, err := gameArgs(m.Arguments.JVM, values)
+	jvm, err := gameArgs(m.Arguments.JVM, values, nil)
 	if err != nil {
 		return Running{}, fmt.Errorf("无法生成 Java 参数：%w", err)
 	}
-	game, err := gameArgs(m.Arguments.Game, values)
+	game, err := clientArgs(m, values, i.Launch)
 	if err != nil {
 		return Running{}, fmt.Errorf("无法生成游戏参数：%w", err)
 	}
-	args := append([]string{"-Xmx" + strconv.Itoa(settings.Memory) + "M"}, jvm...)
+	args := append([]string{"-Xmx" + strconv.Itoa(memory) + "M"}, jvm...)
 	if l := m.Logging.Client; l.Argument != "" {
 		args = append(args, strings.ReplaceAll(l.Argument, "${path}", filepath.Join(g.Cache, "assets", "log_configs", l.File.ID)))
 	}
@@ -573,6 +582,10 @@ func (g Game) Start(ctx context.Context, i Instance, settings Settings) (Running
 	log, err := os.CreateTemp(logDir, "game-*.log")
 	if err != nil {
 		return Running{}, fmt.Errorf("无法创建游戏日志：%w", err)
+	}
+	if _, err := fmt.Fprintf(log, "[LXMCL] Minecraft %s · Java %d (%s) · -Xmx%dM\n", i.Version, j.Major, j.Path, memory); err != nil {
+		log.Close()
+		return Running{}, fmt.Errorf("无法写入游戏日志：%w", err)
 	}
 	// The game process owns its own lifetime after Start, independent of the launcher window.
 	cmd := exec.Command(j.Path, args...)
@@ -592,6 +605,23 @@ func (g Game) Start(ctx context.Context, i Instance, settings Settings) (Running
 		close(done)
 	}()
 	return Running{PID: cmd.Process.Pid, Log: log.Name(), Done: done}, nil
+}
+
+func clientArgs(m metadata, values map[string]string, opts LaunchOptions) ([]string, error) {
+	var features map[string]bool
+	if opts.Display == DisplayResolution {
+		features = map[string]bool{"has_custom_resolution": true}
+		values["resolution_width"] = strconv.Itoa(opts.Width)
+		values["resolution_height"] = strconv.Itoa(opts.Height)
+	}
+	args, err := gameArgs(m.Arguments.Game, values, features)
+	if err != nil {
+		return nil, err
+	}
+	if opts.Display == DisplayFullscreen && !slices.Contains(args, "--fullscreen") {
+		args = append(args, "--fullscreen")
+	}
+	return args, nil
 }
 
 func ValidateSettings(s Settings) error {

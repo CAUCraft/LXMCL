@@ -19,12 +19,13 @@ type Settings struct {
 }
 
 type Instance struct {
-	ID       int    `json:"id"`
-	Name     string `json:"name"`
-	Version  string `json:"version"`
-	Loader   string `json:"loader"`
-	GameDir  string `json:"game_directory"`
-	Revision uint64 `json:"revision"`
+	ID       int           `json:"id"`
+	Name     string        `json:"name"`
+	Version  string        `json:"version"`
+	Loader   string        `json:"loader"`
+	GameDir  string        `json:"game_directory"`
+	Revision uint64        `json:"revision"`
+	Launch   LaunchOptions `json:"launch,omitempty,omitzero"`
 }
 
 type State struct {
@@ -149,6 +150,24 @@ func (s *State) Create(name, version string) error {
 	return nil
 }
 
+func (s *State) Duplicate(id int, revision uint64, name string) (Instance, error) {
+	source, ok := s.Find(id)
+	if !ok || source.Revision != revision {
+		return Instance{}, errors.New("实例已变更，请重新选择要复制的配置")
+	}
+	if err := supported(source); err != nil {
+		return Instance{}, err
+	}
+	selected := s.Selected
+	if err := s.Create(name, source.Version); err != nil {
+		return Instance{}, err
+	}
+	s.Selected = selected
+	duplicate := &s.Instances[len(s.Instances)-1]
+	duplicate.Launch = source.Launch
+	return *duplicate, nil
+}
+
 func (s *State) Rename(id int, revision uint64, name string) error {
 	name, err := s.checkName(id, name)
 	if err != nil {
@@ -185,6 +204,23 @@ func (s *State) ChangeVersion(id int, revision uint64, version string) error {
 		return nil
 	}
 	return errors.New("实例已变更，请重新打开表单")
+}
+
+func (s *State) ConfigureLaunch(id int, revision uint64, opts LaunchOptions) error {
+	if err := opts.Validate(); err != nil {
+		return err
+	}
+	for n := range s.Instances {
+		i := &s.Instances[n]
+		if i.ID == id && i.Revision == revision {
+			if i.Launch != opts {
+				i.Launch = opts
+				i.Revision++
+			}
+			return nil
+		}
+	}
+	return errors.New("实例已变更，请重新打开设置")
 }
 
 func (s State) checkName(id int, name string) (string, error) {

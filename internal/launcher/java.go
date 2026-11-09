@@ -104,3 +104,28 @@ func FindJava(ctx context.Context, preferred string, minimum int) (Java, error) 
 	}
 	return Java{}, fmt.Errorf("未找到 Java %d 或以上，请在设置中指定 Java 路径", minimum)
 }
+
+// CheckJava resolves the same runtime as Start without downloading the game.
+// A new instance only needs the official version metadata.
+func (g Game) CheckJava(ctx context.Context, i Instance, globalPath string) (Java, int, error) {
+	if err := supported(i); err != nil {
+		return Java{}, 0, err
+	}
+	if err := i.Launch.Validate(); err != nil {
+		return Java{}, 0, err
+	}
+	receipt, err := g.readReceipt(i.Version)
+	var m metadata
+	if err == nil {
+		m, err = g.readVersion(i.Version, receipt.VersionSHA)
+	}
+	if err != nil {
+		m, _, err = g.downloadVersion(ctx, i.Version, &downloads{http: officialHTTP})
+		if err != nil {
+			return Java{}, 0, fmt.Errorf("无法读取 Java 版本要求：%w", err)
+		}
+	}
+	minimum := m.JavaVersion.MajorVersion
+	j, err := FindJava(ctx, i.Launch.JavaExecutable(globalPath), minimum)
+	return j, minimum, err
+}

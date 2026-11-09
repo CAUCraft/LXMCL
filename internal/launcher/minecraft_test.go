@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -136,6 +137,37 @@ func TestInstallRepairsSameSizeCorruption(t *testing.T) {
 	}
 	if _, err := g.Start(ctx, i, Settings{Player: "Player", Memory: 4096, JavaPath: filepath.Join(t.TempDir(), "missing-java")}); !errors.Is(err, ErrJavaRequired) {
 		t.Fatalf("missing Java should report an actionable launch error: %v", err)
+	}
+	i.Launch = LaunchOptions{JavaMode: JavaCustom, JavaPath: filepath.Join(t.TempDir(), "missing-instance-java")}
+	if _, minimum, err := g.CheckJava(ctx, i, "global-java"); minimum != 21 || err == nil || !strings.Contains(err.Error(), "missing-instance-java") {
+		t.Fatalf("Java check ignored the instance executable or version metadata: minimum %d, %v", minimum, err)
+	}
+}
+
+func TestClientArgsRespectInstanceDisplayMode(t *testing.T) {
+	var m metadata
+	raw := `["--username", "${auth_player_name}",
+		{"rules":[{"action":"allow","features":{"has_custom_resolution":true}}],
+		 "value":["--width","${resolution_width}","--height","${resolution_height}"]},
+		{"rules":[{"action":"allow","features":{"has_quick_plays_support":true}}],
+		 "value":["--quickPlayPath","${unsupported_path}"]}]`
+	if err := json.Unmarshal([]byte(raw), &m.Arguments.Game); err != nil {
+		t.Fatal(err)
+	}
+	base := []string{"--username", "Player"}
+	cases := []struct {
+		opts LaunchOptions
+		want []string
+	}{
+		{LaunchOptions{}, base},
+		{LaunchOptions{Display: DisplayResolution, Width: 1920, Height: 1080}, []string{"--username", "Player", "--width", "1920", "--height", "1080"}},
+		{LaunchOptions{Display: DisplayFullscreen}, []string{"--username", "Player", "--fullscreen"}},
+	}
+	for _, tc := range cases {
+		args, err := clientArgs(m, map[string]string{"auth_player_name": "Player"}, tc.opts)
+		if err != nil || !slices.Equal(args, tc.want) {
+			t.Errorf("display %q: args = %v, error = %v; want %v", tc.opts.Display, args, err, tc.want)
+		}
 	}
 }
 
@@ -266,7 +298,7 @@ func TestGameArgsDoesNotExpandPlaceholdersInValues(t *testing.T) {
 		json.RawMessage(`{"rules":[{"action":"allow","features":{"is_demo_user":true}}],"value":["--demo","${unset}"]}`),
 		json.RawMessage(`"--username=${name}"`),
 	}
-	args, err := gameArgs(raw, map[string]string{"dir": path, "name": "Player"})
+	args, err := gameArgs(raw, map[string]string{"dir": path, "name": "Player"}, nil)
 	if err != nil || len(args) != 2 || args[0] != "--gameDir="+path || args[1] != "--username=Player" {
 		t.Fatalf("unexpected Java argument list: %v / %v", args, err)
 	}

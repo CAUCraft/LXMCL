@@ -87,3 +87,49 @@ func TestChangeVersionKeepsDirectoryAndSelection(t *testing.T) {
 		t.Fatalf("version change did not preserve the instance: %+v", saved)
 	}
 }
+
+func TestInstanceLaunchOverridesAndDuplicatePersist(t *testing.T) {
+	store := Store{Root: t.TempDir()}
+	state, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	state.Settings.JavaPath = filepath.Join(store.Root, "global-java")
+	for _, name := range []string{"测试世界", "默认世界"} {
+		if err := state.Create(name, "1.21.1"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	source, selected := state.Instances[0], state.Selected
+	opts := LaunchOptions{JavaMode: JavaAuto, Memory: 8192, Display: DisplayResolution, Width: 1280, Height: 720}
+	if err := state.ConfigureLaunch(source.ID, source.Revision, opts); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.ConfigureLaunch(source.ID, source.Revision, LaunchOptions{}); err == nil {
+		t.Fatal("stale draft replaced the saved overrides")
+	}
+	duplicate, err := state.Duplicate(source.ID, source.Revision+1, "独立副本")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Save(state); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	original, _ := saved.Find(source.ID)
+	copied, _ := saved.Find(duplicate.ID)
+	unchanged, _ := saved.Find(selected)
+	if original.Launch != opts || copied.Launch != opts || copied.GameDir == original.GameDir ||
+		copied.Version != original.Version || saved.Selected != selected {
+		t.Fatalf("copy changed the selected instance or shared its data directory: %+v", saved)
+	}
+	if original.Launch.JavaExecutable(saved.Settings.JavaPath) != "" ||
+		unchanged.Launch.JavaExecutable(saved.Settings.JavaPath) != saved.Settings.JavaPath ||
+		original.Launch.MaxMemory(saved.Settings.Memory) != 8192 ||
+		unchanged.Launch.MaxMemory(saved.Settings.Memory) != saved.Settings.Memory {
+		t.Fatal("instance overrides changed the global Java or memory defaults")
+	}
+}

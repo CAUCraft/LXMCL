@@ -34,14 +34,18 @@ func (a *desktop) pickGameRoot() {
 }
 
 func (a *desktop) pickJava() {
+	a.pickJavaPath(a.draft.JavaPath, func(path string) {
+		a.draft.JavaPath = path
+		a.javaInfo = ""
+	})
+}
+
+func (a *desktop) pickJavaPath(current string, accept func(string)) {
 	options := mygo.OpenDialogOptions{
-		Title: "选择 Java 可执行文件", DefaultPath: strings.TrimSpace(a.draft.JavaPath), ButtonLabel: "选择 Java",
+		Title: "选择 Java 可执行文件", DefaultPath: strings.TrimSpace(current), ButtonLabel: "选择 Java",
 	}
 	if runtime.GOOS == "windows" {
 		options.Filters = []mygo.FileFilter{{Name: "可执行文件", Extensions: []string{"exe"}}}
 	}
-	a.pickPath(options, func(path string) {
-		a.draft.JavaPath = path
-		a.javaInfo = ""
-	})
+	a.pickPath(options, accept)
 }

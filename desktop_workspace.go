@@ -41,11 +41,30 @@ func (a *desktop) details(c *ui.Context, i launcher.Instance) {
 		}
 		a.instanceMenu(c.Key(i.ID), i)
 		ui.Column(c).Width(152).Shrink(0).Children(func() {
-			if a.playButton(c, i, false) {
+			d := a.launchDrafts[i.ID]
+			if d != nil && d.revision == i.Revision && d.fields != launchFields(i.Launch) &&
+				a.running == nil && a.task.Stage == "" {
+				if launchButton(c, "应用并启动", lucide.Play(), a.busy || a.pickerBusy) {
+					a.detailPage = detailLaunch
+					a.saveInstanceLaunch(i, d, true)
+				}
+			} else if a.playButton(c, i, a.pickerBusy) {
 				a.play(i, false)
 			}
 		})
 	})
+	contextTabs(c, &a.detailPage, instanceDetailTabs)
+	switch a.detailPage {
+	case detailLaunch:
+		a.instanceLaunchSettings(c.Key(i.ID), i)
+	case detailFiles:
+		a.instanceFiles(c.Key(i.ID), i)
+	default:
+		a.instanceOverview(c.Key(i.ID), i)
+	}
+}
+
+func (a *desktop) instanceOverview(c *ui.Context, i launcher.Instance) {
 	layout.ScrollArea(c, layout.ScrollAreaProps{}, func() {
 		surface(c).Padding(12, 16).Gap(8).Children(func() {
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
@@ -90,6 +109,7 @@ func (a *desktop) instanceMenu(c *ui.Context, i launcher.Instance) {
 	box.Children(func() {
 		chosen := overlay.DropdownMenu(c, open, overlay.DropdownMenuProps{Items: []overlay.MenuItem{
 			{Key: "rename", Label: "重命名", Icon: lucide.Pencil(), Hotkey: "f2", Disabled: a.busy},
+			{Key: "duplicate", Label: "复制实例配置…", Icon: lucide.Copy(), Disabled: a.busy || (i.Loader != "" && !strings.EqualFold(i.Loader, "vanilla"))},
 			{Divider: true},
 			{Key: "remove", Label: "移除配置…", Icon: lucide.Trash2(), Danger: true, Disabled: a.busy || a.runningID == i.ID},
 		}}, func(trigger ui.Element) {
@@ -98,6 +118,8 @@ func (a *desktop) instanceMenu(c *ui.Context, i launcher.Instance) {
 		switch chosen {
 		case "rename":
 			a.edit(i)
+		case "duplicate":
+			a.duplicate(i)
 		case "remove":
 			a.form = editor{open: true, mode: "remove", target: i}
 		}
@@ -225,13 +247,19 @@ func (a *desktop) settingsFooter(c *ui.Context) {
 	if !dirty {
 		return
 	}
+	settingsActions(c, a.busy || a.pickerBusy, func() {
+		a.draft, a.memory, a.javaInfo = a.state.Settings, strconv.Itoa(a.state.Settings.Memory), ""
+	}, a.saveSettings)
+}
+
+func settingsActions(c *ui.Context, disabled bool, reset, apply func()) {
 	layout.Divider(c, layout.DividerProps{})
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Justify(ui.End).Children(func() {
-		if button(c, "还原更改", action.Text, a.busy || a.pickerBusy) {
-			a.draft, a.memory, a.javaInfo = a.state.Settings, strconv.Itoa(a.state.Settings.Memory), ""
+		if button(c, "还原更改", action.Text, disabled) {
+			reset()
 		}
-		if button(c, "应用设置", action.Primary, a.busy || a.pickerBusy) {
-			a.saveSettings()
+		if button(c, "应用设置", action.Primary, disabled) {
+			apply()
 		}
 	})
 }

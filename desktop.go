@@ -95,7 +95,7 @@ func (a *desktop) view(c *ui.Context) {
 		}
 		if a.page == pageLibrary && a.inspected != 0 {
 			if c.Shortcut(0, ui.KeyEscape) {
-				a.inspected = 0
+				a.backFromDetail()
 			} else if !a.busy && c.Shortcut(0, ui.KeyF2) {
 				if i, ok := a.state.Find(a.inspected); ok {
 					a.edit(i)
@@ -152,7 +152,15 @@ func (a *desktop) noticeBar(c *ui.Context) {
 		feedback.Alert(c, a.notice, feedback.AlertProps{Type: tone, Variant: feedback.Plain}).Grow(1).MinWidth(0)
 		if a.noticeJava {
 			if button(c, "Java 设置", action.Text, false) {
-				a.page, a.settingsPage = pageSettings, 1
+				target := a.noticeJavaTarget
+				if target.ID == 0 {
+					a.page, a.settingsPage = pageSettings, 1
+				} else if i, ok := a.state.Find(target.ID); ok && i.Revision == target.Revision {
+					a.inspect(i)
+					a.detailPage = detailLaunch
+				} else {
+					a.openTasks()
+				}
 			}
 		} else if a.noticeTask && button(c, "查看任务", action.Text, false) {
 			a.openTasks()
@@ -161,6 +169,14 @@ func (a *desktop) noticeBar(c *ui.Context) {
 			a.notice = ""
 		}
 	})
+}
+
+func (a *desktop) backFromDetail() {
+	if a.detailPage != detailOverview {
+		a.detailPage = detailOverview
+	} else {
+		a.inspected = 0
+	}
 }
 
 const titleBarHeight = 42
@@ -264,6 +280,7 @@ func (a *desktop) launchCard(c *ui.Context) {
 		}
 		if icon(c, lucide.SlidersHorizontal(), "实例设置", !ok) {
 			a.inspect(i)
+			a.detailPage = detailLaunch
 		}
 	})
 }
@@ -450,6 +467,8 @@ func (a *desktop) editor(c *ui.Context) {
 		title, okText = "创建实例", "创建"
 	case "version":
 		title, okText = "更换版本", "保存版本"
+	case "duplicate":
+		title, okText = "复制实例配置", "创建副本"
 	}
 	submit := false
 	if feedback.Modal(c, &a.form.open, feedback.ModalProps{
@@ -469,6 +488,9 @@ func (a *desktop) editor(c *ui.Context) {
 				feedback.Alert(c, "更换版本会继续使用原游戏目录。降级前请备份存档。",
 					feedback.AlertProps{Type: feedback.Warning})
 			} else {
+				if a.form.mode == "duplicate" {
+					panelHeading(c, lucide.Copy(), a.form.target.Name, "复制版本和启动设置，存档与资源文件留在原实例。")
+				}
 				ui.Column(c).Gap(5).Children(func() {
 					display.Text(c, "实例名称", display.TextProps{Strong: true})
 					in := field.Input(c, &a.form.name, field.InputProps{Placeholder: "例如：我的生存世界"}).

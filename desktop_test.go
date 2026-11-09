@@ -221,6 +221,57 @@ func TestTaskCenterFiltersAndDisablesStaleRetry(t *testing.T) {
 	}
 }
 
+func TestInstanceSettingsKeepDraftAndLaunchTargetSeparate(t *testing.T) {
+	a, tt := testDesktop(t)
+	tt.SetSize(820, 530)
+	tt.SetDark(true)
+	tt.Frame()
+	for _, name := range []string{"版本", "建筑测试", "启动设置", "8 GiB"} {
+		if err := tt.Click(name); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, ok := tt.Find("应用并启动"); !ok {
+		t.Fatal("pending settings have no apply-and-launch action")
+	}
+	if a.state.Selected != 1 || a.state.Instances[1].Launch.Memory != 0 {
+		t.Fatal("editing an instance changed the launch target or applied the draft")
+	}
+	capture(t, tt, "instance-launch-dark")
+	if err := tt.Click("游戏文件"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := tt.Find("打开存档目录"); !ok {
+		t.Fatal("game files has no saves shortcut")
+	}
+	capture(t, tt, "instance-files-dark")
+	if err := tt.Click("启动设置"); err != nil {
+		t.Fatal(err)
+	}
+	if a.launchDrafts[2].fields.memory != "8192" {
+		t.Fatal("switching tabs lost the instance draft")
+	}
+	if err := tt.Click("还原更改"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := tt.Find("应用并启动"); ok {
+		t.Fatal("reverting the draft left an apply-and-launch action")
+	}
+	tt.Key(0, ui.KeyEscape)
+	if a.detailPage != detailOverview || a.inspected != 2 {
+		t.Fatal("Escape did not return to the instance overview")
+	}
+	if err := tt.Click("更多实例操作"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.Click("复制实例配置…"); err != nil {
+		t.Fatal(err)
+	}
+	if a.form.target.ID != 2 || a.form.mode != "duplicate" || a.state.Selected != 1 {
+		t.Fatal("copy dialog was not bound to the viewed instance")
+	}
+}
+
 func testDesktop(t *testing.T) (*desktop, *ui.Tester) {
 	t.Helper()
 	logo, err := ui.DecodeImage(logoPNG)

@@ -93,24 +93,27 @@ type editor struct {
 }
 
 type desktop struct {
-	window      *mygo.Window
-	ctx         context.Context
-	store       launcher.Store
-	game        launcher.Game
-	logo, hero  ui.ImageSource
-	writes      sync.WaitGroup
-	state       launcher.State
-	draft       launcher.Settings
-	memory      string
-	ready       bool
-	loadErr     string
-	notice      string
-	noticeError bool
-	noticeJava  bool
-	noticeTask  bool
+	window           *mygo.Window
+	ctx              context.Context
+	store            launcher.Store
+	game             launcher.Game
+	logo, hero       ui.ImageSource
+	writes           sync.WaitGroup
+	state            launcher.State
+	draft            launcher.Settings
+	memory           string
+	ready            bool
+	loadErr          string
+	notice           string
+	noticeError      bool
+	noticeJava       bool
+	noticeTask       bool
+	noticeJavaTarget launcher.Instance
 
 	page, settingsPage, libraryPage int
 	inspected                       int
+	detailPage                      int
+	launchDrafts                    map[int]*instanceLaunchDraft
 	query                           string
 	focusSearch                     bool
 	instanceFilter                  int

@@ -54,6 +54,7 @@ func (a *desktop) load() {
 func (a *desktop) message(s string, err error) {
 	a.notice, a.noticeError = s, err != nil
 	a.noticeJava, a.noticeTask = false, false
+	a.noticeJavaTarget = launcher.Instance{}
 	if err != nil {
 		a.notice = fmt.Sprintf("%s：%s", s, err)
 	}
@@ -120,8 +121,13 @@ func (a *desktop) changeVersion(i launcher.Instance) {
 	}
 }
 
+func (a *desktop) duplicate(i launcher.Instance) {
+	a.form = editor{open: true, mode: "duplicate", target: i, focus: true}
+}
+
 func (a *desktop) inspect(i launcher.Instance) {
 	a.page, a.libraryPage, a.inspected = pageLibrary, 0, i.ID
+	a.detailPage = detailOverview
 }
 
 func (a *desktop) submitEditor() {
@@ -138,6 +144,10 @@ func (a *desktop) submitEditor() {
 		checkID = next.Selected
 	case "rename":
 		err = next.Rename(form.target.ID, form.target.Revision, form.name)
+	case "duplicate":
+		var duplicate launcher.Instance
+		duplicate, err = next.Duplicate(form.target.ID, form.target.Revision, form.name)
+		checkID = duplicate.ID
 	case "version":
 		if a.runningID == form.target.ID {
 			a.form.err = "请先退出此实例的游戏"
@@ -173,8 +183,8 @@ func (a *desktop) submitEditor() {
 			a.form.open = false
 		}
 		switch form.mode {
-		case "create":
-			i, _ := a.state.Find(next.Selected)
+		case "create", "duplicate":
+			i, _ := a.state.Find(checkID)
 			if visible {
 				a.query, a.instanceFilter = "", 0
 				a.inspect(i)
@@ -183,6 +193,7 @@ func (a *desktop) submitEditor() {
 			}
 		case "remove":
 			delete(a.installed, form.target.ID)
+			delete(a.launchDrafts, form.target.ID)
 			if a.inspected == form.target.ID {
 				a.inspected = 0
 			}
@@ -356,6 +367,9 @@ func (a *desktop) play(i launcher.Instance, installOnly bool) {
 			case err != nil:
 				a.message("任务失败 · "+i.Name, err)
 				a.noticeJava = errors.Is(err, launcher.ErrJavaRequired)
+				if a.noticeJava && i.Launch.JavaMode != launcher.JavaInherit {
+					a.noticeJavaTarget = i
+				}
 				a.noticeTask = true
 			case installOnly:
 				a.message("已校验游戏文件 · "+i.Name, nil)
