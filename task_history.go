@@ -33,6 +33,7 @@ type taskRecord struct {
 	Name       string    `json:"name"`
 	Version    string    `json:"version"`
 	Server     string    `json:"server,omitempty"`
+	Account    string    `json:"account,omitempty"`
 	Action     string    `json:"action"`
 	Status     string    `json:"status"`
 	Detail     string    `json:"detail,omitempty"`
@@ -44,6 +45,10 @@ type taskRecord struct {
 func (r taskRecord) retryTarget(s launcher.State) (launcher.Instance, bool) {
 	if r.InstanceID == 0 || (r.Status != taskFailed && r.Status != taskCanceled) ||
 		(r.Action != taskLaunch && r.Action != taskVerify) {
+		return launcher.Instance{}, false
+	}
+	if r.Action == taskLaunch && (r.Account != "" && r.Account != s.AccountKey() ||
+		r.Account == "" && s.MicrosoftProfile != "") {
 		return launcher.Instance{}, false
 	}
 	i, ok := s.Find(r.InstanceID)

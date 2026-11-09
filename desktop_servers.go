@@ -83,6 +83,9 @@ func (a *desktop) network(c *ui.Context) {
 		}
 		i, selected := a.state.Find(a.state.Selected)
 		note := "离线账号仅能加入允许离线登录的服务器。"
+		if a.state.MicrosoftProfile != "" {
+			note = "Microsoft 账号：" + a.accountName() + "。"
+		}
 		if selected {
 			note += " 启动实例：" + i.Name + " · " + i.Version
 		} else {

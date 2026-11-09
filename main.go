@@ -111,7 +111,11 @@ type desktop struct {
 	noticeError      bool
 	noticeJava       bool
 	noticeTask       bool
+	noticeAccount    bool
 	noticeJavaTarget launcher.Instance
+	microsoftAccount launcher.MicrosoftAccount
+	minecraftSession launcher.MinecraftSession
+	microsoft        *microsoftLoginView
 
 	page, settingsPage, libraryPage        int
 	inspected                              int

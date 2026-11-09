@@ -13,6 +13,59 @@ import (
 	"github.com/lobehub/lobe-mygo/pkg/display"
 )
 
+func TestMicrosoftLoginDialogUsesSystemBrowserAndCancels(t *testing.T) {
+	a, tt := testDesktop(t)
+	if err := tt.Click("账号设置"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := tt.Find("登录 Microsoft"); !ok {
+		t.Fatal("Microsoft sign-in is missing from account settings")
+	}
+	canceled := false
+	const verification = "https://www.microsoft.com/devicelogin"
+	a.microsoft = &microsoftLoginView{open: true, cancel: func() { canceled = true },
+		code: launcher.MicrosoftDeviceCode{Code: "TEST-CODE", VerificationURL: verification}}
+	tt.Frame()
+	capture(t, tt, "microsoft-device")
+	if err := tt.Click("复制登录代码"); err != nil {
+		t.Fatal(err)
+	}
+	if tt.Clipboard() != "TEST-CODE" {
+		t.Fatal("the copy action did not copy the device code")
+	}
+	if err := tt.Click("打开 Microsoft 登录页"); err != nil {
+		t.Fatal(err)
+	}
+	if opened := tt.OpenedURLs(); len(opened) != 1 || opened[0] != verification {
+		t.Fatalf("expected the official verification page, got %v", opened)
+	}
+	tt.Key(0, ui.KeyEscape)
+	if a.microsoft != nil || !canceled || a.state.MicrosoftProfile != "" {
+		t.Fatal("closing sign-in did not cancel the pending login")
+	}
+}
+
+func TestTaskRetryStaysWithCapturedAccount(t *testing.T) {
+	a, _ := testDesktop(t)
+	i := a.state.Instances[0]
+	row := taskRecord{InstanceID: i.ID, Revision: i.Revision, Version: i.Version,
+		Action: taskLaunch, Status: taskFailed, Account: a.state.AccountKey()}
+	if _, ok := row.retryTarget(a.state); !ok {
+		t.Fatal("same-account launch could not be retried")
+	}
+	a.state.MicrosoftProfile = "0123456789abcdef0123456789abcdef"
+	if _, ok := row.retryTarget(a.state); ok {
+		t.Fatal("the previous offline task can be retried with Microsoft credentials")
+	}
+	row.Account = a.state.AccountKey()
+	if err := a.state.UseOfflinePlayer("OtherPlayer"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := row.retryTarget(a.state); ok {
+		t.Fatal("Microsoft launch can be retried under an offline player")
+	}
+}
+
 func TestDesktopNavigationKeepsLaunchTarget(t *testing.T) {
 	a, tt := testDesktop(t)
 	capture(t, tt, "home")

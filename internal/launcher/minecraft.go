@@ -525,11 +525,16 @@ func (g Game) Start(ctx context.Context, i Instance, settings Settings) (Running
 }
 
 func (g Game) StartOnServer(ctx context.Context, i Instance, settings Settings, server string) (Running, error) {
+	return g.StartWithSession(ctx, i, settings, server, nil)
+}
+
+func (g Game) StartWithSession(ctx context.Context, i Instance, settings Settings, server string, session *MinecraftSession) (Running, error) {
 	if err := supported(i); err != nil {
 		return Running{}, err
 	}
-	if !playerID.MatchString(settings.Player) {
-		return Running{}, errors.New("离线名称须为 3–16 位字母、数字或下划线")
+	identity, err := launchIdentity(settings.Player, session)
+	if err != nil {
+		return Running{}, err
 	}
 	if err := i.Launch.Validate(); err != nil {
 		return Running{}, err
@@ -575,16 +580,13 @@ func (g Game) StartOnServer(ctx context.Context, i Instance, settings Settings, 
 	if err := os.MkdirAll(natives, 0755); err != nil {
 		return Running{}, fmt.Errorf("无法创建实例运行目录：%w", err)
 	}
-	uuid := md5.Sum([]byte("OfflinePlayer:" + settings.Player))
-	uuid[6] = uuid[6]&0x0f | 0x30
-	uuid[8] = uuid[8]&0x3f | 0x80
 	values := map[string]string{
 		"natives_directory": natives, "launcher_name": "LXMCL", "launcher_version": "0.2",
 		"classpath": strings.Join(cp, string(os.PathListSeparator)), "classpath_separator": string(os.PathListSeparator),
-		"library_directory": filepath.Join(g.Cache, "libraries"), "auth_player_name": settings.Player,
+		"library_directory": filepath.Join(g.Cache, "libraries"), "auth_player_name": identity.name,
 		"version_name": m.ID, "game_directory": i.GameDir, "assets_root": filepath.Join(g.Cache, "assets"),
-		"assets_index_name": m.AssetIndex.ID, "auth_uuid": hex.EncodeToString(uuid[:]), "auth_access_token": "0",
-		"clientid": "", "auth_xuid": "", "user_type": "legacy", "version_type": m.Type,
+		"assets_index_name": m.AssetIndex.ID, "auth_uuid": identity.uuid, "auth_access_token": identity.token,
+		"clientid": identity.clientID, "auth_xuid": identity.xuid, "user_type": identity.kind, "version_type": m.Type,
 		"user_properties": "{}",
 	}
 	jvm, err := gameArgs(m.Arguments.JVM, values, nil)
@@ -630,6 +632,26 @@ func (g Game) StartOnServer(ctx context.Context, i Instance, settings Settings, 
 		close(done)
 	}()
 	return Running{PID: cmd.Process.Pid, Log: log.Name(), Done: done}, nil
+}
+
+type gameIdentity struct {
+	name, uuid, token, clientID, xuid, kind string
+}
+
+func launchIdentity(offline string, session *MinecraftSession) (gameIdentity, error) {
+	if session != nil {
+		if !session.ValidFor(session.Profile.ID) || !profileID.MatchString(session.Profile.ID) || !playerID.MatchString(session.Profile.Name) {
+			return gameIdentity{}, ErrMicrosoftRequired
+		}
+		return gameIdentity{session.Profile.Name, session.Profile.ID, session.accessToken, microsoftClientID, session.xuid, "msa"}, nil
+	}
+	if !playerID.MatchString(offline) {
+		return gameIdentity{}, errors.New("离线名称须为 3–16 位字母、数字或下划线")
+	}
+	uuid := md5.Sum([]byte("OfflinePlayer:" + offline))
+	uuid[6] = uuid[6]&0x0f | 0x30
+	uuid[8] = uuid[8]&0x3f | 0x80
+	return gameIdentity{name: offline, uuid: hex.EncodeToString(uuid[:]), token: "0", kind: "legacy"}, nil
 }
 
 func clientArgs(m metadata, values map[string]string, opts LaunchOptions, server string) ([]string, error) {

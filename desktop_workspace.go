@@ -215,6 +215,7 @@ func (a *desktop) settings(c *ui.Context) {
 				case 1:
 					a.javaSettings(c, disabled)
 				case 2:
+					a.microsoftSettings(c, disabled)
 					a.offlineAccounts(c, disabled)
 				case 3:
 					a.help(c)
@@ -235,14 +236,14 @@ func (a *desktop) offlineAccounts(c *ui.Context, disabled bool) {
 		for _, name := range a.state.Players() {
 			layout.Divider(c, layout.DividerProps{})
 			settingsRow(c.Key(name), name, func() {
-				if name == a.state.Settings.Player {
+				if name == a.state.Settings.Player && a.state.MicrosoftProfile == "" {
 					display.Tag(c, "使用中", display.TagProps{Color: display.TagGreen, Size: theme.Small})
 					return
 				}
 				if button(c, "切换", action.Default, disabled) {
 					a.selectOfflinePlayer(name)
 				}
-				if icon(c, lucide.X(), "移除离线账号 "+name, disabled) {
+				if name != a.state.Settings.Player && icon(c, lucide.X(), "移除离线账号 "+name, disabled) {
 					a.forgetOfflinePlayer(name)
 				}
 			})

@@ -85,7 +85,8 @@ const (
 
 func (a *desktop) view(c *ui.Context) {
 	theme.Apply(c)
-	if a.ready && !a.form.open && !a.logOpen && !a.licensesOpen && (a.pack == nil || !a.pack.open) {
+	if a.ready && !a.form.open && !a.logOpen && !a.licensesOpen && (a.pack == nil || !a.pack.open) &&
+		(a.microsoft == nil || !a.microsoft.open) {
 		if mods, key, ok := display.HotkeyBinding(searchHotkey, display.HotkeyAuto); ok && c.Shortcut(mods, key) {
 			a.page, a.libraryPage, a.inspected = pageLibrary, 0, 0
 			a.instanceFilter = 0
@@ -140,6 +141,7 @@ func (a *desktop) view(c *ui.Context) {
 		a.logDialog(c.Key("game-log"))
 		a.licensesDialog(c.Key("third-party-licenses"))
 		a.packDialog(c.Key("modrinth-packs"))
+		a.microsoftLoginDialog(c.Key("microsoft-login"))
 	})
 }
 
@@ -152,7 +154,11 @@ func (a *desktop) noticeBar(c *ui.Context) {
 			tone = feedback.Error
 		}
 		feedback.Alert(c, a.notice, feedback.AlertProps{Type: tone, Variant: feedback.Plain}).Grow(1).MinWidth(0)
-		if a.noticeJava {
+		if a.noticeAccount {
+			if button(c, "账号设置", action.Text, false) {
+				a.page, a.settingsPage = pageSettings, 2
+			}
+		} else if a.noticeJava {
 			if button(c, "Java 设置", action.Text, false) {
 				target := a.noticeJavaTarget
 				if target.ID == 0 {
@@ -206,11 +212,8 @@ func (a *desktop) topBar(c *ui.Context) {
 					a.openTasks()
 				}
 			}).AlignSelf(ui.Center)
-			name := a.state.Settings.Player
-			if name == "" {
-				name = "离线账号"
-			}
-			account := action.StyleButton(c, ui.ButtonBase(c).Label("离线账号"), "",
+			name := a.accountName()
+			account := action.StyleButton(c, ui.ButtonBase(c).Label("账号设置"), "",
 				action.ButtonProps{Variant: action.Text, Size: theme.Small}).PaddingX(5).Gap(6).Shrink(0).Disabled(!a.ready)
 			account.Children(func() {
 				ink, wash := brand(c)

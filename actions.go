@@ -31,6 +31,7 @@ func (a *desktop) post(fn func()) {
 func (a *desktop) load() {
 	go func() {
 		s, err := a.store.Load()
+		account, accountErr := a.store.LoadMicrosoftAccount()
 		history, historyErr := loadTaskHistory(a.store.Root)
 		installed := make(map[int]bool, len(s.Instances))
 		for _, i := range s.Instances {
@@ -44,8 +45,13 @@ func (a *desktop) load() {
 			a.state, a.draft, a.installed, a.ready = s, s.Settings, installed, true
 			a.memory = strconv.Itoa(s.Settings.Memory)
 			a.restoreTaskHistory(history)
+			a.microsoftAccount = account
 			if historyErr != nil {
 				a.message("无法读取任务记录", historyErr)
+			}
+			if accountErr != nil {
+				a.message("无法读取 Microsoft 登录", accountErr)
+				a.noticeAccount = true
 			}
 		})
 	}()
@@ -53,7 +59,7 @@ func (a *desktop) load() {
 
 func (a *desktop) message(s string, err error) {
 	a.notice, a.noticeError = s, err != nil
-	a.noticeJava, a.noticeTask = false, false
+	a.noticeJava, a.noticeTask, a.noticeAccount = false, false, false
 	a.noticeJavaTarget = launcher.Instance{}
 	if err != nil {
 		a.notice = fmt.Sprintf("%s：%s", s, err)
@@ -277,6 +283,7 @@ func (a *desktop) saveSettings() {
 	player := next.Settings.Player
 	next.Settings.Player = previousPlayer
 	_ = next.UseOfflinePlayer(player)
+	next.MicrosoftProfile = a.state.MicrosoftProfile
 	a.save(next, 0, func(err error) {
 		if err == nil {
 			a.draft = next.Settings
@@ -364,10 +371,13 @@ func (a *desktop) playOnServer(i launcher.Instance, installOnly bool, server str
 	ctx, cancel := context.WithCancel(a.ctx)
 	a.cancelTask = cancel
 	settings, g := a.state.Settings, a.game
+	onlineID, account, session := a.state.MicrosoftProfile, a.microsoftAccount, a.minecraftSession
 	instances := a.state.Instances
 	record := taskRecord{InstanceID: i.ID, Revision: i.Revision, Name: i.Name, Version: i.Version, Action: taskLaunch, Server: server, At: time.Now()}
 	if installOnly {
 		record.Action = taskVerify
+	} else {
+		record.Account = a.state.AccountKey()
 	}
 	records := a.taskSnapshot()
 	a.writes.Go(func() {
@@ -389,19 +399,45 @@ func (a *desktop) playOnServer(i launcher.Instance, installOnly bool, server str
 		}
 		needsInstall := installOnly || !g.Installed(i)
 		var err error
-		if needsInstall {
+		var activeSession *launcher.MinecraftSession
+		var refreshed bool
+		if !installOnly && onlineID != "" {
+			if !session.ValidFor(onlineID) {
+				report(launcher.Progress{Stage: "验证 Microsoft 登录"})
+				if account.Profile.ID != onlineID {
+					err = launcher.ErrMicrosoftRequired
+				} else {
+					authCtx, stop := context.WithTimeout(ctx, 65*time.Second)
+					var nextAccount launcher.MicrosoftAccount
+					nextAccount, session, err = launcher.RefreshMicrosoftLogin(authCtx, account)
+					stop()
+					if err == nil {
+						account, refreshed = nextAccount, true
+						if saveErr := a.store.SaveMicrosoftAccount(account); saveErr != nil {
+							err = fmt.Errorf("无法保存刷新后的 Microsoft 凭据：%w", saveErr)
+							session = launcher.MinecraftSession{}
+						}
+					}
+				}
+			}
+			if err == nil {
+				activeSession = &session
+			}
+		}
+		authFailed := err != nil
+		if err == nil && needsInstall {
 			err = g.Install(ctx, i, report)
 		}
 		var run launcher.Running
 		if err == nil && !installOnly {
 			report(launcher.Progress{Stage: "检查 Java 并启动游戏"})
-			run, err = g.StartOnServer(ctx, i, settings, server)
+			run, err = g.StartWithSession(ctx, i, settings, server, activeSession)
 			if !needsInstall && errors.Is(err, launcher.ErrRepairRequired) && ctx.Err() == nil {
 				report(launcher.Progress{Stage: "修复游戏文件"})
 				err = g.Install(ctx, i, report)
 				if err == nil {
 					report(launcher.Progress{Stage: "检查 Java 并启动游戏"})
-					run, err = g.StartOnServer(ctx, i, settings, server)
+					run, err = g.StartWithSession(ctx, i, settings, server, activeSession)
 				}
 			}
 		}
@@ -424,6 +460,9 @@ func (a *desktop) playOnServer(i launcher.Instance, installOnly bool, server str
 		records = a.saveTask(records, record, func() {
 			a.busy, a.cancelTask = false, nil
 			a.task = launcher.Progress{}
+			if refreshed {
+				a.microsoftAccount, a.minecraftSession = account, session
+			}
 			for id, ok := range installed {
 				a.installed[id] = ok
 			}
@@ -433,6 +472,7 @@ func (a *desktop) playOnServer(i launcher.Instance, installOnly bool, server str
 			case err != nil:
 				a.message("任务失败 · "+i.Name, err)
 				a.noticeJava = errors.Is(err, launcher.ErrJavaRequired)
+				a.noticeAccount = authFailed || errors.Is(err, launcher.ErrMicrosoftRequired)
 				if a.noticeJava && i.Launch.JavaMode != launcher.JavaInherit {
 					a.noticeJavaTarget = i
 				}

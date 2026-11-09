@@ -30,12 +30,13 @@ type Instance struct {
 }
 
 type State struct {
-	Servers        []Server   `json:"servers,omitempty"`
-	Settings       Settings   `json:"settings"`
-	Instances      []Instance `json:"instances"`
-	OfflinePlayers []string   `json:"offline_players,omitempty"`
-	Selected       int        `json:"selected"`
-	NextID         int        `json:"next_id"`
+	MicrosoftProfile string     `json:"microsoft_profile,omitempty"`
+	Servers          []Server   `json:"servers,omitempty"`
+	Settings         Settings   `json:"settings"`
+	Instances        []Instance `json:"instances"`
+	OfflinePlayers   []string   `json:"offline_players,omitempty"`
+	Selected         int        `json:"selected"`
+	NextID           int        `json:"next_id"`
 }
 
 type Store struct{ Root string }
@@ -144,7 +145,15 @@ func (s *State) UseOfflinePlayer(name string) error {
 		s.OfflinePlayers = append(s.OfflinePlayers, name)
 	}
 	s.Settings.Player = name
+	s.MicrosoftProfile = ""
 	return nil
+}
+
+func (s State) AccountKey() string {
+	if s.MicrosoftProfile != "" {
+		return "msa:" + s.MicrosoftProfile
+	}
+	return "offline:" + s.Settings.Player
 }
 
 func (s *State) ForgetOfflinePlayer(name string) {
