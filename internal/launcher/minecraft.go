@@ -9,8 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,9 +17,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
-	"sync/atomic"
-	"time"
 )
 
 const manifestURL = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
@@ -94,51 +89,24 @@ type Progress struct {
 	Done, Total int
 }
 
-var httpClient = &http.Client{
-	Timeout: 2 * time.Minute,
-	CheckRedirect: func(req *http.Request, via []*http.Request) error {
-		if len(via) >= 5 || !officialURL(req.URL.String()) {
-			return errors.New("下载重定向超出官方来源")
-		}
-		return nil
-	},
-}
-
-func officialURL(raw string) bool {
-	u, err := url.Parse(raw)
-	if err != nil || u.Scheme != "https" || u.User != nil || u.Port() != "" {
-		return false
-	}
-	return slices.Contains([]string{"piston-meta.mojang.com", "piston-data.mojang.com",
-		"libraries.minecraft.net", "resources.download.minecraft.net", "launcher.mojang.com",
-		"launchermeta.mojang.com"}, u.Hostname())
-}
-
-func get(ctx context.Context, src string) (*http.Response, error) {
-	if !officialURL(src) {
-		return nil, fmt.Errorf("下载来源不受支持：%s", src)
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, src, nil)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := httpClient.Do(req)
-	if err == nil && resp.StatusCode != http.StatusOK {
-		resp.Body.Close()
-		return nil, fmt.Errorf("下载返回 HTTP %d：%s", resp.StatusCode, src)
-	}
-	return resp, err
-}
-
 func Catalog(ctx context.Context) ([]Version, error) {
-	resp, err := get(ctx, manifestURL)
-	if err != nil {
+	return (&downloads{http: officialHTTP}).catalog(ctx)
+}
+
+func (d *downloads) catalog(ctx context.Context) ([]Version, error) {
+	var data struct{ Versions []Version }
+	if err := retry(ctx, func() error {
+		resp, err := d.get(ctx, manifestURL)
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+		return json.NewDecoder(io.LimitReader(resp.Body, maxMetadata)).Decode(&data)
+	}); err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
-	var data struct{ Versions []Version }
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 8<<20)).Decode(&data); err != nil {
-		return nil, err
+	if len(data.Versions) == 0 {
+		return nil, errors.New("官方版本目录为空")
 	}
 	return data.Versions, nil
 }
@@ -155,7 +123,11 @@ func modernRelease(id string) bool {
 }
 
 func Releases(ctx context.Context) ([]Version, error) {
-	all, err := Catalog(ctx)
+	return (&downloads{http: officialHTTP}).releases(ctx)
+}
+
+func (d *downloads) releases(ctx context.Context) ([]Version, error) {
+	all, err := d.catalog(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -234,93 +206,19 @@ func gameArgs(raw []json.RawMessage, values map[string]string) ([]string, error)
 		}
 	}
 	for i, s := range args {
-		for _, m := range variable.FindAllStringSubmatch(s, -1) {
-			value, ok := values[m[1]]
+		var unknown string
+		args[i] = variable.ReplaceAllStringFunc(s, func(token string) string {
+			value, ok := values[token[2:len(token)-1]]
 			if !ok {
-				return nil, fmt.Errorf("不支持的启动参数 %s", m[0])
+				unknown = token
 			}
-			s = strings.ReplaceAll(s, m[0], value)
+			return value
+		})
+		if unknown != "" {
+			return nil, fmt.Errorf("不支持的启动参数 %s", unknown)
 		}
-		args[i] = s
 	}
 	return args, nil
-}
-
-func download(ctx context.Context, file string, a artifact) error {
-	digest, err := hex.DecodeString(a.SHA)
-	if err != nil || len(digest) != sha1.Size {
-		return fmt.Errorf("文件缺少有效 SHA-1：%s", file)
-	}
-	if f, err := os.Open(file); err == nil {
-		h := sha1.New()
-		n, err := io.Copy(h, f)
-		f.Close()
-		if err == nil && (a.Size == 0 || n == a.Size) && hex.EncodeToString(h.Sum(nil)) == a.SHA {
-			return nil
-		}
-	}
-	resp, err := get(ctx, a.URL)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if err := os.MkdirAll(filepath.Dir(file), 0755); err != nil {
-		return err
-	}
-	f, err := os.CreateTemp(filepath.Dir(file), ".download-*")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(f.Name())
-	h := sha1.New()
-	limit := a.Size + 1
-	if a.Size == 0 {
-		limit = 8 << 20
-	}
-	n, err := io.Copy(io.MultiWriter(f, h), io.LimitReader(resp.Body, limit))
-	if err = errors.Join(err, f.Close()); err != nil {
-		return err
-	}
-	if (a.Size > 0 && n != a.Size) || hex.EncodeToString(h.Sum(nil)) != a.SHA {
-		return fmt.Errorf("文件校验失败：%s", filepath.Base(file))
-	}
-	return os.Rename(f.Name(), file)
-}
-
-type fileDownload struct {
-	path string
-	file artifact
-}
-
-func batch(ctx context.Context, stage string, files []fileDownload, report func(Progress)) error {
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	report(Progress{Stage: stage, Total: len(files)})
-	var wg sync.WaitGroup
-	var next, done atomic.Int32
-	var first error
-	var once sync.Once
-	for range min(12, len(files)) {
-		wg.Go(func() {
-			for ctx.Err() == nil {
-				index := int(next.Add(1)) - 1
-				if index >= len(files) {
-					return
-				}
-				f := files[index]
-				if err := download(ctx, f.path, f.file); err != nil {
-					once.Do(func() { first = err; cancel() })
-					return
-				}
-				report(Progress{Stage: stage, Done: int(done.Add(1)), Total: len(files)})
-			}
-		})
-	}
-	wg.Wait()
-	if first != nil {
-		return first
-	}
-	return ctx.Err()
 }
 
 func (g Game) versionDir(id string) string { return filepath.Join(g.Cache, "versions", id) }
@@ -339,22 +237,91 @@ func (g Game) Installed(i Instance) bool {
 	if supported(i) != nil {
 		return false
 	}
-	_, err := os.Stat(filepath.Join(g.versionDir(i.Version), "verified"))
-	return err == nil
+	if _, err := g.readReceipt(i.Version); err != nil {
+		return false
+	}
+	for _, name := range []string{"version.json", "client.jar"} {
+		st, err := os.Stat(filepath.Join(g.versionDir(i.Version), name))
+		if err != nil || !st.Mode().IsRegular() || st.Size() == 0 {
+			return false
+		}
+	}
+	return true
 }
 
-func (g Game) readVersion(id string) (metadata, error) {
-	var m metadata
-	found, err := readJSON(filepath.Join(g.versionDir(id), "version.json"), &m)
-	if err == nil && (!found || m.ID != id || m.Type != "release" || m.MainClass == "" || m.JavaVersion.MajorVersion < 21) {
-		err = errors.New("版本元数据缺失或不受支持")
+var (
+	// ErrRepairRequired indicates that cached files cannot be used to start the client.
+	ErrRepairRequired = errors.New("游戏文件需要重新校验")
+	// ErrJavaRequired indicates that the selected game needs a usable Java runtime.
+	ErrJavaRequired = errors.New("需要兼容的 Java 运行时")
+)
+
+type installReceipt struct {
+	Platform   string `json:"platform"`
+	VersionSHA string `json:"version_sha1"`
+}
+
+func platformKey() string { return runtime.GOOS + "/" + runtime.GOARCH }
+
+func (g Game) readReceipt(id string) (installReceipt, error) {
+	var r installReceipt
+	f, err := os.Open(filepath.Join(g.versionDir(id), "verified"))
+	if err != nil {
+		return r, err
 	}
-	return m, err
+	defer f.Close()
+	b, err := io.ReadAll(io.LimitReader(f, 1025))
+	if err != nil {
+		return r, err
+	}
+	if len(b) > 1024 {
+		return r, errors.New("安装校验记录损坏")
+	}
+	// Existing installations did not persist the catalog SHA-1. Continue checking
+	// their complete artifacts, and upgrade the receipt after an explicit repair.
+	if strings.TrimSpace(string(b)) == "1" {
+		return r, nil
+	}
+	if err := json.Unmarshal(b, &r); err != nil {
+		return r, errors.New("安装校验记录损坏")
+	}
+	if r.Platform != platformKey() {
+		return r, errors.New("已安装的游戏文件属于其他平台")
+	}
+	if _, err := (artifact{SHA: r.VersionSHA, Size: unknownSize}).checksum(); err != nil {
+		return r, errors.New("安装校验记录缺少版本摘要")
+	}
+	return r, nil
+}
+
+func (g Game) readVersion(id, expectedSHA string) (metadata, error) {
+	var m metadata
+	f, err := os.Open(filepath.Join(g.versionDir(id), "version.json"))
+	if err != nil {
+		return m, err
+	}
+	defer f.Close()
+	b, err := io.ReadAll(io.LimitReader(f, maxMetadata+1))
+	if err != nil {
+		return m, err
+	}
+	sum := sha1.Sum(b)
+	if len(b) > maxMetadata || (expectedSHA != "" && !strings.EqualFold(hex.EncodeToString(sum[:]), expectedSHA)) {
+		return m, errors.New("版本元数据未通过校验")
+	}
+	if err := json.Unmarshal(b, &m); err != nil {
+		return m, fmt.Errorf("无法读取版本元数据：%w", err)
+	}
+	if m.ID != id || m.Type != "release" || m.MainClass == "" || len(m.Arguments.JVM) == 0 || m.JavaVersion.MajorVersion < 21 {
+		return m, errors.New("版本元数据缺失或不受支持")
+	}
+	return m, nil
 }
 
 func (g Game) binaries(m metadata) ([]fileDownload, []string, error) {
 	client := filepath.Join(g.versionDir(m.ID), "client.jar")
 	files := []fileDownload{{client, m.Downloads.Client}}
+	seen := make(map[string]artifact)
 	var cp []string
 	for _, lib := range m.Libraries {
 		if !allowed(lib.Rules) {
@@ -364,10 +331,21 @@ func (g Game) binaries(m metadata) ([]fileDownload, []string, error) {
 			return nil, nil, errors.New("当前版本使用不受支持的旧版本机库格式")
 		}
 		file := lib.Downloads.Artifact
-		if file.Path == "" || !filepath.IsLocal(file.Path) {
+		if !filepath.IsLocal(file.Path) || filepath.Clean(file.Path) == "." {
 			return nil, nil, fmt.Errorf("无效的库路径：%q", file.Path)
 		}
 		path := filepath.Join(g.Cache, "libraries", filepath.FromSlash(file.Path))
+		key := path
+		if runtime.GOOS == "windows" {
+			key = strings.ToLower(path)
+		}
+		if prev, ok := seen[key]; ok {
+			if !strings.EqualFold(prev.SHA, file.SHA) || prev.Size != file.Size {
+				return nil, nil, fmt.Errorf("版本元数据中的库文件冲突：%s", file.Path)
+			}
+			continue
+		}
+		seen[key] = file
 		files = append(files, fileDownload{path, file})
 		cp = append(cp, path)
 	}
@@ -394,29 +372,40 @@ func (g Game) assets(indexPath string) ([]fileDownload, error) {
 		return nil, errors.Join(errors.New("无法读取资源索引"), err)
 	}
 	files := make([]fileDownload, 0, len(assets.Objects))
-	seen := make(map[string]bool)
+	seen := make(map[string]int64)
 	for _, a := range assets.Objects {
-		digest, err := hex.DecodeString(a.Hash)
-		if err != nil || len(digest) != sha1.Size {
-			return nil, errors.New("资源索引包含无效 SHA-1")
+		hash := strings.ToLower(a.Hash)
+		obj := artifact{SHA: hash, Size: a.Size}
+		if _, err := obj.checksum(); err != nil || a.Size < 0 {
+			return nil, errors.New("资源索引包含无效摘要或大小")
 		}
-		if seen[a.Hash] {
+		if size, ok := seen[hash]; ok {
+			if size != a.Size {
+				return nil, errors.New("资源索引中的文件大小冲突")
+			}
 			continue
 		}
-		seen[a.Hash] = true
-		key := a.Hash[:2] + "/" + a.Hash
-		files = append(files, fileDownload{filepath.Join(g.Cache, "assets", "objects", filepath.FromSlash(key)),
-			artifact{URL: "https://resources.download.minecraft.net/" + key, SHA: a.Hash, Size: a.Size}})
+		seen[hash] = a.Size
+		key := hash[:2] + "/" + hash
+		obj.URL = "https://resources.download.minecraft.net/" + key
+		files = append(files, fileDownload{filepath.Join(g.Cache, "assets", "objects", filepath.FromSlash(key)), obj})
 	}
 	return files, nil
 }
 
 func (g Game) Install(ctx context.Context, i Instance, report func(Progress)) error {
+	return g.install(ctx, i, report, &downloads{http: officialHTTP})
+}
+
+func (g Game) install(ctx context.Context, i Instance, report func(Progress), d *downloads) error {
 	if err := supported(i); err != nil {
 		return err
 	}
+	if report == nil {
+		report = func(Progress) {}
+	}
 	report(Progress{Stage: "获取官方版本元数据"})
-	all, err := Releases(ctx)
+	all, err := d.releases(ctx)
 	if err != nil {
 		return err
 	}
@@ -426,10 +415,10 @@ func (g Game) Install(ctx context.Context, i Instance, report func(Progress)) er
 	}
 	v := all[index]
 	dir := g.versionDir(i.Version)
-	if err := download(ctx, filepath.Join(dir, "version.json"), artifact{URL: v.URL, SHA: v.SHA}); err != nil {
+	if err := d.file(ctx, filepath.Join(dir, "version.json"), artifact{URL: v.URL, SHA: v.SHA, Size: unknownSize}); err != nil {
 		return err
 	}
-	m, err := g.readVersion(i.Version)
+	m, err := g.readVersion(i.Version, v.SHA)
 	if err != nil {
 		return err
 	}
@@ -437,24 +426,77 @@ func (g Game) Install(ctx context.Context, i Instance, report func(Progress)) er
 	if err != nil {
 		return err
 	}
-	if err := batch(ctx, "校验游戏和运行库", files, report); err != nil {
+	if err := d.batch(ctx, "校验游戏和运行库", files, report); err != nil {
 		return err
 	}
 	indexPath, err := g.indexPath(m)
 	if err != nil {
 		return err
 	}
-	if err := download(ctx, indexPath, m.AssetIndex.artifact); err != nil {
+	if err := d.file(ctx, indexPath, m.AssetIndex.artifact); err != nil {
 		return err
 	}
 	assets, err := g.assets(indexPath)
 	if err != nil {
 		return err
 	}
-	if err := batch(ctx, "校验游戏资源", assets, report); err != nil {
+	if err := d.batch(ctx, "校验游戏资源", assets, report); err != nil {
 		return err
 	}
-	return writeFile(filepath.Join(dir, "verified"), []byte("1\n"))
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	receipt, err := json.Marshal(installReceipt{Platform: platformKey(), VersionSHA: v.SHA})
+	if err != nil {
+		return err
+	}
+	return writeFile(filepath.Join(dir, "verified"), receipt)
+}
+
+func verifyArtifact(ctx context.Context, file fileDownload) error {
+	digest, err := file.file.checksum()
+	if err != nil {
+		return fmt.Errorf("%s：%w", filepath.Base(file.path), err)
+	}
+	ok, err := checkFile(ctx, file.path, file.file, digest)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("%s 缺失或未通过校验", filepath.Base(file.path))
+	}
+	return nil
+}
+
+func (g Game) verifyInstalled(ctx context.Context, i Instance) (metadata, []string, error) {
+	r, err := g.readReceipt(i.Version)
+	if errors.Is(err, os.ErrNotExist) {
+		err = errors.New("没有已校验的安装记录")
+	}
+	if err != nil {
+		return metadata{}, nil, err
+	}
+	m, err := g.readVersion(i.Version, r.VersionSHA)
+	if err != nil {
+		return m, nil, err
+	}
+	files, cp, err := g.binaries(m)
+	if err != nil {
+		return m, nil, err
+	}
+	index, err := g.indexPath(m)
+	if err != nil {
+		return m, nil, err
+	}
+	// Check the asset index before trusting its references to other files.
+	if err := verifyArtifact(ctx, fileDownload{index, m.AssetIndex.artifact}); err != nil {
+		return m, nil, err
+	}
+	assets, err := g.assets(index)
+	if err != nil {
+		return m, nil, err
+	}
+	return m, cp, batch(ctx, append(files, assets...), verifyArtifact, nil)
 }
 
 type Running struct {
@@ -470,41 +512,34 @@ func (g Game) Start(ctx context.Context, i Instance, settings Settings) (Running
 	if !playerID.MatchString(settings.Player) {
 		return Running{}, errors.New("离线名称须为 3–16 位字母、数字或下划线")
 	}
-	if !g.Installed(i) {
-		return Running{}, errors.New("请先安装游戏")
-	}
-	m, err := g.readVersion(i.Version)
-	if err != nil {
+	if err := validateMemory(settings.Memory); err != nil {
 		return Running{}, err
 	}
-	files, cp, err := g.binaries(m)
+	m, cp, err := g.verifyInstalled(ctx, i)
 	if err != nil {
-		return Running{}, err
-	}
-	index, err := g.indexPath(m)
-	if err != nil {
-		return Running{}, err
-	}
-	assets, err := g.assets(index)
-	if err != nil {
-		return Running{}, fmt.Errorf("%w，请重新校验安装", err)
-	}
-	for _, file := range append(append(files, fileDownload{path: index, file: m.AssetIndex.artifact}), assets...) {
-		if err := ctx.Err(); err != nil {
-			return Running{}, err
+		if ctx.Err() != nil {
+			return Running{}, ctx.Err()
 		}
-		st, err := os.Stat(file.path)
-		if err != nil || !st.Mode().IsRegular() || file.file.Size > 0 && file.file.Size != st.Size() {
-			return Running{}, fmt.Errorf("%s 缺失或已变更，请重新校验安装", filepath.Base(file.path))
+		return Running{}, fmt.Errorf("%w：%w", ErrRepairRequired, err)
+	}
+	for _, path := range cp {
+		if strings.ContainsRune(path, os.PathListSeparator) {
+			return Running{}, fmt.Errorf("缓存目录不能包含 Java 类路径分隔符 %q", os.PathListSeparator)
 		}
 	}
 	j, err := FindJava(ctx, settings.JavaPath, m.JavaVersion.MajorVersion)
 	if err != nil {
+		if ctx.Err() != nil {
+			return Running{}, ctx.Err()
+		}
+		return Running{}, fmt.Errorf("%w：%w", ErrJavaRequired, err)
+	}
+	if err := ctx.Err(); err != nil {
 		return Running{}, err
 	}
 	natives := filepath.Join(i.GameDir, ".lxmcl-natives")
 	if err := os.MkdirAll(natives, 0755); err != nil {
-		return Running{}, err
+		return Running{}, fmt.Errorf("无法创建实例运行目录：%w", err)
 	}
 	uuid := md5.Sum([]byte("OfflinePlayer:" + settings.Player))
 	uuid[6] = uuid[6]&0x0f | 0x30
@@ -520,11 +555,11 @@ func (g Game) Start(ctx context.Context, i Instance, settings Settings) (Running
 	}
 	jvm, err := gameArgs(m.Arguments.JVM, values)
 	if err != nil {
-		return Running{}, err
+		return Running{}, fmt.Errorf("无法生成 Java 参数：%w", err)
 	}
 	game, err := gameArgs(m.Arguments.Game, values)
 	if err != nil {
-		return Running{}, err
+		return Running{}, fmt.Errorf("无法生成游戏参数：%w", err)
 	}
 	args := append([]string{"-Xmx" + strconv.Itoa(settings.Memory) + "M"}, jvm...)
 	if l := m.Logging.Client; l.Argument != "" {
@@ -533,11 +568,11 @@ func (g Game) Start(ctx context.Context, i Instance, settings Settings) (Running
 	args = append(append(args, m.MainClass), game...)
 	logDir := filepath.Join(i.GameDir, "launcher-logs")
 	if err := os.MkdirAll(logDir, 0755); err != nil {
-		return Running{}, err
+		return Running{}, fmt.Errorf("无法创建游戏日志目录：%w", err)
 	}
 	log, err := os.CreateTemp(logDir, "game-*.log")
 	if err != nil {
-		return Running{}, err
+		return Running{}, fmt.Errorf("无法创建游戏日志：%w", err)
 	}
 	// The game process owns its own lifetime after Start, independent of the launcher window.
 	cmd := exec.Command(j.Path, args...)
@@ -549,7 +584,7 @@ func (g Game) Start(ctx context.Context, i Instance, settings Settings) (Running
 	}
 	if err := cmd.Start(); err != nil {
 		log.Close()
-		return Running{}, err
+		return Running{}, fmt.Errorf("启动 Java 进程失败：%w", err)
 	}
 	done := make(chan error, 1)
 	go func() {
@@ -566,7 +601,11 @@ func ValidateSettings(s Settings) error {
 	if !playerID.MatchString(s.Player) {
 		return errors.New("离线名称须为 3–16 位字母、数字或下划线")
 	}
-	if s.Memory < 1024 || s.Memory > 65536 {
+	return validateMemory(s.Memory)
+}
+
+func validateMemory(memory int) error {
+	if memory < 1024 || memory > 65536 {
 		return errors.New("最大内存须为 1024–65536 MiB")
 	}
 	return nil

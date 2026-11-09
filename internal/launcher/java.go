@@ -22,7 +22,11 @@ type Java struct {
 var javaVersion = regexp.MustCompile(`(?m)java\.specification\.version\s*=\s*(?:1\.)?(\d+)`)
 
 func ProbeJava(ctx context.Context, path string) (Java, error) {
-	path, err := exec.LookPath(strings.TrimSpace(path))
+	path = strings.TrimSpace(path)
+	if len(path) >= 2 && path[0] == '"' && path[len(path)-1] == '"' {
+		path = path[1 : len(path)-1]
+	}
+	path, err := exec.LookPath(path)
 	if err != nil {
 		return Java{}, fmt.Errorf("找不到 Java：%w", err)
 	}
@@ -32,7 +36,16 @@ func ProbeJava(ctx context.Context, path string) (Java, error) {
 	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, path, "-XshowSettings:properties", "-version")
+	probe := path
+	// javaw does not reliably write diagnostics to redirected stdout/stderr.
+	// Probe its console counterpart while retaining the requested executable.
+	if runtime.GOOS == "windows" && strings.EqualFold(filepath.Base(path), "javaw.exe") {
+		sibling := filepath.Join(filepath.Dir(path), "java.exe")
+		if st, err := os.Stat(sibling); err == nil && st.Mode().IsRegular() {
+			probe = sibling
+		}
+	}
+	cmd := exec.CommandContext(ctx, probe, "-XshowSettings:properties", "-version")
 	hideConsole(cmd)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -67,8 +80,14 @@ func FindJava(ctx context.Context, preferred string, minimum int) (Java, error) 
 	}
 	paths = append(paths, bin)
 	if runtime.GOOS == "windows" {
-		for _, folder := range []string{"Java", "Eclipse Adoptium", "BellSoft", "Microsoft", "Zulu"} {
-			matches, _ := filepath.Glob(filepath.Join(os.Getenv("ProgramFiles"), folder, "*", "bin", bin))
+		if root := os.Getenv("ProgramFiles"); root != "" {
+			for _, folder := range []string{"Java", "Eclipse Adoptium", "BellSoft", "Microsoft", "Zulu", "Amazon Corretto"} {
+				matches, _ := filepath.Glob(filepath.Join(root, folder, "*", "bin", bin))
+				paths = append(paths, matches...)
+			}
+		}
+		if root := os.Getenv("APPDATA"); root != "" {
+			matches, _ := filepath.Glob(filepath.Join(root, ".minecraft", "runtime", "*", "*", "*", "bin", bin))
 			paths = append(paths, matches...)
 		}
 	}
@@ -79,6 +98,9 @@ func FindJava(ctx context.Context, preferred string, minimum int) (Java, error) 
 		if j, err := ProbeJava(ctx, p); err == nil && j.Major >= minimum {
 			return j, nil
 		}
+	}
+	if err := ctx.Err(); err != nil {
+		return Java{}, err
 	}
 	return Java{}, fmt.Errorf("未找到 Java %d 或以上，请在设置中指定 Java 路径", minimum)
 }
