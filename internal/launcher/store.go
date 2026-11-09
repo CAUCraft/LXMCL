@@ -19,20 +19,23 @@ type Settings struct {
 }
 
 type Instance struct {
-	ID       int           `json:"id"`
-	Name     string        `json:"name"`
-	Version  string        `json:"version"`
-	Loader   string        `json:"loader"`
-	GameDir  string        `json:"game_directory"`
-	Revision uint64        `json:"revision"`
-	Launch   LaunchOptions `json:"launch,omitempty,omitzero"`
+	ID            int           `json:"id"`
+	Name          string        `json:"name"`
+	Version       string        `json:"version"`
+	Loader        string        `json:"loader"`
+	LoaderVersion string        `json:"loader_version,omitempty"`
+	GameDir       string        `json:"game_directory"`
+	Revision      uint64        `json:"revision"`
+	Launch        LaunchOptions `json:"launch,omitempty,omitzero"`
 }
 
 type State struct {
-	Settings  Settings   `json:"settings"`
-	Instances []Instance `json:"instances"`
-	Selected  int        `json:"selected"`
-	NextID    int        `json:"next_id"`
+	Servers        []Server   `json:"servers,omitempty"`
+	Settings       Settings   `json:"settings"`
+	Instances      []Instance `json:"instances"`
+	OfflinePlayers []string   `json:"offline_players,omitempty"`
+	Selected       int        `json:"selected"`
+	NextID         int        `json:"next_id"`
 }
 
 type Store struct{ Root string }
@@ -119,7 +122,35 @@ func writeFile(path string, data []byte) error {
 
 func (s State) Clone() State {
 	s.Instances = slices.Clone(s.Instances)
+	s.OfflinePlayers = slices.Clone(s.OfflinePlayers)
+	s.Servers = slices.Clone(s.Servers)
 	return s
+}
+
+func (s State) Players() []string {
+	names := slices.Clone(s.OfflinePlayers)
+	if playerID.MatchString(s.Settings.Player) && !slices.Contains(names, s.Settings.Player) {
+		names = append(names, s.Settings.Player)
+	}
+	return names
+}
+
+func (s *State) UseOfflinePlayer(name string) error {
+	if !playerID.MatchString(name) {
+		return errors.New("离线名称须为 3–16 位字母、数字或下划线")
+	}
+	s.OfflinePlayers = s.Players()
+	if !slices.Contains(s.OfflinePlayers, name) {
+		s.OfflinePlayers = append(s.OfflinePlayers, name)
+	}
+	s.Settings.Player = name
+	return nil
+}
+
+func (s *State) ForgetOfflinePlayer(name string) {
+	if name != s.Settings.Player {
+		s.OfflinePlayers = slices.DeleteFunc(s.OfflinePlayers, func(player string) bool { return player == name })
+	}
 }
 
 func (s State) Find(id int) (Instance, bool) {
@@ -165,7 +196,31 @@ func (s *State) Duplicate(id int, revision uint64, name string) (Instance, error
 	s.Selected = selected
 	duplicate := &s.Instances[len(s.Instances)-1]
 	duplicate.Launch = source.Launch
+	duplicate.Loader, duplicate.LoaderVersion = source.Loader, source.LoaderVersion
 	return *duplicate, nil
+}
+
+func (s *State) ConfigureLoader(id int, revision uint64, fabricVersion string) error {
+	for n := range s.Instances {
+		i := &s.Instances[n]
+		if i.ID != id || i.Revision != revision {
+			continue
+		}
+		next := *i
+		next.Loader, next.LoaderVersion = "Vanilla", ""
+		if fabricVersion != "" {
+			next.Loader, next.LoaderVersion = "Fabric", fabricVersion
+		}
+		if err := supported(next); err != nil {
+			return err
+		}
+		if next.Loader != i.Loader || next.LoaderVersion != i.LoaderVersion {
+			next.Revision++
+			*i = next
+		}
+		return nil
+	}
+	return errors.New("实例已变更，请重新打开加载器设置")
 }
 
 func (s *State) Rename(id int, revision uint64, name string) error {

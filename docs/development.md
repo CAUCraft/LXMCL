@@ -19,6 +19,8 @@ go tool mygo build -platform windows/amd64
 
 实例可继承或覆盖全局 Java 与内存，并指定启动分辨率或全屏。检测 Java 读取实际版本元数据；复制实例配置只复制版本和启动设置，并分配新目录。
 
+Fabric 加载器与库来自 Fabric Meta 和 Maven；Modrinth 文件按 SHA-512 校验。本地模组和资源包分别需要 `fabric.mod.json` 和 `pack.mcmeta`。存档备份位于数据目录的 `backups/`，恢复支持包含 `世界名/level.dat` 的 ZIP，不覆盖已有世界。
+
 ## 验证与发布
 
 [CI](https://github.com/CAUCraft/LXMCL/actions) 在 Windows 上运行测试和打包，在 Linux 上运行启动器核心测试。UI 测试使用软件渲染，可通过 `LXMCL_UI_CAPTURE` 保存截图；系统窗控、输入法及实际进入游戏需要另行验证。

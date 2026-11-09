@@ -1,6 +1,7 @@
 package main
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 
@@ -84,7 +85,7 @@ const (
 
 func (a *desktop) view(c *ui.Context) {
 	theme.Apply(c)
-	if a.ready && !a.form.open && !a.logOpen && !a.licensesOpen {
+	if a.ready && !a.form.open && !a.logOpen && !a.licensesOpen && (a.pack == nil || !a.pack.open) {
 		if mods, key, ok := display.HotkeyBinding(searchHotkey, display.HotkeyAuto); ok && c.Shortcut(mods, key) {
 			a.page, a.libraryPage, a.inspected = pageLibrary, 0, 0
 			a.instanceFilter = 0
@@ -138,6 +139,7 @@ func (a *desktop) view(c *ui.Context) {
 		a.editor(c.Key("instance-editor"))
 		a.logDialog(c.Key("game-log"))
 		a.licensesDialog(c.Key("third-party-licenses"))
+		a.packDialog(c.Key("modrinth-packs"))
 	})
 }
 
@@ -432,8 +434,11 @@ func (a *desktop) library(c *ui.Context) {
 }
 
 func loaderName(i launcher.Instance) string {
-	if i.Loader == "" || strings.EqualFold(i.Loader, "vanilla") {
+	if i.Vanilla() {
 		return "原版"
+	}
+	if i.Fabric() && i.LoaderVersion != "" {
+		return "Fabric " + i.LoaderVersion
 	}
 	return i.Loader
 }
@@ -469,12 +474,18 @@ func (a *desktop) editor(c *ui.Context) {
 		title, okText = "更换版本", "保存版本"
 	case "duplicate":
 		title, okText = "复制实例配置", "创建副本"
+	case "loader":
+		title, okText = "选择加载器", "保存加载器"
 	}
 	submit := false
 	if feedback.Modal(c, &a.form.open, feedback.ModalProps{
 		Title: title, OkText: okText, CancelText: "取消", Width: 480,
 	}, func() {
 		ui.Column(c).Gap(12).Children(func() {
+			if a.form.mode == "loader" {
+				a.loaderForm(c)
+				return
+			}
 			if a.form.mode == "remove" {
 				feedback.Alert(c, "移除「"+a.form.target.Name+"」的配置",
 					feedback.AlertProps{Type: feedback.Warning, Description: "游戏目录与存档会保留。"})
@@ -531,5 +542,32 @@ func (a *desktop) editor(c *ui.Context) {
 		if a.form.open {
 			a.submitEditor()
 		}
+	}
+}
+
+func (a *desktop) loaderForm(c *ui.Context) {
+	f := &a.form
+	panelHeading(c, lucide.Layers(), f.target.Name, "Minecraft "+f.target.Version)
+	options := []field.SelectOption{{Value: "", Label: "原版"}}
+	if f.target.LoaderVersion != "" && !slices.Contains(f.loaderVersions, f.target.LoaderVersion) {
+		options = append(options, field.SelectOption{Value: f.target.LoaderVersion, Label: "Fabric " + f.target.LoaderVersion})
+	}
+	for _, version := range f.loaderVersions {
+		options = append(options, field.SelectOption{Value: version, Label: "Fabric " + version})
+	}
+	field.Select(c, &f.version, field.SelectProps{Options: options, Disabled: a.busy}).Label("加载器")
+	switch {
+	case f.loaderLoading:
+		muted(c, "正在读取 Fabric 版本…")
+	case f.loaderError != "":
+		feedback.Alert(c, f.loaderError, feedback.AlertProps{Type: feedback.Warning})
+		if button(c, "重试读取版本", action.Text, a.busy) {
+			a.fetchFabricVersions(f.target)
+		}
+	case len(f.loaderVersions) == 0 && len(options) == 1:
+		muted(c, "此版本没有可用的 Fabric 稳定版")
+	}
+	if f.err != "" {
+		feedback.Alert(c, f.err, feedback.AlertProps{Type: feedback.Error})
 	}
 }

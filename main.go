@@ -83,13 +83,16 @@ func main() {
 }
 
 type editor struct {
-	open    bool
-	mode    string
-	target  launcher.Instance
-	name    string
-	version string
-	err     string
-	focus   bool
+	open           bool
+	mode           string
+	target         launcher.Instance
+	name           string
+	version        string
+	err            string
+	focus          bool
+	loaderVersions []string
+	loaderLoading  bool
+	loaderError    string
 }
 
 type desktop struct {
@@ -110,21 +113,26 @@ type desktop struct {
 	noticeTask       bool
 	noticeJavaTarget launcher.Instance
 
-	page, settingsPage, libraryPage int
-	inspected                       int
-	detailPage                      int
-	launchDrafts                    map[int]*instanceLaunchDraft
-	query                           string
-	focusSearch                     bool
-	instanceFilter                  int
-	taskFilter                      int
-	scroll                          ui.ScrollState
-	form                            editor
-	installed                       map[int]bool
-	releases                        []launcher.Version
-	catalogBusy                     bool
-	catalogErr                      string
-	javaInfo                        string
+	page, settingsPage, libraryPage        int
+	inspected                              int
+	detailPage                             int
+	launchDrafts                           map[int]*instanceLaunchDraft
+	content                                contentView
+	contentRequest                         uint64
+	pack                                   *packBrowser
+	serverName, serverAddress, serverError string
+	serverStatus                           map[string]*serverCheck
+	query                                  string
+	focusSearch                            bool
+	instanceFilter                         int
+	taskFilter                             int
+	scroll                                 ui.ScrollState
+	form                                   editor
+	installed                              map[int]bool
+	releases                               []launcher.Version
+	catalogBusy                            bool
+	catalogErr                             string
+	javaInfo                               string
 
 	busy         bool
 	cancelTask   context.CancelFunc

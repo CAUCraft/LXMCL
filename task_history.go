@@ -32,6 +32,7 @@ type taskRecord struct {
 	Revision   uint64    `json:"instance_revision,omitempty"`
 	Name       string    `json:"name"`
 	Version    string    `json:"version"`
+	Server     string    `json:"server,omitempty"`
 	Action     string    `json:"action"`
 	Status     string    `json:"status"`
 	Detail     string    `json:"detail,omitempty"`

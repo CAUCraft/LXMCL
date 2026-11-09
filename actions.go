@@ -125,6 +125,30 @@ func (a *desktop) duplicate(i launcher.Instance) {
 	a.form = editor{open: true, mode: "duplicate", target: i, focus: true}
 }
 
+func (a *desktop) configureLoader(i launcher.Instance) {
+	a.form = editor{open: true, mode: "loader", target: i, version: i.LoaderVersion}
+	a.fetchFabricVersions(i)
+}
+
+func (a *desktop) fetchFabricVersions(i launcher.Instance) {
+	a.form.loaderLoading, a.form.loaderError = true, ""
+	go func() {
+		ctx, cancel := context.WithTimeout(a.ctx, 15*time.Second)
+		defer cancel()
+		versions, err := launcher.FabricVersions(ctx, i.Version)
+		a.post(func() {
+			f := &a.form
+			if !f.open || f.mode != "loader" || f.target.ID != i.ID || f.target.Revision != i.Revision {
+				return
+			}
+			f.loaderLoading, f.loaderVersions = false, versions
+			if err != nil {
+				f.loaderError = "无法读取 Fabric 版本：" + err.Error()
+			}
+		})
+	}()
+}
+
 func (a *desktop) inspect(i launcher.Instance) {
 	a.page, a.libraryPage, a.inspected = pageLibrary, 0, i.ID
 	a.detailPage = detailOverview
@@ -148,6 +172,13 @@ func (a *desktop) submitEditor() {
 		var duplicate launcher.Instance
 		duplicate, err = next.Duplicate(form.target.ID, form.target.Revision, form.name)
 		checkID = duplicate.ID
+	case "loader":
+		if a.runningID == form.target.ID {
+			a.form.err = "请先退出此实例的游戏"
+			return
+		}
+		err = next.ConfigureLoader(form.target.ID, form.target.Revision, form.version)
+		checkID = form.target.ID
 	case "version":
 		if a.runningID == form.target.ID {
 			a.form.err = "请先退出此实例的游戏"
@@ -199,6 +230,9 @@ func (a *desktop) submitEditor() {
 			}
 		case "version":
 			a.message("版本已更换 · "+strings.TrimSpace(form.version), nil)
+		case "loader":
+			i, _ := a.state.Find(form.target.ID)
+			a.message("已保存加载器 · "+loaderName(i), nil)
 		}
 	})
 }
@@ -225,6 +259,7 @@ func (a *desktop) refreshCatalog() {
 
 func (a *desktop) saveSettings() {
 	next := a.state.Clone()
+	previousPlayer := next.Settings.Player
 	next.Settings = a.draft
 	next.Settings.GameRoot = strings.TrimSpace(a.draft.GameRoot)
 	next.Settings.JavaPath = strings.TrimSpace(a.draft.JavaPath)
@@ -239,6 +274,9 @@ func (a *desktop) saveSettings() {
 		a.message("无法保存设置", err)
 		return
 	}
+	player := next.Settings.Player
+	next.Settings.Player = previousPlayer
+	_ = next.UseOfflinePlayer(player)
 	a.save(next, 0, func(err error) {
 		if err == nil {
 			a.draft = next.Settings
@@ -248,6 +286,26 @@ func (a *desktop) saveSettings() {
 			a.message("无法保存设置", err)
 		}
 	})
+}
+
+func (a *desktop) selectOfflinePlayer(name string) {
+	next := a.state.Clone()
+	if err := next.UseOfflinePlayer(name); err != nil {
+		a.message("无法切换离线账号", err)
+		return
+	}
+	a.save(next, 0, func(err error) {
+		if err == nil {
+			a.draft.Player = name
+		}
+		a.message("切换离线账号 · "+name, err)
+	})
+}
+
+func (a *desktop) forgetOfflinePlayer(name string) {
+	next := a.state.Clone()
+	next.ForgetOfflinePlayer(name)
+	a.save(next, 0, func(err error) { a.message("移除离线账号 · "+name, err) })
 }
 
 func (a *desktop) detectJava() {
@@ -293,6 +351,10 @@ func (a *desktop) openPath(path string, create bool) {
 }
 
 func (a *desktop) play(i launcher.Instance, installOnly bool) {
+	a.playOnServer(i, installOnly, "")
+}
+
+func (a *desktop) playOnServer(i launcher.Instance, installOnly bool, server string) {
 	if a.busy || a.running != nil {
 		return
 	}
@@ -302,7 +364,8 @@ func (a *desktop) play(i launcher.Instance, installOnly bool) {
 	ctx, cancel := context.WithCancel(a.ctx)
 	a.cancelTask = cancel
 	settings, g := a.state.Settings, a.game
-	record := taskRecord{InstanceID: i.ID, Revision: i.Revision, Name: i.Name, Version: i.Version, Action: taskLaunch, At: time.Now()}
+	instances := a.state.Instances
+	record := taskRecord{InstanceID: i.ID, Revision: i.Revision, Name: i.Name, Version: i.Version, Action: taskLaunch, Server: server, At: time.Now()}
 	if installOnly {
 		record.Action = taskVerify
 	}
@@ -332,17 +395,22 @@ func (a *desktop) play(i launcher.Instance, installOnly bool) {
 		var run launcher.Running
 		if err == nil && !installOnly {
 			report(launcher.Progress{Stage: "检查 Java 并启动游戏"})
-			run, err = g.Start(ctx, i, settings)
+			run, err = g.StartOnServer(ctx, i, settings, server)
 			if !needsInstall && errors.Is(err, launcher.ErrRepairRequired) && ctx.Err() == nil {
 				report(launcher.Progress{Stage: "修复游戏文件"})
 				err = g.Install(ctx, i, report)
 				if err == nil {
 					report(launcher.Progress{Stage: "检查 Java 并启动游戏"})
-					run, err = g.Start(ctx, i, settings)
+					run, err = g.StartOnServer(ctx, i, settings, server)
 				}
 			}
 		}
-		installed := g.Installed(i)
+		installed := make(map[int]bool)
+		for _, inst := range instances {
+			if inst.Version == i.Version {
+				installed[inst.ID] = g.Installed(inst)
+			}
+		}
 		switch {
 		case errors.Is(err, context.Canceled):
 			record.Status, record.Detail = taskCanceled, "已校验的文件会在下次复用"
@@ -356,10 +424,8 @@ func (a *desktop) play(i launcher.Instance, installOnly bool) {
 		records = a.saveTask(records, record, func() {
 			a.busy, a.cancelTask = false, nil
 			a.task = launcher.Progress{}
-			for _, inst := range a.state.Instances {
-				if inst.Version == i.Version {
-					a.installed[inst.ID] = installed && (inst.Loader == "" || strings.EqualFold(inst.Loader, "vanilla"))
-				}
+			for id, ok := range installed {
+				a.installed[id] = ok
 			}
 			switch {
 			case errors.Is(err, context.Canceled):

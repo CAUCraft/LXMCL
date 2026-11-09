@@ -23,7 +23,7 @@ import (
 
 const (
 	maxMetadata = 8 << 20
-	// Unknown sizes are used only for version JSON, whose SHA-1 is in the catalog.
+	// Verified metadata and small libraries may omit the expected size.
 	unknownSize = -1
 )
 
@@ -47,7 +47,8 @@ func officialURL(u *url.URL) bool {
 	return u.Scheme == "https" && u.User == nil && u.Port() == "" &&
 		slices.Contains([]string{"piston-meta.mojang.com", "piston-data.mojang.com",
 			"libraries.minecraft.net", "resources.download.minecraft.net", "launcher.mojang.com",
-			"launchermeta.mojang.com"}, u.Hostname())
+			"launchermeta.mojang.com", "meta.fabricmc.net", "maven.fabricmc.net",
+			"api.modrinth.com", "cdn.modrinth.com"}, u.Hostname())
 }
 
 type responseError struct {
@@ -82,6 +83,7 @@ func (d *downloads) get(ctx context.Context, src string) (*http.Response, error)
 	if !officialURL(req.URL) {
 		return nil, fmt.Errorf("下载来源不受支持：%s", src)
 	}
+	req.Header.Set("User-Agent", "CAUCraft/LXMCL (https://github.com/CAUCraft/LXMCL)")
 	host := req.URL.Hostname()
 	for {
 		d.mu.Lock()

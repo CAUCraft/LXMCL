@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/CAUCraft/LXMCL/internal/launcher"
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"github.com/lobehub/lobe-mygo/pkg/action"
 	"github.com/lobehub/lobe-mygo/pkg/feedback"
@@ -22,12 +23,14 @@ import (
 const (
 	detailOverview = iota
 	detailLaunch
+	detailContent
 	detailFiles
 )
 
 var instanceDetailTabs = []nav.TabItem{
 	{Label: "概览", Icon: lucide.Package()},
 	{Label: "启动设置", Icon: lucide.Settings2()},
+	{Label: "资源", Icon: lucide.Layers()},
 	{Label: "游戏文件", Icon: lucide.FolderOpen()},
 }
 
@@ -272,6 +275,30 @@ var instanceFolders = []struct{ label, path string }{
 }
 
 func (a *desktop) instanceFiles(c *ui.Context, i launcher.Instance) {
+	disabled := a.busy || a.pickerBusy || a.running != nil
+	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+		ui.Spacer(c).Grow(1)
+		dir := launcher.BackupsDir(a.store.Root, i.ID)
+		if button(c, "打开备份目录", action.Text, false) {
+			a.openPath(dir, true)
+		}
+		if button(c, "恢复存档…", action.Default, disabled) {
+			a.pickPath(mygo.OpenDialogOptions{Title: "选择存档 ZIP（保留已有世界）", DefaultPath: dir,
+				Filters: []mygo.FileFilter{{Name: "存档归档", Extensions: []string{"zip"}}}}, func(path string) {
+				a.runInstanceTask(i, "恢复存档", func(ctx context.Context) error {
+					_, err := launcher.RestoreSaves(ctx, i, path)
+					return err
+				})
+			})
+		}
+		if button(c, "备份存档", action.Primary, disabled) {
+			root := a.store.Root
+			a.runInstanceTask(i, "备份存档", func(ctx context.Context) error {
+				_, err := launcher.BackupSaves(ctx, i, root)
+				return err
+			})
+		}
+	})
 	layout.ScrollArea(c, layout.ScrollAreaProps{}, func() {
 		surface(c).Padding(10, 14).Gap(5).Children(func() {
 			for idx, folder := range instanceFolders {

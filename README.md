@@ -6,7 +6,15 @@ CAUCRAFT 的 Minecraft Java 版启动器，使用 Go、MyGo 和 Lobe MyGo 构建
 
 Windows x64：从 [GitHub Actions](https://github.com/CAUCraft/LXMCL/actions/workflows/ci.yml?query=branch%3Amain) 的成功构建下载开发版。正式版发布后见 [GitHub Releases](https://github.com/CAUCraft/LXMCL/releases)。
 
-LXMCL 支持独立实例、版本切换、实例级 Java／内存／窗口设置、原版游戏下载与校验、任务重试和日志预览。当前主要支持 1.20.5 及之后的原版正式版本，需自备匹配的 Java（例如 1.21.1 使用 Java 21）。暂仅支持离线单人游玩。
+面向 Minecraft Java 版 1.20.5 及之后的正式版本，需自备兼容 Java。
+
+- **实例**：原版与 Fabric、版本切换、文件校验、独立启动设置。
+- **资源**：从 Modrinth 下载兼容模组和资源包，解析必要的模组依赖；也可导入本地文件、停用或恢复。
+- **存档**：备份为 ZIP，恢复时保留已有同名世界。
+- **账号与服务器**：保存多个离线身份、收藏服务器、查询状态和直连允许离线登录的服务器。
+- **诊断**：Java 检测、下载进度、任务历史和游戏日志。
+
+Microsoft 正版登录、Forge／NeoForge／Quilt、整合包导入和 Java 自动安装尚未接入。
 
 ## 开发
 

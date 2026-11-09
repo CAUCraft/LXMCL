@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"strconv"
-	"strings"
 
 	"github.com/CAUCraft/LXMCL/internal/launcher"
 	"github.com/egoist/mygo/ui"
@@ -57,6 +56,8 @@ func (a *desktop) details(c *ui.Context, i launcher.Instance) {
 	switch a.detailPage {
 	case detailLaunch:
 		a.instanceLaunchSettings(c.Key(i.ID), i)
+	case detailContent:
+		a.instanceContent(c.Key(i.ID), i)
 	case detailFiles:
 		a.instanceFiles(c.Key(i.ID), i)
 	default:
@@ -69,9 +70,12 @@ func (a *desktop) instanceOverview(c *ui.Context, i launcher.Instance) {
 		surface(c).Padding(12, 16).Gap(8).Children(func() {
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 				ui.Column(c).Grow(1).MinWidth(0).Children(func() { property(c, "版本", i.Version+" · "+loaderName(i)) })
-				if (i.Loader == "" || strings.EqualFold(i.Loader, "vanilla")) &&
+				if (i.Vanilla() || i.Fabric()) &&
 					button(c, "更换版本", action.Default, a.busy || a.runningID == i.ID) {
 					a.changeVersion(i)
+				}
+				if (i.Vanilla() || i.Fabric()) && button(c, "加载器", action.Default, a.busy || a.runningID == i.ID) {
+					a.configureLoader(i)
 				}
 			})
 			layout.Divider(c, layout.DividerProps{})
@@ -109,7 +113,7 @@ func (a *desktop) instanceMenu(c *ui.Context, i launcher.Instance) {
 	box.Children(func() {
 		chosen := overlay.DropdownMenu(c, open, overlay.DropdownMenuProps{Items: []overlay.MenuItem{
 			{Key: "rename", Label: "重命名", Icon: lucide.Pencil(), Hotkey: "f2", Disabled: a.busy},
-			{Key: "duplicate", Label: "复制实例配置…", Icon: lucide.Copy(), Disabled: a.busy || (i.Loader != "" && !strings.EqualFold(i.Loader, "vanilla"))},
+			{Key: "duplicate", Label: "复制实例配置…", Icon: lucide.Copy(), Disabled: a.busy || (!i.Vanilla() && !i.Fabric())},
 			{Divider: true},
 			{Key: "remove", Label: "移除配置…", Icon: lucide.Trash2(), Danger: true, Disabled: a.busy || a.runningID == i.ID},
 		}}, func(trigger ui.Element) {
@@ -130,21 +134,6 @@ func property(c *ui.Context, label, value string) {
 	ui.Row(c).AlignItems(ui.Start).Gap(12).Children(func() {
 		muted(c, label).Width(112).Shrink(0)
 		display.Text(c, value, display.TextProps{}).Grow(1).MinWidth(0).Selectable()
-	})
-}
-
-func (a *desktop) network(c *ui.Context) {
-	workspace(c, func() {
-		surface(c).Padding(12).Children(func() {
-			display.Empty(c, display.EmptyProps{
-				Icon: lucide.WifiOff(), Title: "联机尚未接入",
-				Action: func() {
-					if button(c, "账号设置", action.Default, false) {
-						a.page, a.settingsPage = pageSettings, 2
-					}
-				},
-			})
-		})
 	})
 }
 
@@ -226,11 +215,7 @@ func (a *desktop) settings(c *ui.Context) {
 				case 1:
 					a.javaSettings(c, disabled)
 				case 2:
-					surface(c).Padding(8, 14).Children(func() {
-						settingsRow(c, "离线玩家名", func() {
-							settingsInput(c, "离线玩家名", &a.draft.Player, "Player", 240, disabled)
-						})
-					})
+					a.offlineAccounts(c, disabled)
 				case 3:
 					a.help(c)
 				}
@@ -238,6 +223,29 @@ func (a *desktop) settings(c *ui.Context) {
 		}).Grow(1).MinHeight(0)
 		if a.settingsPage != 3 {
 			a.settingsFooter(c)
+		}
+	})
+}
+
+func (a *desktop) offlineAccounts(c *ui.Context, disabled bool) {
+	surface(c).Padding(8, 14).Gap(5).Children(func() {
+		settingsRow(c, "离线玩家名", func() {
+			settingsInput(c, "离线玩家名", &a.draft.Player, "Player", 240, disabled)
+		})
+		for _, name := range a.state.Players() {
+			layout.Divider(c, layout.DividerProps{})
+			settingsRow(c.Key(name), name, func() {
+				if name == a.state.Settings.Player {
+					display.Tag(c, "使用中", display.TagProps{Color: display.TagGreen, Size: theme.Small})
+					return
+				}
+				if button(c, "切换", action.Default, disabled) {
+					a.selectOfflinePlayer(name)
+				}
+				if icon(c, lucide.X(), "移除离线账号 "+name, disabled) {
+					a.forgetOfflinePlayer(name)
+				}
+			})
 		}
 	})
 }
@@ -380,7 +388,11 @@ func (a *desktop) taskRow(c *ui.Context, row taskRecord) {
 			leadIcon(c, lucide.Activity(), 26)
 			ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
 				display.Text(c, row.Name, display.TextProps{Strong: true, Rows: 1}).Ellipsis("…")
-				muted(c, row.Action+" · "+row.Version+" · "+row.At.Local().Format("01-02 15:04")).FontSize(12)
+				detail := row.Action + " · " + row.Version + " · " + row.At.Local().Format("01-02 15:04")
+				if row.Server != "" {
+					detail += " · " + row.Server
+				}
+				muted(c, detail).FontSize(12)
 			})
 			display.Tag(c, row.Status, display.TagProps{Color: tone, Round: true})
 			if row.Log != "" && button(c, "查看日志", action.Text, false) {
@@ -388,7 +400,7 @@ func (a *desktop) taskRow(c *ui.Context, row taskRecord) {
 			}
 			if i, ok := row.retryTarget(a.state); ok {
 				if button(c, "重试", action.Default, a.busy || a.running != nil) {
-					a.play(i, row.Action == taskVerify)
+					a.playOnServer(i, row.Action == taskVerify, row.Server)
 				}
 			}
 		})

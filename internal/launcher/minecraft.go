@@ -224,8 +224,8 @@ func gameArgs(raw []json.RawMessage, values map[string]string, features map[stri
 func (g Game) versionDir(id string) string { return filepath.Join(g.Cache, "versions", id) }
 
 func supported(i Instance) error {
-	if !strings.EqualFold(i.Loader, "vanilla") && i.Loader != "" {
-		return errors.New("目前仅支持原版 Java 版；此实例使用了其他加载器")
+	if !i.Vanilla() && (!i.Fabric() || !fabricVersionID.MatchString(i.LoaderVersion)) {
+		return errors.New("请选择原版或有效的 Fabric 加载器版本")
 	}
 	if !versionID.MatchString(i.Version) || !modernRelease(i.Version) || !filepath.IsAbs(i.GameDir) {
 		return errors.New("请选择 1.20.5 或更新的原版正式版本，并使用绝对游戏目录")
@@ -245,6 +245,10 @@ func (g Game) Installed(i Instance) bool {
 		if err != nil || !st.Mode().IsRegular() || st.Size() == 0 {
 			return false
 		}
+	}
+	if i.Fabric() {
+		_, err := g.readFabric(i)
+		return err == nil
 	}
 	return true
 }
@@ -438,7 +442,13 @@ func (g Game) install(ctx context.Context, i Instance, report func(Progress), d 
 	if err != nil {
 		return err
 	}
-	return writeFile(filepath.Join(dir, "verified"), receipt)
+	if err := writeFile(filepath.Join(dir, "verified"), receipt); err != nil {
+		return err
+	}
+	if i.Fabric() {
+		return g.installFabric(ctx, i, d, report)
+	}
+	return nil
 }
 
 func (g Game) downloadVersion(ctx context.Context, id string, d *downloads) (metadata, Version, error) {
@@ -511,6 +521,10 @@ type Running struct {
 }
 
 func (g Game) Start(ctx context.Context, i Instance, settings Settings) (Running, error) {
+	return g.StartOnServer(ctx, i, settings, "")
+}
+
+func (g Game) StartOnServer(ctx context.Context, i Instance, settings Settings, server string) (Running, error) {
 	if err := supported(i); err != nil {
 		return Running{}, err
 	}
@@ -525,6 +539,17 @@ func (g Game) Start(ctx context.Context, i Instance, settings Settings) (Running
 		return Running{}, err
 	}
 	m, cp, err := g.verifyInstalled(ctx, i)
+	if err == nil && i.Fabric() {
+		var profile fabricRuntime
+		var libs []string
+		profile, libs, err = g.verifyFabric(ctx, i)
+		if err == nil {
+			cp = append(libs, cp...)
+			m.MainClass = profile.MainClass
+			m.Arguments.JVM = append(m.Arguments.JVM, profile.Arguments.JVM...)
+			m.Arguments.Game = append(m.Arguments.Game, profile.Arguments.Game...)
+		}
+	}
 	if err != nil {
 		if ctx.Err() != nil {
 			return Running{}, ctx.Err()
@@ -566,7 +591,7 @@ func (g Game) Start(ctx context.Context, i Instance, settings Settings) (Running
 	if err != nil {
 		return Running{}, fmt.Errorf("无法生成 Java 参数：%w", err)
 	}
-	game, err := clientArgs(m, values, i.Launch)
+	game, err := clientArgs(m, values, i.Launch, server)
 	if err != nil {
 		return Running{}, fmt.Errorf("无法生成游戏参数：%w", err)
 	}
@@ -607,12 +632,20 @@ func (g Game) Start(ctx context.Context, i Instance, settings Settings) (Running
 	return Running{PID: cmd.Process.Pid, Log: log.Name(), Done: done}, nil
 }
 
-func clientArgs(m metadata, values map[string]string, opts LaunchOptions) ([]string, error) {
-	var features map[string]bool
+func clientArgs(m metadata, values map[string]string, opts LaunchOptions, server string) ([]string, error) {
+	features := make(map[string]bool)
 	if opts.Display == DisplayResolution {
-		features = map[string]bool{"has_custom_resolution": true}
+		features["has_custom_resolution"] = true
 		values["resolution_width"] = strconv.Itoa(opts.Width)
 		values["resolution_height"] = strconv.Itoa(opts.Height)
+	}
+	if server != "" {
+		address, err := ServerAddress(server)
+		if err != nil {
+			return nil, err
+		}
+		features["is_quick_play_multiplayer"] = true
+		values["quickPlayMultiplayer"] = address
 	}
 	args, err := gameArgs(m.Arguments.Game, values, features)
 	if err != nil {
@@ -620,6 +653,9 @@ func clientArgs(m metadata, values map[string]string, opts LaunchOptions) ([]str
 	}
 	if opts.Display == DisplayFullscreen && !slices.Contains(args, "--fullscreen") {
 		args = append(args, "--fullscreen")
+	}
+	if server != "" && !slices.Contains(args, "--quickPlayMultiplayer") {
+		return nil, errors.New("此版本不支持启动时直连，请在游戏内加入服务器")
 	}
 	return args, nil
 }

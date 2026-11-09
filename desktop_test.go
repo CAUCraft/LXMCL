@@ -297,6 +297,39 @@ func testDesktop(t *testing.T) (*desktop, *ui.Tester) {
 	return a, tt
 }
 
+func TestResourceAndServerEntrypoints(t *testing.T) {
+	a, tt := testDesktop(t)
+	a.state.Instances[1].Loader, a.state.Instances[1].LoaderVersion = "Fabric", "0.16.14"
+	i := a.state.Instances[1]
+	a.content = contentView{id: i.ID, revision: i.Revision, tab: 1, files: []launcher.ContentFile{{Name: "demo.jar", Enabled: true}}}
+	a.inspect(i)
+	tt.Frame()
+	if _, ok := tt.Find("加载器"); !ok {
+		t.Fatal("loader settings are not available")
+	}
+	if err := tt.Click("资源"); err != nil {
+		t.Fatal(err)
+	}
+	capture(t, tt, "fabric-mods")
+	if err := tt.Click("搜索 Modrinth"); err != nil {
+		t.Fatal(err)
+	}
+	if a.pack == nil || !a.pack.open || a.pack.target.ID != i.ID || a.pack.kind != launcher.FabricMods || a.state.Selected != 1 {
+		t.Fatal("mod download did not capture the inspected Fabric instance")
+	}
+	tt.Key(0, ui.KeyEscape)
+	if err := a.state.AddServer("测试服务器", "localhost:25565"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.Click("联机"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := tt.Find("启动并加入"); !ok || a.page != pageNetwork {
+		t.Fatal("the saved Java server has no quick join entry")
+	}
+	capture(t, tt, "saved-servers")
+}
+
 func capture(t *testing.T, tt *ui.Tester, name string) {
 	dir := os.Getenv("LXMCL_UI_CAPTURE")
 	if dir == "" {
