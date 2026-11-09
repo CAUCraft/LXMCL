@@ -30,6 +30,15 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	if *dataDir == "" && mygo.IsDev() {
+		store.Root = filepath.Join(store.Root, "dev")
+	}
+	mygo.App.SetName("LXMCL")
+	// An isolated development directory may have its own window. In the normal
+	// data directory, keep a single writer for configuration and the game cache.
+	if *dataDir == "" && !mygo.App.RequestSingleInstanceLock() {
+		return
+	}
 	logo, err := ui.DecodeImage(logoPNG)
 	if err != nil {
 		log.Fatal(err)
@@ -45,7 +54,12 @@ func main() {
 		store: store, game: launcher.Game{Cache: filepath.Join(store.Root, "cache")},
 		ctx: ctx, logo: logo, hero: home, installed: make(map[int]bool),
 	}
-	mygo.App.SetName("LXMCL")
+	mygo.App.OnSecondInstance(func([]string, string) {
+		if a.window != nil {
+			a.window.Restore()
+			a.window.Focus()
+		}
+	})
 	mygo.App.WhenReady(func() {
 		opts := mygo.WindowOptions{
 			Title: "LXMCL", Width: 1140, Height: 720, MinWidth: 820, MinHeight: 530,
@@ -59,12 +73,13 @@ func main() {
 		a.window.OnClosed(cancel)
 		a.load()
 	})
-	if err := mygo.App.Run(); err != nil {
-		log.Print(err)
-	}
+	runErr := mygo.App.Run()
 	cancel()
-	// Accepted configuration writes finish even when the user closes the window.
+	// Drain accepted writes and canceled downloads; never wait for an open game.
 	a.writes.Wait()
+	if runErr != nil {
+		log.Fatal(runErr)
+	}
 }
 
 type editor struct {
@@ -91,6 +106,8 @@ type desktop struct {
 	loadErr     string
 	notice      string
 	noticeError bool
+	noticeJava  bool
+	noticeTask  bool
 
 	page, settingsPage, libraryPage int
 	inspected                       int
@@ -110,4 +127,10 @@ type desktop struct {
 	running    *launcher.Running
 	runningID  int
 	lastLog    string
+	history    []taskRecord
+	logOpen    bool
+	logText    string
+	logPath    string
+	logRequest uint64
+	pickerBusy bool
 }

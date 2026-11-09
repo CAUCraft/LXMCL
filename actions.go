@@ -30,6 +30,7 @@ func (a *desktop) post(fn func()) {
 func (a *desktop) load() {
 	go func() {
 		s, err := a.store.Load()
+		history, historyErr := loadTaskHistory(a.store.Root)
 		installed := make(map[int]bool, len(s.Instances))
 		for _, i := range s.Instances {
 			installed[i.ID] = a.game.Installed(i)
@@ -41,12 +42,17 @@ func (a *desktop) load() {
 			}
 			a.state, a.draft, a.installed, a.ready = s, s.Settings, installed, true
 			a.memory = strconv.Itoa(s.Settings.Memory)
+			a.restoreTaskHistory(history)
+			if historyErr != nil {
+				a.message("无法读取任务记录", historyErr)
+			}
 		})
 	}()
 }
 
 func (a *desktop) message(s string, err error) {
 	a.notice, a.noticeError = s, err != nil
+	a.noticeJava, a.noticeTask = false, false
 	if err != nil {
 		a.notice = fmt.Sprintf("%s：%s", s, err)
 	}
@@ -131,7 +137,8 @@ func (a *desktop) submitEditor() {
 			}
 			return
 		}
-		if same {
+		visible := same && a.form.open
+		if visible {
 			a.form.open = false
 		}
 		switch form.mode {
@@ -143,7 +150,11 @@ func (a *desktop) submitEditor() {
 					break
 				}
 			}
-			a.inspect(i)
+			if visible {
+				a.inspect(i)
+			} else {
+				a.message("已创建实例 · "+i.Name, nil)
+			}
 		case "remove":
 			if a.inspected == form.target.ID {
 				a.inspected = 0
@@ -178,7 +189,7 @@ func (a *desktop) saveSettings() {
 	next.Settings.GameRoot = strings.TrimSpace(a.draft.GameRoot)
 	next.Settings.JavaPath = strings.TrimSpace(a.draft.JavaPath)
 	next.Settings.Player = strings.TrimSpace(a.draft.Player)
-	m, err := strconv.Atoi(a.memory)
+	m, err := strconv.Atoi(strings.TrimSpace(a.memory))
 	if err != nil {
 		a.message("最大内存须填写整数 MiB", err)
 		return
@@ -191,8 +202,11 @@ func (a *desktop) saveSettings() {
 	a.save(next, func(err error) {
 		if err == nil {
 			a.draft = next.Settings
+			a.memory = strconv.Itoa(next.Settings.Memory)
+			a.message("设置已保存", nil)
+		} else {
+			a.message("无法保存设置", err)
 		}
-		a.message("保存设置", err)
 	})
 }
 
@@ -217,6 +231,10 @@ func (a *desktop) detectJava() {
 }
 
 func (a *desktop) openPath(path string, create bool) {
+	if !filepath.IsAbs(path) {
+		a.message("无法打开路径", errors.New("需要绝对路径"))
+		return
+	}
 	go func() {
 		var err error
 		if create {
@@ -236,12 +254,17 @@ func (a *desktop) play(i launcher.Instance, installOnly bool) {
 		return
 	}
 	a.busy, a.taskName = true, i.Name
+	a.notice = ""
 	a.task = launcher.Progress{Stage: "检查游戏文件"}
 	ctx, cancel := context.WithCancel(a.ctx)
 	a.cancelTask = cancel
 	settings, g := a.state.Settings, a.game
-	needsInstall := installOnly || !a.installed[i.ID]
-	go func() {
+	record := taskRecord{Name: i.Name, Version: i.Version, Action: "启动游戏", At: time.Now()}
+	if installOnly {
+		record.Action = "下载 / 校验"
+	}
+	records := a.taskSnapshot()
+	a.writes.Go(func() {
 		defer cancel()
 		var mu sync.Mutex
 		var last time.Time
@@ -258,6 +281,7 @@ func (a *desktop) play(i launcher.Instance, installOnly bool) {
 				})
 			}
 		}
+		needsInstall := installOnly || !g.Installed(i)
 		var err error
 		if needsInstall {
 			err = g.Install(ctx, i, report)
@@ -266,9 +290,27 @@ func (a *desktop) play(i launcher.Instance, installOnly bool) {
 		if err == nil && !installOnly {
 			report(launcher.Progress{Stage: "检查 Java 并启动游戏"})
 			run, err = g.Start(ctx, i, settings)
+			if !needsInstall && errors.Is(err, launcher.ErrRepairRequired) && ctx.Err() == nil {
+				report(launcher.Progress{Stage: "修复游戏文件"})
+				err = g.Install(ctx, i, report)
+				if err == nil {
+					report(launcher.Progress{Stage: "检查 Java 并启动游戏"})
+					run, err = g.Start(ctx, i, settings)
+				}
+			}
 		}
 		installed := g.Installed(i)
-		a.post(func() {
+		switch {
+		case errors.Is(err, context.Canceled):
+			record.Status, record.Detail = taskCanceled, "已校验的文件会在下次复用"
+		case err != nil:
+			record.Status, record.Detail = taskFailed, err.Error()
+		case installOnly:
+			record.Status, record.Detail = taskCompleted, "游戏文件已校验"
+		default:
+			record.Status, record.Log, record.PID = taskStarted, run.Log, run.PID
+		}
+		records = a.saveTask(records, record, func() {
 			a.busy, a.cancelTask = false, nil
 			a.task = launcher.Progress{}
 			for _, inst := range a.state.Instances {
@@ -281,6 +323,8 @@ func (a *desktop) play(i launcher.Instance, installOnly bool) {
 				a.message("任务已取消，可继续下载", nil)
 			case err != nil:
 				a.message("任务失败 · "+i.Name, err)
+				a.noticeJava = errors.Is(err, launcher.ErrJavaRequired)
+				a.noticeTask = true
 			case installOnly:
 				a.message("已校验游戏文件 · "+i.Name, nil)
 			default:
@@ -288,18 +332,28 @@ func (a *desktop) play(i launcher.Instance, installOnly bool) {
 				a.message(fmt.Sprintf("已启动 Java 进程 · PID %d", run.PID), nil)
 			}
 		})
-		if run.Done != nil {
-			err := <-run.Done
-			a.post(func() {
+		if run.Done == nil {
+			return
+		}
+		select {
+		case err := <-run.Done:
+			record.Status = taskExited
+			if err != nil {
+				record.Status, record.Detail = taskFailed, err.Error()
+			}
+			a.saveTask(records, record, func() {
 				a.running, a.runningID = nil, 0
 				a.message("游戏已退出 · "+i.Name, err)
+				a.noticeTask = err != nil
 			})
+		case <-a.ctx.Done():
+			// Closing the launcher does not stop an already launched game.
 		}
-	}()
+	})
 }
 
 func (a *desktop) openLogFolder() {
-	if a.lastLog != "" {
+	if isGameLog(a.lastLog) {
 		a.openPath(filepath.Dir(a.lastLog), false)
 	}
 }
