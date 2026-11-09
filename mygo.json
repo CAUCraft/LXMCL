@@ -1,0 +1,9 @@
+{
+  "name": "LXMCL",
+  "slug": "lxmcl",
+  "identifier": "org.caucraft.lxmcl",
+  "version": "0.2.0",
+  "publisher": "CAUCRAFT",
+  "icon": "ui/assets/launcher-logo.png",
+  "out": "target/mygo"
+}

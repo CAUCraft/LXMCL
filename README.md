@@ -1,37 +1,19 @@
 # LXMCL
 
-面向 CAUCRAFT 的 Minecraft 启动器，使用 **Rust + Slint** 构建原生桌面界面。通过插件装配业务服务、功能扩展和完整界面 Shell。
+CAUCRAFT 的 Minecraft Java 版启动器。当前版本使用 **Go、MyGo 和 Lobe MyGo**：桌面界面由 GPU 原生绘制，使用 Lobe 的标签页、按钮、表单、弹窗和进度条。无需 Rust、Node.js 或 WebView。
 
-## 项目状态
+- 创建、选择、搜索、重命名和移除实例配置，每个实例使用独立游戏目录。
+- 从 Mojang 下载并校验原版游戏文件、运行库及资源。已下载并校验的文件可复用，下载可以取消。
+- 检测本机 Java、配置最大内存、启动客户端、查看进程状态和打开日志目录。
 
-项目处于开发阶段。已接入本机设置持久化、实例配置创建与重命名、Java 检测与路径验证、游戏目录打开和只读目录检查；支持原生四主 Tab、皮肤预览、可选动态壁纸与离线帮助。
+游戏流程优先支持 Windows x64 上的 **1.20.5 及之后的原版正式版本**。请准备匹配游戏版本的 Java（例如 1.21.1 使用 Java 21）。当前提供离线单人游玩；Microsoft 登录、正版联机、Mod 加载器和 Java 自动安装未接入。
 
-**认证、游戏下载与安装、Java 安装、游戏启动、联机及网络诊断目前仍是演示流程。** 创建实例仅保存配置，不安装游戏文件。
-
-插件当前在编译时链接，由 `product.toml` 选择已注册的提供者；完整 Shell 可替换。默认 Shell 的扩展动作集中在「设置 → 扩展」。运行时安装插件和各页面扩展槽位尚未实现。
-
-当前优先完善通用启动器基础。社团服务器、公告与专属入服流程后续作为插件实现，不在默认界面提供演示入口。
-
-## 运行
-
-当前主要开发环境为 Windows x64 / MSVC。安装 Rust、Visual Studio C++ Build Tools / Windows SDK 与 Git LFS：
+安装 [Go 1.27.3 或以上](https://go.dev/dl/) 后，在仓库根目录运行：
 
 ```powershell
-git lfs install
-git clone https://github.com/CAUCraft/LXMCL.git
-cd LXMCL
-git lfs pull
-cargo run --locked
+go run .
+# 自动编译并重启的开发模式
+go tool mygo dev
 ```
 
-工具链和依赖由仓库锁定。静态背景随仓库提供；七段可选视频由 Git LFS 管理，缺少视频仍能运行。动态壁纸需要 PATH 中或可执行文件旁的 FFmpeg。素材来源与许可范围见[素材说明](ui/assets/README.md)。
-
-## 开发
-
-- [开发指南](docs/development.md)：环境、源码地图、数据目录与检查方式。
-- [架构设计](docs/architecture.md)：当前实现、前后端边界与插件架构迁移。
-- [插件开发](docs/plugins.md)：现有 SDK、提供者、动作贡献和 Shell 替换。
-- [UI Skill](.agents/skills/lxmcl-ui/SKILL.md)：日光 04 的完整设计规范、交互要求和参考原型。
-- [协作约定](AGENTS.md)：代码与文档维护规则。
-
-应用逻辑与新增工具使用 Rust，界面使用 Slint。Skill 中的 HTML 原型仅供设计参考，不参与应用运行。
+更多命令、数据目录和验证方式见[开发指南](docs/development.md)。代码边界见[架构](docs/architecture.md)，界面约定见 [UI Skill](.agents/skills/lxmcl-ui/SKILL.md)。

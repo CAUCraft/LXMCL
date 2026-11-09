@@ -1,9 +1,0 @@
-[package]
-name = "launcher-java"
-version = "0.1.0"
-edition = "2024"
-rust-version = "1.92"
-description = "本机 Java 检测提供者插件（java-local）"
-
-[dependencies]
-launcher-api = { path = "../launcher-api" }

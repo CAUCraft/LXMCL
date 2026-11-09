@@ -1,4 +1,4 @@
 interface:
-  display_name: "LXMCL UI · 日光 04"
-  short_description: "实施 Rust 与 Slint 原生界面的统一控件、导航、动效和插件扩展"
-  default_prompt: "使用 $lxmcl-ui 按日光 04 规范实施当前界面改动，复用共享控件并核对相关交互。"
+  display_name: "LXMCL · MyGo 原生界面"
+  short_description: "使用 MyGo 和 Lobe MyGo 组件实施并验证原生桌面交互"
+  default_prompt: "使用 $lxmcl-ui 复用 Lobe MyGo 组件并核对 LXMCL 的相关交互。"

@@ -1,5 +1,5 @@
 /target/
-# 独立示例各自是独立工作区，构建产物不能进入提交。
+/.mygo/
 /examples/*/target/
 *.log
 .DS_Store
@@ -9,7 +9,6 @@
 !/.env.example
 **/__pycache__/
 *.pyc
-/ui-preferences.json
 
 # 本机工作记录、截图、临时导出；可复用的项目资料放进源码或 Skill。
 /.local/

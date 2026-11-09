@@ -13,9 +13,9 @@
 
 `glass-wallpaper-*.svg` 是像素玻璃主题的背景；`glass-hero-*.svg` 是保留作对比的旧版圆角材质，当前界面不再使用。玻璃阶梯边缘位于 `ui/pixel-glass.slint`，融合动效位于 `src/pixel_motion.rs`。`../icons/pixel/` 下是原生 16×16 网格图标；SVG 可由 `scripts/create-glass-assets.py` 重建，没有改绘或替换社团原始标识。
 
-当前皮肤是 64 × 64 RGBA PNG。`src/skin_preview.rs` 渲染六个基础部件与六个外层，保留原始透明度；帽层外扩 0.5 模型单位，衣服和四肢外扩 0.25，头部双层同步转动。披风尚未接入。标准贴图坐标参考：[skinview3d 模型定义](https://github.com/bs-community/skinview3d/blob/master/src/model.ts)。
+皮肤原件是 64 × 64 RGBA PNG。MyGo 版暂未接入皮肤预览。标准贴图坐标参考：[skinview3d 模型定义](https://github.com/bs-community/skinview3d/blob/master/src/model.ts)。
 
-`wallpapers/` 包含用户提供的七段 Minecraft 视频的 720p / 24 fps 无音轨副本和封面，由已有的 `scripts/prepare-wallpapers.ps1` 生成，原始视频未修改。MP4 使用 Git LFS；JPG 封面直接进入 Git。开发者运行 `git lfs pull` 获取视频，无需访问提供者的本地下载路径。FFmpeg 运行依赖见 [项目说明](../../README.md)。
+`wallpapers/` 包含用户提供的七段 Minecraft 视频的 720p / 24 fps 无音轨副本和封面。处理脚本保留在旧版 Git 历史中，原始视频未修改。MP4 使用 Git LFS，JPG 封面直接进入 Git。MyGo 版启动不依赖这些视频或 FFmpeg。
 
 | 播放副本 | 原始提供文件名 |
 |---|---|
@@ -33,11 +33,11 @@
 
 ## 日光 04 默认背景
 
-`daylight-river.png` 是设计阶段生成并确认的独立河谷场景，供原生 Shell 和 UI Skill 中的参考原型共用。它是 AI 生成的背景素材，不包含控件、Windows 桌面或任务栏。原 Logo、皮肤及其许可保持不变。布局、皮肤和媒体渲染要求见 [UI Skill](../../.agents/skills/lxmcl-ui/SKILL.md)。
+`daylight-river.png` 是首页嵌入的独立河谷场景。它是 AI 生成的背景素材，不包含控件、Windows 桌面或任务栏。原 Logo、皮肤及其许可保持不变。界面约定见 [UI Skill](../../.agents/skills/lxmcl-ui/SKILL.md)。
 
 ## 静态风景与生成器
 
-`scenic-home.png` 是专为本项目制作的 **1920 × 1080 RGB 静态体素河谷风景**：蓝天、立方云、两岸树林、曲折河流与远山。几何、像素材质、光照、阴影及水面反射均由 [`tools/scenic-background.rs`](../../tools/scenic-background.rs) 中的确定性 Rust 程序生成，未使用 Minecraft 游戏贴图、外部图片、原有 Logo / 皮肤，也未裁切、采样或复用首页参考截图的像素。参考图只用于构图方向。
+`scenic-home.png` 是专为本项目制作的 **1920 × 1080 RGB 静态体素河谷风景**：蓝天、立方云、两岸树林、曲折河流与远山。几何、像素材质、光照、阴影及水面反射由旧版 Git 历史中的确定性程序生成，未使用 Minecraft 游戏贴图、外部图片、原有 Logo / 皮肤，也未裁切、采样或复用首页参考截图的像素。参考图只用于构图方向。
 
 **来源与许可：** 此生成器及其输出风景为 LXMCL 本轮新增原创贡献，以 **CC0-1.0（公有领域贡献）** 提供；此许可仅适用于 `scenic-home.png` 与该生成器，不改变本目录既有美术、视频或整个仓库的许可状态。CC0 法律文本：<https://creativecommons.org/publicdomain/zero/1.0/legalcode>。
 
