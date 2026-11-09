@@ -2,7 +2,7 @@
   "name": "LXMCL",
   "slug": "lxmcl",
   "identifier": "org.caucraft.lxmcl",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "publisher": "CAUCRAFT",
   "icon": "ui/assets/launcher-logo.png",
   "resources": ["LICENSE", "THIRD_PARTY_NOTICES.txt", "licenses"],

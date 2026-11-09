@@ -56,3 +56,34 @@ func TestMigrationAndInstanceIdentity(t *testing.T) {
 		t.Fatalf("source changed: %s / %v", b, err)
 	}
 }
+
+func TestChangeVersionKeepsDirectoryAndSelection(t *testing.T) {
+	store := Store{Root: t.TempDir()}
+	state, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"主实例", "测试实例"} {
+		if err := state.Create(name, "1.21.1"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	target := state.Instances[0]
+	if err := state.ChangeVersion(target.ID, target.Revision, "1.21.4"); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.ChangeVersion(target.ID, target.Revision, "1.21.5"); err == nil {
+		t.Fatal("a stale version editor could replace the saved version")
+	}
+	if err := store.Save(state); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, ok := saved.Find(target.ID)
+	if !ok || got.Version != "1.21.4" || got.GameDir != target.GameDir || got.Revision != target.Revision+1 || saved.Selected != state.Instances[1].ID {
+		t.Fatalf("version change did not preserve the instance: %+v", saved)
+	}
+}

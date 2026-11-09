@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -58,17 +59,26 @@ func (a *desktop) message(s string, err error) {
 	}
 }
 
-func (a *desktop) save(next launcher.State, done func(error)) {
+func (a *desktop) save(next launcher.State, checkID int, done func(error)) {
 	if !a.ready || a.busy {
 		return
 	}
 	a.busy = true
 	a.writes.Go(func() {
 		err := a.store.Save(next)
+		var installed bool
+		if err == nil && checkID != 0 {
+			if i, ok := next.Find(checkID); ok {
+				installed = a.game.Installed(i)
+			}
+		}
 		a.post(func() {
 			a.busy = false
 			if err == nil {
 				a.state = next
+				if checkID != 0 {
+					a.installed[checkID] = installed
+				}
 			}
 			done(err)
 		})
@@ -81,7 +91,7 @@ func (a *desktop) choose(id int) {
 	}
 	next := a.state.Clone()
 	next.Selected = id
-	a.save(next, func(err error) {
+	a.save(next, 0, func(err error) {
 		if err != nil {
 			a.message("无法保存启动实例", err)
 		}
@@ -103,6 +113,13 @@ func (a *desktop) edit(i launcher.Instance) {
 	a.form = editor{open: true, mode: "rename", target: i, name: i.Name, focus: true}
 }
 
+func (a *desktop) changeVersion(i launcher.Instance) {
+	a.form = editor{open: true, mode: "version", target: i, version: i.Version}
+	if len(a.releases) == 0 {
+		a.refreshCatalog()
+	}
+}
+
 func (a *desktop) inspect(i launcher.Instance) {
 	a.page, a.libraryPage, a.inspected = pageLibrary, 0, i.ID
 }
@@ -114,11 +131,25 @@ func (a *desktop) submitEditor() {
 	form := a.form
 	next := a.state.Clone()
 	var err error
+	checkID := 0
 	switch form.mode {
 	case "create":
 		err = next.Create(form.name, strings.TrimSpace(form.version))
+		checkID = next.Selected
 	case "rename":
 		err = next.Rename(form.target.ID, form.target.Revision, form.name)
+	case "version":
+		if a.runningID == form.target.ID {
+			a.form.err = "请先退出此实例的游戏"
+			return
+		}
+		version := strings.TrimSpace(form.version)
+		err = next.ChangeVersion(form.target.ID, form.target.Revision, version)
+		if err == nil && version != form.target.Version && len(a.releases) > 0 &&
+			!slices.ContainsFunc(a.releases, func(v launcher.Version) bool { return v.ID == version }) {
+			err = errors.New("官方版本列表中没有此版本")
+		}
+		checkID = form.target.ID
 	case "remove":
 		next.Remove(form.target.ID)
 	}
@@ -127,7 +158,7 @@ func (a *desktop) submitEditor() {
 		return
 	}
 	a.form.err = ""
-	a.save(next, func(err error) {
+	a.save(next, checkID, func(err error) {
 		same := a.form.mode == form.mode && a.form.target.ID == form.target.ID
 		if err != nil {
 			if same && a.form.open {
@@ -144,21 +175,19 @@ func (a *desktop) submitEditor() {
 		switch form.mode {
 		case "create":
 			i, _ := a.state.Find(next.Selected)
-			for _, other := range a.state.Instances {
-				if other.Version == i.Version && a.installed[other.ID] {
-					a.installed[i.ID] = true
-					break
-				}
-			}
 			if visible {
+				a.query, a.instanceFilter = "", 0
 				a.inspect(i)
 			} else {
 				a.message("已创建实例 · "+i.Name, nil)
 			}
 		case "remove":
+			delete(a.installed, form.target.ID)
 			if a.inspected == form.target.ID {
 				a.inspected = 0
 			}
+		case "version":
+			a.message("版本已更换 · "+strings.TrimSpace(form.version), nil)
 		}
 	})
 }
@@ -199,7 +228,7 @@ func (a *desktop) saveSettings() {
 		a.message("无法保存设置", err)
 		return
 	}
-	a.save(next, func(err error) {
+	a.save(next, 0, func(err error) {
 		if err == nil {
 			a.draft = next.Settings
 			a.memory = strconv.Itoa(next.Settings.Memory)
@@ -262,9 +291,9 @@ func (a *desktop) play(i launcher.Instance, installOnly bool) {
 	ctx, cancel := context.WithCancel(a.ctx)
 	a.cancelTask = cancel
 	settings, g := a.state.Settings, a.game
-	record := taskRecord{Name: i.Name, Version: i.Version, Action: "启动游戏", At: time.Now()}
+	record := taskRecord{InstanceID: i.ID, Revision: i.Revision, Name: i.Name, Version: i.Version, Action: taskLaunch, At: time.Now()}
 	if installOnly {
-		record.Action = "下载 / 校验"
+		record.Action = taskVerify
 	}
 	records := a.taskSnapshot()
 	a.writes.Go(func() {

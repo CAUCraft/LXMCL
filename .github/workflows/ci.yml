@@ -58,9 +58,23 @@ jobs:
           if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -cne "v$version") {
             throw "Release tag $env:GITHUB_REF_NAME does not match mygo.json (v$version)"
           }
+          $env:NSISCONFDIR = (Resolve-Path -LiteralPath packaging).Path
           go tool mygo build -platform windows/amd64 -o target/ci-package
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           git diff --exit-code -- go.mod go.sum
+      - name: Archive corresponding source
+        run: |
+          git archive --format=zip -o target/ci-tracked.zip HEAD -- . ':(exclude,glob)ui/assets/wallpapers/*.mp4'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Expand-Archive -LiteralPath target/ci-tracked.zip -DestinationPath target/ci-source/LXMCL
+          go mod vendor -o target/ci-source/LXMCL/vendor
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git rev-parse HEAD | Set-Content -LiteralPath target/ci-source/LXMCL/SOURCE_COMMIT.txt -Encoding ascii
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          New-Item -ItemType Directory -Force -Path target/ci-artifacts | Out-Null
+          $source = (Resolve-Path -LiteralPath target/ci-source).Path
+          $archive = Join-Path (Resolve-Path -LiteralPath target/ci-artifacts).Path 'LXMCL-source.zip'
+          [IO.Compression.ZipFile]::CreateFromDirectory($source, $archive)
       - name: Check package files and generate SHA-256 manifest
         run: |
           $version = (Get-Content -Raw -LiteralPath mygo.json | ConvertFrom-Json).version
@@ -82,7 +96,7 @@ jobs:
           }
           $packagedLicenses = ($licenseFiles + 'licenses') | ForEach-Object { Join-Path $package $_ }
           Compress-Archive -LiteralPath $packagedLicenses -DestinationPath (Join-Path $output.FullName 'LXMCL-licenses.zip') -Force
-          $hashes = foreach ($name in ($files + 'LXMCL-licenses.zip')) {
+          $hashes = foreach ($name in ($files + 'LXMCL-licenses.zip' + 'LXMCL-source.zip')) {
             $file = Get-Item -LiteralPath (Join-Path $output.FullName $name)
             $hash = Get-FileHash -Algorithm SHA256 -LiteralPath $file.FullName
             '{0}  {1}' -f $hash.Hash.ToLowerInvariant(), $name
@@ -131,5 +145,5 @@ jobs:
         working-directory: target/release
         run: |
           sha256sum --check --strict SHA256SUMS.txt
-          gh release create "$RELEASE_TAG" ./*.exe LXMCL-licenses.zip SHA256SUMS.txt \
+          gh release create "$RELEASE_TAG" ./*.exe LXMCL-licenses.zip LXMCL-source.zip SHA256SUMS.txt \
             --draft --verify-tag --generate-notes --title "LXMCL $RELEASE_TAG"

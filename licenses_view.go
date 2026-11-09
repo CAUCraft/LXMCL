@@ -12,11 +12,13 @@ import (
 	"github.com/lobehub/lobe-mygo/pkg/theme"
 )
 
-//go:embed THIRD_PARTY_NOTICES.txt licenses/*.txt
+//go:embed LICENSE THIRD_PARTY_NOTICES.txt licenses/*.txt
 var licenseFiles embed.FS
 
 var licenseOptions = []field.SelectOption{
-	{Value: "THIRD_PARTY_NOTICES.txt", Label: "组件清单"},
+	{Value: "LICENSE", Label: "LXMCL · GPLv3"},
+	{Value: "THIRD_PARTY_NOTICES.txt", Label: "第三方组件清单"},
+	{Value: "licenses/lxmcl-legacy-mit.txt", Label: "LXMCL 历史版本 · MIT"},
 	{Value: "licenses/mygo-mit.txt", Label: "MyGo · MIT"},
 	{Value: "licenses/lobe-mygo-mit.txt", Label: "Lobe MyGo · MIT"},
 	{Value: "licenses/lucide-feather.txt", Label: "Lucide / Feather · ISC / MIT"},
@@ -30,12 +32,12 @@ var licenseOptions = []field.SelectOption{
 }
 
 func (a *desktop) licensesDialog(c *ui.Context) {
-	feedback.Modal(c, &a.licensesOpen, feedback.ModalProps{Title: "第三方许可证", Width: 650, NoFooter: true}, func() {
+	feedback.Modal(c, &a.licensesOpen, feedback.ModalProps{Title: "许可证", Width: 650, NoFooter: true}, func() {
 		if a.licenseFile == "" {
 			a.licenseFile = licenseOptions[0].Value
 		}
 		ui.Column(c).Gap(8).Children(func() {
-			field.Select(c, &a.licenseFile, field.SelectProps{Options: licenseOptions}).Label("组件")
+			field.Select(c, &a.licenseFile, field.SelectProps{Options: licenseOptions}).Label("许可文件")
 			b, err := licenseFiles.ReadFile(a.licenseFile)
 			if err != nil {
 				feedback.Alert(c, "无法读取许可证", feedback.AlertProps{Type: feedback.Error})

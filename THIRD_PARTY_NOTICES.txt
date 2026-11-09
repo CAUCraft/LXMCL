@@ -3,6 +3,9 @@ LXMCL — Third-party notices
 The original license texts are in the licenses directory. The launcher
 also includes them under Settings → About → View licenses.
 
+Earlier LXMCL versions were distributed under MIT. Their copyright and
+permission notice is preserved in licenses/lxmcl-legacy-mit.txt.
+
 MyGo — MIT
   v0.8.4-0.20261108082913-9233663736ca
   https://github.com/egoist/mygo/blob/9233663736ca/LICENSE
@@ -37,7 +40,8 @@ Go standard library and Go supplemental packages — BSD-3-Clause
   https://go.dev/LICENSE
   licenses/go-bsd.txt, licenses/go-x-bsd.txt, licenses/go-patents.txt
 
-NSIS (Windows installer only) — zlib/libpng; LZMA module under CPL-1.0
+NSIS (Windows installer only) — zlib/libpng
+  Official LXMCL installers use the zlib compressor.
   https://nsis.sourceforge.io/Docs/AppendixI.html
   NSIS 3.13 source: https://sourceforge.net/projects/nsis/files/NSIS%203/3.13/nsis-3.13-src.tar.bz2/download
   licenses/nsis.txt contains the original NSIS 3.13 COPYING file.

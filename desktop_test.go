@@ -37,8 +37,8 @@ func TestDesktopNavigationKeepsLaunchTarget(t *testing.T) {
 	if err := tt.Click("更多实例操作"); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := tt.Find("下载 / 校验"); !ok {
-		t.Fatal("verify action is missing from the instance menu")
+	if _, ok := tt.Find("重命名"); !ok {
+		t.Fatal("rename action is missing from the instance menu")
 	}
 	capture(t, tt, "instance-menu")
 	tt.Key(0, ui.KeyEscape)
@@ -140,13 +140,84 @@ func TestCompactSettingsAndLicenses(t *testing.T) {
 	if err := tt.Click("查看许可证"); err != nil {
 		t.Fatal(err)
 	}
-	if !a.licensesOpen || a.licenseFile != "THIRD_PARTY_NOTICES.txt" {
-		t.Fatal("licenses did not open on the notice index")
+	if !a.licensesOpen || a.licenseFile != "LICENSE" {
+		t.Fatal("licenses did not open on the project license")
 	}
 	capture(t, tt, "licenses")
 	tt.Key(0, ui.KeyEscape)
 	if a.licensesOpen {
 		t.Fatal("Escape did not dismiss the licenses")
+	}
+}
+
+func TestInstanceFilterAndVersionEditor(t *testing.T) {
+	a, tt := testDesktop(t)
+	a.releases = []launcher.Version{{ID: "1.21.4"}, {ID: "1.21.1"}}
+	if err := tt.Click("版本"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.Click("待下载"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := tt.Find("生存世界"); ok {
+		t.Fatal("cached instance appeared in the download filter")
+	}
+	capture(t, tt, "instance-filter")
+	if err := tt.Click("建筑测试"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.Click("更换版本"); err != nil {
+		t.Fatal(err)
+	}
+	if !a.form.open || a.form.target.ID != 2 || a.form.version != "1.21.4" || a.state.Selected != 1 {
+		t.Fatalf("version editor bound to the wrong instance: %+v", a.form)
+	}
+	capture(t, tt, "instance-version")
+	a.form.version = "1.20.1"
+	tt.Frame()
+	if err := tt.Click("保存版本"); err != nil {
+		t.Fatal(err)
+	}
+	if !a.form.open || a.form.err == "" || a.state.Instances[1].Version != "1.21.4" {
+		t.Fatal("an unsupported version was accepted")
+	}
+}
+
+func TestTaskCenterFiltersAndDisablesStaleRetry(t *testing.T) {
+	a, tt := testDesktop(t)
+	i := a.state.Instances[1]
+	a.history = []taskRecord{
+		{InstanceID: i.ID, Revision: i.Revision, Name: i.Name, Version: i.Version, Action: taskVerify, Status: taskFailed, At: time.Now()},
+		{Name: "已完成的任务", Version: "1.21.1", Action: taskVerify, Status: taskCompleted, At: time.Now().Add(-time.Minute)},
+	}
+	if err := tt.Click("任务中心"); err != nil {
+		t.Fatal(err)
+	}
+	if a.page != pageLibrary || a.libraryPage != 1 {
+		t.Fatal("title bar action did not open the task center")
+	}
+	if err := tt.Click("主页"); err != nil {
+		t.Fatal(err)
+	}
+	mods, key, _ := display.HotkeyBinding(tasksHotkey, display.HotkeyAuto)
+	tt.Key(mods, key)
+	if a.page != pageLibrary || a.libraryPage != 1 || a.state.Selected != 1 {
+		t.Fatal("task shortcut did not preserve the launch selection")
+	}
+	if err := tt.Click("失败 / 取消"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := tt.Find("已完成的任务"); ok {
+		t.Fatal("completed task appeared in the failed filter")
+	}
+	if _, ok := tt.Find("重试"); !ok {
+		t.Fatal("unchanged task target cannot be retried")
+	}
+	capture(t, tt, "task-filter")
+	a.state.Instances[1].Revision++
+	tt.Frame()
+	if _, ok := tt.Find("重试"); ok {
+		t.Fatal("a task for an obsolete revision can still be retried")
 	}
 }
 

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/CAUCraft/LXMCL/internal/launcher"
 	"github.com/egoist/mygo/ui"
@@ -39,17 +40,22 @@ func (a *desktop) details(c *ui.Context, i launcher.Instance) {
 			a.choose(i.ID)
 		}
 		a.instanceMenu(c.Key(i.ID), i)
-		label := "下载并启动"
-		if a.installed[i.ID] {
-			label = "启动游戏"
-		}
-		if button(c, label, action.Primary, a.busy || a.running != nil) {
-			a.play(i, false)
-		}
+		ui.Column(c).Width(152).Shrink(0).Children(func() {
+			if a.playButton(c, i, false) {
+				a.play(i, false)
+			}
+		})
 	})
 	layout.ScrollArea(c, layout.ScrollAreaProps{}, func() {
 		surface(c).Padding(12, 16).Gap(8).Children(func() {
-			property(c, "版本", i.Version+" · "+loaderName(i))
+			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+				ui.Column(c).Grow(1).MinWidth(0).Children(func() { property(c, "版本", i.Version+" · "+loaderName(i)) })
+				if (i.Loader == "" || strings.EqualFold(i.Loader, "vanilla")) &&
+					button(c, "更换版本", action.Default, a.busy || a.runningID == i.ID) {
+					a.changeVersion(i)
+				}
+			})
+			layout.Divider(c, layout.DividerProps{})
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 				muted(c, "游戏文件").Width(112).Shrink(0)
 				status, tone := a.instanceStatus(i)
@@ -57,11 +63,20 @@ func (a *desktop) details(c *ui.Context, i launcher.Instance) {
 				if a.state.Selected == i.ID {
 					display.Tag(c, "启动目标", display.TagProps{Color: display.TagGreen, Size: theme.Small})
 				}
+				ui.Spacer(c).Grow(1)
+				label := "下载文件"
+				if a.installed[i.ID] {
+					label = "校验文件"
+				}
+				if button(c, label, action.Default, a.busy || a.running != nil) {
+					a.play(i, true)
+				}
 			})
 			layout.Divider(c, layout.DividerProps{})
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 				ui.Column(c).Grow(1).MinWidth(0).Children(func() { property(c, "游戏目录", i.GameDir) })
-				if icon(c, lucide.FolderOpen(), "打开目录", false) {
+				action.CopyButton(c, i.GameDir, action.CopyButtonProps{}).Label("复制游戏目录")
+				if icon(c, lucide.FolderOpen(), "打开游戏目录", false) {
 					a.openPath(i.GameDir, true)
 				}
 			})
@@ -75,7 +90,6 @@ func (a *desktop) instanceMenu(c *ui.Context, i launcher.Instance) {
 	box.Children(func() {
 		chosen := overlay.DropdownMenu(c, open, overlay.DropdownMenuProps{Items: []overlay.MenuItem{
 			{Key: "rename", Label: "重命名", Icon: lucide.Pencil(), Hotkey: "f2", Disabled: a.busy},
-			{Key: "verify", Label: "下载 / 校验", Icon: lucide.Download(), Disabled: a.busy || a.running != nil},
 			{Divider: true},
 			{Key: "remove", Label: "移除配置…", Icon: lucide.Trash2(), Danger: true, Disabled: a.busy || a.runningID == i.ID},
 		}}, func(trigger ui.Element) {
@@ -84,8 +98,6 @@ func (a *desktop) instanceMenu(c *ui.Context, i launcher.Instance) {
 		switch chosen {
 		case "rename":
 			a.edit(i)
-		case "verify":
-			a.play(i, true)
 		case "remove":
 			a.form = editor{open: true, mode: "remove", target: i}
 		}
@@ -227,11 +239,13 @@ func (a *desktop) settingsFooter(c *ui.Context) {
 func (a *desktop) help(c *ui.Context) {
 	heading(c, "关于 LXMCL")
 	surface(c).Padding(8, 14).Gap(5).Children(func() {
-		settingsRow(c, "第三方许可证", func() {
+		settingsRow(c, "许可证", func() {
+			display.Tag(c, "GPLv3", display.TagProps{Color: display.TagGreen, Size: theme.Small})
 			if button(c, "查看许可证", action.Default, false) {
 				a.licensesOpen = true
 			}
 		})
+		muted(c, "© 2026 CAUCRAFT 与 LXMCL 贡献者 · 可按 GPLv3 再分发 · 无担保").FontSize(12)
 		layout.Divider(c, layout.DividerProps{})
 		settingsRow(c, "数据目录", func() {
 			muted(c, a.store.Root).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
@@ -241,7 +255,7 @@ func (a *desktop) help(c *ui.Context) {
 		})
 		layout.Divider(c, layout.DividerProps{})
 		settingsRow(c, "快捷键", func() {
-			muted(c, "Ctrl+K 搜索 · F2 重命名 · Esc 返回 · F1 关于").FontSize(12)
+			muted(c, "Ctrl+K 搜索 · Ctrl+J 任务 · F2 重命名 · Esc 返回 · F1 关于").FontSize(12)
 		})
 	})
 }
@@ -282,12 +296,27 @@ func (a *desktop) tasks(c *ui.Context) {
 				ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
 					display.Text(c, "历史记录", display.TextProps{Heading: 4})
 					ui.Spacer(c).Grow(1)
+					action.Segmented(c, &a.taskFilter, []string{"全部任务", "失败 / 取消"},
+						action.SegmentedProps{Size: theme.Small}).Label("历史任务筛选")
 					if a.lastLog != "" && button(c, "打开日志目录", action.Text, false) {
 						a.openLogFolder()
 					}
 				})
+				visible := a.history
+				if a.taskFilter == 1 {
+					visible = nil
+					for _, row := range a.history {
+						if row.Status == taskFailed || row.Status == taskCanceled {
+							visible = append(visible, row)
+						}
+					}
+				}
+				if len(visible) == 0 {
+					emptyPanel(c, lucide.CircleCheck(), "没有失败或取消的任务")
+					return
+				}
 				surface(c).Padding(4, 12).Gap(4).Children(func() {
-					for idx, row := range a.history {
+					for idx, row := range visible {
 						if idx > 0 {
 							layout.Divider(c, layout.DividerProps{})
 						}
@@ -311,11 +340,11 @@ func (a *desktop) tasks(c *ui.Context) {
 func (a *desktop) taskRow(c *ui.Context, row taskRecord) {
 	tone := display.TagGray
 	switch row.Status {
-	case "已失败":
+	case taskFailed:
 		tone = display.TagError
-	case "已完成", "已退出":
+	case taskCompleted, taskExited:
 		tone = display.TagSuccess
-	case "已启动":
+	case taskStarted:
 		tone = display.TagProcessing
 	}
 	ui.Column(c).Padding(5, 0).Gap(4).Children(func() {
@@ -328,6 +357,11 @@ func (a *desktop) taskRow(c *ui.Context, row taskRecord) {
 			display.Tag(c, row.Status, display.TagProps{Color: tone, Round: true})
 			if row.Log != "" && button(c, "查看日志", action.Text, false) {
 				a.showLog(row.Log)
+			}
+			if i, ok := row.retryTarget(a.state); ok {
+				if button(c, "重试", action.Default, a.busy || a.running != nil) {
+					a.play(i, row.Action == taskVerify)
+				}
 			}
 		})
 		if row.Status == taskFailed && row.Detail != "" {

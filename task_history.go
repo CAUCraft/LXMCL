@@ -10,6 +10,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/CAUCraft/LXMCL/internal/launcher"
 )
 
 const (
@@ -21,17 +23,30 @@ const (
 	taskExited    = "已退出"
 	taskFailed    = "已失败"
 	taskCanceled  = "已取消"
+	taskLaunch    = "启动游戏"
+	taskVerify    = "下载 / 校验"
 )
 
 type taskRecord struct {
-	Name    string    `json:"name"`
-	Version string    `json:"version"`
-	Action  string    `json:"action"`
-	Status  string    `json:"status"`
-	Detail  string    `json:"detail,omitempty"`
-	Log     string    `json:"log,omitempty"`
-	PID     int       `json:"pid,omitempty"`
-	At      time.Time `json:"at"`
+	InstanceID int       `json:"instance_id,omitempty"`
+	Revision   uint64    `json:"instance_revision,omitempty"`
+	Name       string    `json:"name"`
+	Version    string    `json:"version"`
+	Action     string    `json:"action"`
+	Status     string    `json:"status"`
+	Detail     string    `json:"detail,omitempty"`
+	Log        string    `json:"log,omitempty"`
+	PID        int       `json:"pid,omitempty"`
+	At         time.Time `json:"at"`
+}
+
+func (r taskRecord) retryTarget(s launcher.State) (launcher.Instance, bool) {
+	if r.InstanceID == 0 || (r.Status != taskFailed && r.Status != taskCanceled) ||
+		(r.Action != taskLaunch && r.Action != taskVerify) {
+		return launcher.Instance{}, false
+	}
+	i, ok := s.Find(r.InstanceID)
+	return i, ok && i.Revision == r.Revision && i.Version == r.Version
 }
 
 func loadTaskHistory(root string) ([]taskRecord, error) {

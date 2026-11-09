@@ -77,14 +77,21 @@ func heading(c *ui.Context, title string, controls ...func()) {
 	})
 }
 
-const searchHotkey = "mod+k"
+const (
+	searchHotkey = "mod+k"
+	tasksHotkey  = "mod+j"
+)
 
 func (a *desktop) view(c *ui.Context) {
 	theme.Apply(c)
 	if a.ready && !a.form.open && !a.logOpen && !a.licensesOpen {
 		if mods, key, ok := display.HotkeyBinding(searchHotkey, display.HotkeyAuto); ok && c.Shortcut(mods, key) {
 			a.page, a.libraryPage, a.inspected = pageLibrary, 0, 0
+			a.instanceFilter = 0
 			a.focusSearch = len(a.state.Instances) > 0
+		}
+		if mods, key, ok := display.HotkeyBinding(tasksHotkey, display.HotkeyAuto); ok && c.Shortcut(mods, key) {
+			a.openTasks()
 		}
 		if a.page == pageLibrary && a.inspected != 0 {
 			if c.Shortcut(0, ui.KeyEscape) {
@@ -173,8 +180,14 @@ func (a *desktop) topBar(c *ui.Context) {
 			ui.Image(c, a.logo).Size(23, 23).Fit(ui.Contain)
 			display.Text(c, "LXMCL", display.TextProps{Strong: true, FontSize: 14})
 		})
-		ui.Row(c).Absolute().Right(bar.Right + 10).Top(0).Bottom(0).
+		ui.Row(c).Absolute().Right(bar.Right + 10).Top(0).Bottom(0).Gap(6).
 			AlignItems(ui.Center).Children(func() {
+			ink, _ := brand(c)
+			feedback.Badge(c, feedback.BadgeProps{Dot: a.task.Stage != "" || a.running != nil, Color: ink}, func() {
+				if icon(c, lucide.ListTodo(), "任务中心", !a.ready) {
+					a.openTasks()
+				}
+			}).AlignSelf(ui.Center)
 			name := a.state.Settings.Player
 			if name == "" {
 				name = "离线账号"
@@ -209,12 +222,19 @@ func (a *desktop) home(c *ui.Context) {
 func (a *desktop) launchCard(c *ui.Context) {
 	i, ok := a.state.Find(a.state.Selected)
 	if len(a.state.Instances) == 0 {
-		muted(c, "暂无实例")
+		panelHeading(c, lucide.PackageOpen(), "暂无实例", "")
 		if launchButton(c, "新建实例", lucide.Plus(), a.busy) {
 			a.create()
 		}
 		return
 	}
+	ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+		display.Text(c, "启动实例", display.TextProps{Strong: true, FontSize: 13}).Grow(1)
+		if ok {
+			status, tone := a.instanceStatus(i)
+			display.Tag(c, status, display.TagProps{Color: tone, Size: theme.Small})
+		}
+	})
 	selection := ""
 	if ok {
 		selection = strconv.Itoa(i.ID)
@@ -233,18 +253,9 @@ func (a *desktop) launchCard(c *ui.Context) {
 		id, _ := strconv.Atoi(selection)
 		a.choose(id)
 	}
-	label := "下载并启动"
-	if a.installed[i.ID] {
-		label = "启动游戏"
-	}
-	if a.running != nil {
-		label = "游戏运行中"
-	} else if a.task.Stage != "" {
-		label = "任务进行中"
-	}
 	ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 		ui.Column(c).Grow(1).MinWidth(0).Children(func() {
-			if launchButton(c, label, lucide.Play(), !ok || a.busy || a.running != nil) {
+			if a.playButton(c, i, !ok) {
 				a.play(i, false)
 			}
 		})
@@ -255,6 +266,19 @@ func (a *desktop) launchCard(c *ui.Context) {
 			a.inspect(i)
 		}
 	})
+}
+
+func (a *desktop) playButton(c *ui.Context, i launcher.Instance, disabled bool) bool {
+	label, glyph := "下载并启动", lucide.Download()
+	switch {
+	case a.running != nil:
+		label, glyph = "游戏运行中", lucide.Gamepad2()
+	case a.task.Stage != "":
+		label, glyph = "任务进行中", lucide.Activity()
+	case a.installed[i.ID]:
+		label, glyph = "启动游戏", lucide.Play()
+	}
+	return launchButton(c, label, glyph, disabled || a.busy || a.running != nil)
 }
 
 // Keep Lobe's button focus, hit testing and transition; tint the one primary hero action.
@@ -315,7 +339,7 @@ func (a *desktop) library(c *ui.Context) {
 			if len(a.state.Instances) > 0 {
 				ui.Column(c).Grow(1).MinWidth(0).MaxWidth(340).Children(func() {
 					hotkey := searchHotkey
-					if a.form.open || a.logOpen {
+					if a.form.open || a.logOpen || a.licensesOpen {
 						hotkey = ""
 					}
 					search := field.SearchBar(c, &a.query, field.SearchBarProps{
@@ -328,7 +352,11 @@ func (a *desktop) library(c *ui.Context) {
 				})
 			}
 			ui.Spacer(c).Grow(1)
-			if button(c, "＋ 新建实例", action.Primary, a.busy) {
+			if len(a.state.Instances) > 0 {
+				action.Segmented(c, &a.instanceFilter, []string{"全部", "已缓存", "待下载"},
+					action.SegmentedProps{Size: theme.Small}).Label("实例筛选")
+			}
+			if button(c, "新建实例", action.Primary, a.busy) {
 				a.create()
 			}
 		})
@@ -343,9 +371,12 @@ func (a *desktop) library(c *ui.Context) {
 				if !strings.Contains(strings.ToLower(i.Name+" "+i.Version+" "+loaderName(i)), query) {
 					continue
 				}
+				if a.instanceFilter == 1 && !a.installed[i.ID] || a.instanceFilter == 2 && a.installed[i.ID] {
+					continue
+				}
 				status, _ := a.instanceStatus(i)
 				if i.ID == a.state.Selected {
-					status = "启动目标"
+					status = "启动目标 · " + status
 				}
 				items = append(items, display.ListItem{
 					Key: strconv.Itoa(i.ID), Label: i.Name,
@@ -360,7 +391,13 @@ func (a *desktop) library(c *ui.Context) {
 				})
 			}
 			if len(items) == 0 {
-				emptyPanel(c, lucide.SearchX(), "未找到实例")
+				surface(c).Padding(12).Children(func() {
+					display.Empty(c, display.EmptyProps{Icon: lucide.SearchX(), Title: "未找到实例", Action: func() {
+						if button(c, "清除筛选", action.Default, false) {
+							a.query, a.instanceFilter = "", 0
+						}
+					}})
+				})
 				return
 			}
 			surface(c).Padding(5).Children(func() {
@@ -411,6 +448,8 @@ func (a *desktop) editor(c *ui.Context) {
 		title, okText = "移除实例配置", "移除配置"
 	case "create":
 		title, okText = "创建实例", "创建"
+	case "version":
+		title, okText = "更换版本", "保存版本"
 	}
 	submit := false
 	if feedback.Modal(c, &a.form.open, feedback.ModalProps{
@@ -425,17 +464,23 @@ func (a *desktop) editor(c *ui.Context) {
 				}
 				return
 			}
-			ui.Column(c).Gap(5).Children(func() {
-				display.Text(c, "实例名称", display.TextProps{Strong: true})
-				in := field.Input(c, &a.form.name, field.InputProps{Placeholder: "例如：我的生存世界"}).
-					Label("实例名称").Disabled(a.busy)
-				if a.form.focus {
-					in.Focus()
-					a.form.focus = false
-				}
-				submit = in.Submitted()
-			})
-			if a.form.mode == "create" {
+			if a.form.mode == "version" {
+				panelHeading(c, lucide.Package(), a.form.target.Name, "当前版本 "+a.form.target.Version)
+				feedback.Alert(c, "更换版本会继续使用原游戏目录。降级前请备份存档。",
+					feedback.AlertProps{Type: feedback.Warning})
+			} else {
+				ui.Column(c).Gap(5).Children(func() {
+					display.Text(c, "实例名称", display.TextProps{Strong: true})
+					in := field.Input(c, &a.form.name, field.InputProps{Placeholder: "例如：我的生存世界"}).
+						Label("实例名称").Disabled(a.busy)
+					if a.form.focus {
+						in.Focus()
+						a.form.focus = false
+					}
+					submit = in.Submitted()
+				})
+			}
+			if a.form.mode == "create" || a.form.mode == "version" {
 				ui.Column(c).Gap(5).Children(func() {
 					display.Text(c, "游戏版本", display.TextProps{Strong: true})
 					opts := make([]field.AutoCompleteOption, 0, len(a.releases))

@@ -167,6 +167,26 @@ func (s *State) Rename(id int, revision uint64, name string) error {
 	return errors.New("实例已变更，请重新打开表单")
 }
 
+func (s *State) ChangeVersion(id int, revision uint64, version string) error {
+	for n := range s.Instances {
+		i := &s.Instances[n]
+		if i.ID != id || i.Revision != revision {
+			continue
+		}
+		next := *i
+		next.Version = version
+		if err := supported(next); err != nil {
+			return err
+		}
+		if i.Version != version {
+			i.Version = version
+			i.Revision++
+		}
+		return nil
+	}
+	return errors.New("实例已变更，请重新打开表单")
+}
+
 func (s State) checkName(id int, name string) (string, error) {
 	name = strings.TrimSpace(name)
 	if name == "" || utf8.RuneCountInString(name) > 48 {

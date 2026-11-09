@@ -113,6 +113,8 @@ type desktop struct {
 	inspected                       int
 	query                           string
 	focusSearch                     bool
+	instanceFilter                  int
+	taskFilter                      int
 	scroll                          ui.ScrollState
 	form                            editor
 	installed                       map[int]bool

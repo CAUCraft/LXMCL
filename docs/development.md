@@ -7,6 +7,7 @@ go run .
 go tool mygo dev
 go test ./...
 go vet ./...
+$env:NSISCONFDIR = (Resolve-Path packaging).Path
 go tool mygo build -platform windows/amd64
 ```
 
@@ -20,4 +21,4 @@ go tool mygo build -platform windows/amd64
 
 [CI](https://github.com/CAUCraft/LXMCL/actions) 在 Windows 上运行测试和打包，在 Linux 上运行启动器核心测试。UI 测试使用软件渲染，可通过 `LXMCL_UI_CAPTURE` 保存截图；系统窗控、输入法及实际进入游戏需要另行验证。
 
-Windows 构建产物 `lxmcl-windows-amd64` 包含便携版、安装包、许可证压缩包和 SHA-256 清单，保留 14 天。更新 `mygo.json` 版本后推送对应的 `v主.次.修订` 标签，CI 通过后生成 Release 草稿。更新依赖时同步核对[第三方许可](../THIRD_PARTY_NOTICES.txt)。
+Windows 构建产物保留 14 天，包含便携版、安装包、许可归档、对应源码和 SHA-256 清单。源码包包含构建所需的 Go 依赖，解压后按上方命令构建。`NSISCONFDIR` 让安装器使用 zlib。更新 `mygo.json` 版本后推送对应的 `v主.次.修订` 标签，CI 通过后生成 Release 草稿。更新依赖时同步核对[第三方许可](../THIRD_PARTY_NOTICES.txt)。
