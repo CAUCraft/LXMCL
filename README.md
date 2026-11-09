@@ -1,21 +1,17 @@
 # LXMCL
 
-CAUCRAFT 的 Minecraft Java 版启动器。当前版本使用 **Go、MyGo 和 Lobe MyGo**：桌面界面由 GPU 原生绘制，使用 Lobe 的标签页、按钮、表单、弹窗和进度条。无需 Rust、Node.js 或 WebView。
+CAUCRAFT 的 Minecraft Java 版启动器，使用 Go、MyGo 和 Lobe MyGo 构建原生桌面界面。
 
-- 创建、选择、搜索、重命名和移除实例配置，每个实例使用独立游戏目录。
-- 从 Mojang 下载并校验原版游戏文件、运行库及资源。已下载并校验的文件可复用，下载可以取消。
-- 在原生对话框里选择游戏目录或 Java，验证本机 Java 后启动客户端。任务页保留最近记录，可直接预览游戏日志。
+## 下载
 
-游戏流程优先支持 Windows x64 上的 **1.20.5 及之后的原版正式版本**。请准备匹配游戏版本的 Java（例如 1.21.1 使用 Java 21）。当前提供离线单人游玩；Microsoft 登录、正版联机、Mod 加载器和 Java 自动安装未接入。
+Windows x64：从 [GitHub Actions](https://github.com/CAUCraft/LXMCL/actions/workflows/ci.yml?query=branch%3Amain) 的成功构建下载开发版。正式版发布后见 [GitHub Releases](https://github.com/CAUCraft/LXMCL/releases)。
 
-安装 [Go 1.27.3 或以上](https://go.dev/dl/) 后，在仓库根目录运行：
+LXMCL 支持独立实例、原版游戏下载与校验、Java 选择和启动日志。当前主要支持 1.20.5 及之后的原版正式版本，需自备匹配的 Java（例如 1.21.1 使用 Java 21）。暂仅支持离线单人游玩。
 
-```powershell
-go run .
-# 自动编译并重启的开发模式
-go tool mygo dev
-```
+## 开发
 
-更多命令、数据目录和验证方式见[开发指南](docs/development.md)。代码边界见[架构](docs/architecture.md)，界面约定见 [UI Skill](.agents/skills/lxmcl-ui/SKILL.md)。
+安装 [Go 1.27.3 或更新版本](https://go.dev/dl/)，在仓库根目录运行 `go run .`。构建、测试与发布见[开发指南](docs/development.md)。
 
-[第三方许可证](THIRD_PARTY_NOTICES.txt)也可在应用的「设置 → 关于」查看。
+## 许可
+
+LXMCL 源码与文档采用 [MIT 许可证](LICENSE)。[第三方组件](THIRD_PARTY_NOTICES.txt)和[美术素材](ui/assets/README.md)各自沿用原许可。

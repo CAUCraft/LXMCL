@@ -39,6 +39,7 @@ Go standard library and Go supplemental packages — BSD-3-Clause
 
 NSIS (Windows installer only) — zlib/libpng; LZMA module under CPL-1.0
   https://nsis.sourceforge.io/Docs/AppendixI.html
+  NSIS 3.13 source: https://sourceforge.net/projects/nsis/files/NSIS%203/3.13/nsis-3.13-src.tar.bz2/download
   licenses/nsis.txt contains the original NSIS 3.13 COPYING file.
 
 These notices apply to the listed third-party components.

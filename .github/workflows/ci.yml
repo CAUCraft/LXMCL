@@ -72,16 +72,16 @@ jobs:
             if ($file.Length -le 0) { throw "Empty package file: $name" }
             Copy-Item -LiteralPath $file.FullName -Destination $output.FullName
           }
-          $notices = Join-Path $package 'THIRD_PARTY_NOTICES.txt'
-          $licenses = Join-Path $package 'licenses'
-          $sources = @(Get-Item -LiteralPath 'THIRD_PARTY_NOTICES.txt'; Get-ChildItem -LiteralPath 'licenses' -File)
+          $licenseFiles = @('LICENSE', 'THIRD_PARTY_NOTICES.txt')
+          $sources = @(Get-Item -LiteralPath $licenseFiles; Get-ChildItem -LiteralPath 'licenses' -File)
           foreach ($source in $sources) {
             $relative = [IO.Path]::GetRelativePath((Get-Location).Path, $source.FullName)
             $original = Get-FileHash -Algorithm SHA256 -LiteralPath $source.FullName
             $shipped = Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $package $relative)
             if ($original.Hash -ne $shipped.Hash) { throw "Packaged license differs: $relative" }
           }
-          Compress-Archive -LiteralPath @($notices, $licenses) -DestinationPath (Join-Path $output.FullName 'LXMCL-licenses.zip') -Force
+          $packagedLicenses = ($licenseFiles + 'licenses') | ForEach-Object { Join-Path $package $_ }
+          Compress-Archive -LiteralPath $packagedLicenses -DestinationPath (Join-Path $output.FullName 'LXMCL-licenses.zip') -Force
           $hashes = foreach ($name in ($files + 'LXMCL-licenses.zip')) {
             $file = Get-Item -LiteralPath (Join-Path $output.FullName $name)
             $hash = Get-FileHash -Algorithm SHA256 -LiteralPath $file.FullName

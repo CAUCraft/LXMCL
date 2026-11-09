@@ -1,52 +1,12 @@
 # 美术素材
 
-美术部提供的三份素材均按原始文件复制，未改动其像素或路径：
+| 文件 | 来源 |
+| --- | --- |
+| `launcher-logo.png`、`club-logo.svg`、`luanxiao.png`、`club-skin.png` | CAUCRAFT 美术部；`launcher.ico` 与 `club-logo-preview.png` 由原件制作 |
+| `daylight-river.png` | LXMCL 首页使用的 AI 生成背景 |
+| `scenic-home.png` | LXMCL 制作的体素风景，与旧版历史中的生成器一起采用 [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
+| `wallpapers/` | 用户提供的 Minecraft 壁纸视频与封面 |
 
-| 项目文件 | 原始素材 | 使用位置 |
-| --- | --- | --- |
-| `launcher-logo.png` | 美术部 `Logo_128x128.png` | 顶部品牌、窗口图标 |
-| `club-logo.svg` | 美术部 `logo (1).svg` | 社团卡片、联机页 |
-| `luanxiao.png` | 美术部补充的 `luanxiao.png` | 孪枭的双层立体皮肤 |
-| `club-skin.png` | 早期提供的扁平化皮肤 | 保留参考，已不参与渲染 |
+社团美术和外部视频保留各自的权利归属。视频通过 Git LFS 保存，MyGo 版无需下载它们。
 
-`launcher.ico` 为原始 PNG 添加 ICO 容器，用于 Windows 可执行文件图标，未缩放原图。`club-logo-preview.png` 是检查 SVG 时使用的预览，程序直接使用原始 SVG。`hero-background.svg` 是代码绘制的渐变与圆形背景。
-
-`glass-wallpaper-*.svg` 是像素玻璃主题的背景；`glass-hero-*.svg` 是保留作对比的旧版圆角材质，当前界面不再使用。玻璃阶梯边缘位于 `ui/pixel-glass.slint`，融合动效位于 `src/pixel_motion.rs`。`../icons/pixel/` 下是原生 16×16 网格图标；SVG 可由 `scripts/create-glass-assets.py` 重建，没有改绘或替换社团原始标识。
-
-皮肤原件是 64 × 64 RGBA PNG。MyGo 版暂未接入皮肤预览。标准贴图坐标参考：[skinview3d 模型定义](https://github.com/bs-community/skinview3d/blob/master/src/model.ts)。
-
-`wallpapers/` 包含用户提供的七段 Minecraft 视频的 720p / 24 fps 无音轨副本和封面。处理脚本保留在旧版 Git 历史中，原始视频未修改。MP4 使用 Git LFS，JPG 封面直接进入 Git。MyGo 版启动不依赖这些视频或 FFmpeg。
-
-| 播放副本 | 原始提供文件名 |
-|---|---|
-| `cabin.mp4` | `Minecraft Overgrown Cabin_2_prob4.mp4` |
-| `castle.mp4` | `Minecraft castle Fixed_2_prob4.mp4` |
-| `aquarium.mp4` | `Minecraft Soothing Scenes – Relaxing Aquarium.mp4` |
-| `falling-snow.mp4` | `Minecraft Soothing Scenes – Relaxing Falling Snow.mp4` |
-| `fireplace.mp4` | `Minecraft Soothing Scenes – Relaxing Fireplace.mp4` |
-| `swamp.mp4` | `Minecraft Soothing Scenes – Relaxing Rainy Swamp.mp4` |
-| `serene-snow.mp4` | `Soothing Minecraft – Serene Snow.mp4` |
-
-这里记录素材来源，不将外部视频或美术部作品声明为程序代码原创。当前仓库尚未选定统一许可证。
-
-孪枭原始文件 SHA-256：`FE277C62DE9915ADCFB984562BB7E9E399C5D5BEA8DA8567CD7E0E62FCC68F61`。素材维护时可以据此确认没有意外改写原件。旧 `club-skin.png` 虽使用 PNG 扩展名，实际是 JPEG，不能用于需要透明通道的双层渲染。
-
-## 日光 04 默认背景
-
-`daylight-river.png` 是首页嵌入的独立河谷场景。它是 AI 生成的背景素材，不包含控件、Windows 桌面或任务栏。原 Logo、皮肤及其许可保持不变。界面约定见 [UI Skill](../../.agents/skills/lxmcl-ui/SKILL.md)。
-
-## 静态风景与生成器
-
-`scenic-home.png` 是专为本项目制作的 **1920 × 1080 RGB 静态体素河谷风景**：蓝天、立方云、两岸树林、曲折河流与远山。几何、像素材质、光照、阴影及水面反射由旧版 Git 历史中的确定性程序生成，未使用 Minecraft 游戏贴图、外部图片、原有 Logo / 皮肤，也未裁切、采样或复用首页参考截图的像素。参考图只用于构图方向。
-
-**来源与许可：** 此生成器及其输出风景为 LXMCL 本轮新增原创贡献，以 **CC0-1.0（公有领域贡献）** 提供；此许可仅适用于 `scenic-home.png` 与该生成器，不改变本目录既有美术、视频或整个仓库的许可状态。CC0 法律文本：<https://creativecommons.org/publicdomain/zero/1.0/legalcode>。
-
-生成器默认仅依赖 Rust 标准库，输出 PPM；可用 FFmpeg 转为 PNG：
-
-```powershell
-rustc --edition 2021 -O tools/scenic-background.rs -o target/scenic-background.exe
-target/scenic-background.exe target/scenic-home.ppm
-ffmpeg -y -i target/scenic-home.ppm ui/assets/scenic-home.png
-```
-
-背景离线生成，中间产物放在已忽略的 `target/`，不增加应用运行时的渲染或动画成本。
+孪枭原件 SHA-256：`FE277C62DE9915ADCFB984562BB7E9E399C5D5BEA8DA8567CD7E0E62FCC68F61`。
