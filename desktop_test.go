@@ -9,19 +9,20 @@ import (
 
 	"github.com/CAUCraft/LXMCL/internal/launcher"
 	"github.com/egoist/mygo/ui"
+	"github.com/lobehub/lobe-mygo/pkg/display"
 )
 
 func TestDesktopNavigationKeepsLaunchTarget(t *testing.T) {
 	a, tt := testDesktop(t)
 	capture(t, tt, "home")
-	if err := tt.Click("版本"); err != nil {
-		t.Fatal(err)
-	}
+	tt.Key(0, ui.KeyF1)
+	mods, key, _ := display.HotkeyBinding(searchHotkey, display.HotkeyAuto)
+	tt.Key(mods, key)
 	capture(t, tt, "instances")
-	if err := tt.Click("搜索实例"); err != nil {
-		t.Fatal(err)
-	}
 	tt.Type("建筑")
+	if a.page != pageLibrary || a.query != "建筑" {
+		t.Fatalf("global search did not focus the instance query: page %d, query %q", a.page, a.query)
+	}
 	if _, ok := tt.Find("生存世界"); ok {
 		t.Fatal("search did not hide the unmatched instance")
 	}

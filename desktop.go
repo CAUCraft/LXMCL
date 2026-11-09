@@ -80,9 +80,15 @@ func heading(c *ui.Context, title, sub string, controls ...func()) {
 	})
 }
 
+const searchHotkey = "mod+k"
+
 func (a *desktop) view(c *ui.Context) {
 	theme.Apply(c)
 	if a.ready && !a.form.open && !a.logOpen {
+		if mods, key, ok := display.HotkeyBinding(searchHotkey, display.HotkeyAuto); ok && c.Shortcut(mods, key) {
+			a.page, a.libraryPage, a.inspected = pageLibrary, 0, 0
+			a.focusSearch = len(a.state.Instances) > 0
+		}
 		if a.page == pageLibrary && a.inspected != 0 {
 			if c.Shortcut(0, ui.KeyEscape) {
 				a.inspected = 0
@@ -329,13 +335,17 @@ func (a *desktop) library(c *ui.Context) {
 			return
 		}
 		ui.Column(c).MaxWidth(380).Children(func() {
-			hotkey := "mod+k"
+			hotkey := searchHotkey
 			if a.form.open || a.logOpen {
 				hotkey = ""
 			}
-			field.SearchBar(c, &a.query, field.SearchBarProps{
+			search := field.SearchBar(c, &a.query, field.SearchBarProps{
 				Placeholder: "搜索名称、版本或加载器", ShortKey: hotkey,
 			}).Label("搜索实例")
+			if a.focusSearch {
+				search.Focus()
+				a.focusSearch = false
+			}
 		})
 		layout.ScrollArea(c, layout.ScrollAreaProps{State: &a.scroll}, func() {
 			query := strings.ToLower(strings.TrimSpace(a.query))

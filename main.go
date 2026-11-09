@@ -112,6 +112,7 @@ type desktop struct {
 	page, settingsPage, libraryPage int
 	inspected                       int
 	query                           string
+	focusSearch                     bool
 	scroll                          ui.ScrollState
 	form                            editor
 	installed                       map[int]bool
