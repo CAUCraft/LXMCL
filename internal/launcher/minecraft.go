@@ -529,11 +529,31 @@ func (g Game) StartOnServer(ctx context.Context, i Instance, settings Settings, 
 }
 
 func (g Game) StartWithSession(ctx context.Context, i Instance, settings Settings, server string, session *MinecraftSession) (Running, error) {
-	if err := supported(i); err != nil {
-		return Running{}, err
-	}
 	identity, err := launchIdentity(settings.Player, session)
 	if err != nil {
+		return Running{}, err
+	}
+	return g.start(ctx, i, settings, server, identity, nil)
+}
+
+func (g Game) StartWithStation(ctx context.Context, i Instance, settings Settings, server string, session StationSession) (Running, error) {
+	identity, err := stationIdentity(session)
+	if err != nil {
+		return Running{}, err
+	}
+	return g.start(ctx, i, settings, server, identity, &session)
+}
+
+func stationIdentity(session StationSession) (gameIdentity, error) {
+	p := session.Profile
+	if !session.validFor(p) {
+		return gameIdentity{}, ErrSkinStationLogin
+	}
+	return gameIdentity{name: p.Name, uuid: p.ID, token: session.access, kind: "mojang"}, nil
+}
+
+func (g Game) start(ctx context.Context, i Instance, settings Settings, server string, identity gameIdentity, station *StationSession) (Running, error) {
+	if err := supported(i); err != nil {
 		return Running{}, err
 	}
 	if err := i.Launch.Validate(); err != nil {
@@ -598,6 +618,13 @@ func (g Game) StartWithSession(ctx context.Context, i Instance, settings Setting
 		return Running{}, fmt.Errorf("无法生成游戏参数：%w", err)
 	}
 	args := append([]string{"-Xmx" + strconv.Itoa(memory) + "M"}, jvm...)
+	if station != nil {
+		extra, err := station.launchArgs(ctx, g.Cache)
+		if err != nil {
+			return Running{}, err
+		}
+		args = append(args, extra...)
+	}
 	if l := m.Logging.Client; l.Argument != "" {
 		args = append(args, strings.ReplaceAll(l.Argument, "${path}", filepath.Join(g.Cache, "assets", "log_configs", l.File.ID)))
 	}

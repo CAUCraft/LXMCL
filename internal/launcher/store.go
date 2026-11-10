@@ -30,13 +30,15 @@ type Instance struct {
 }
 
 type State struct {
-	MicrosoftProfile string     `json:"microsoft_profile,omitempty"`
-	Servers          []Server   `json:"servers,omitempty"`
-	Settings         Settings   `json:"settings"`
-	Instances        []Instance `json:"instances"`
-	OfflinePlayers   []string   `json:"offline_players,omitempty"`
-	Selected         int        `json:"selected"`
-	NextID           int        `json:"next_id"`
+	MicrosoftProfile string           `json:"microsoft_profile,omitempty"`
+	StationKey       string           `json:"skin_station_key,omitempty"`
+	StationProfiles  []StationProfile `json:"skin_station_profiles,omitempty"`
+	Servers          []Server         `json:"servers,omitempty"`
+	Settings         Settings         `json:"settings"`
+	Instances        []Instance       `json:"instances"`
+	OfflinePlayers   []string         `json:"offline_players,omitempty"`
+	Selected         int              `json:"selected"`
+	NextID           int              `json:"next_id"`
 }
 
 type Store struct{ Root string }
@@ -125,6 +127,7 @@ func (s State) Clone() State {
 	s.Instances = slices.Clone(s.Instances)
 	s.OfflinePlayers = slices.Clone(s.OfflinePlayers)
 	s.Servers = slices.Clone(s.Servers)
+	s.StationProfiles = slices.Clone(s.StationProfiles)
 	return s
 }
 
@@ -145,11 +148,14 @@ func (s *State) UseOfflinePlayer(name string) error {
 		s.OfflinePlayers = append(s.OfflinePlayers, name)
 	}
 	s.Settings.Player = name
-	s.MicrosoftProfile = ""
+	s.MicrosoftProfile, s.StationKey = "", ""
 	return nil
 }
 
 func (s State) AccountKey() string {
+	if s.StationKey != "" {
+		return "station:" + s.StationKey
+	}
 	if s.MicrosoftProfile != "" {
 		return "msa:" + s.MicrosoftProfile
 	}

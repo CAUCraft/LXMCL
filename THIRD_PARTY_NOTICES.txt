@@ -21,6 +21,10 @@ Lucide icons (including Feather-derived icons) — ISC / MIT
   https://github.com/lobehub/lobe-mygo/blob/5b3ecde8b184/pkg/lucide/LICENSE
   licenses/lucide-feather.txt
 
+authlib-injector v1.2.8 — AGPL-3.0-or-later with the AUTHLIB-INJECTOR exception
+  Downloaded from its official release at runtime for Yggdrasil accounts.
+  Source and license: https://github.com/yushijinhun/authlib-injector/tree/v1.2.8
+
 Ebitengine Kage compiler in MyGo — Apache-2.0
   Copyright The Ebiten Authors; MyGo's fork of Ebitengine commit 16f18b0.
   https://github.com/egoist/mygo/tree/9233663736ca/internal/shader
