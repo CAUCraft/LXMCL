@@ -89,7 +89,7 @@ func (a *desktop) instanceContent(c *ui.Context, i launcher.Instance) {
 	})
 	switch {
 	case v.reading:
-		muted(c, "正在读取资源…")
+		flightLoading(c, "正在读取资源…")
 	case v.err != "":
 		feedback.Alert(c, v.err, feedback.AlertProps{Type: feedback.Error})
 	case len(v.files) == 0:
@@ -164,6 +164,7 @@ type packBrowser struct {
 
 func (a *desktop) searchPacks(p *packBrowser) {
 	p.busy, p.err, p.searched = true, "", true
+	p.project, p.version, p.versions = launcher.PackProject{}, "", nil
 	query := p.query
 	go func() {
 		ctx, cancel := context.WithTimeout(a.ctx, 15*time.Second)
@@ -204,76 +205,91 @@ func (a *desktop) packDialog(c *ui.Context) {
 	if p.kind == launcher.FabricMods {
 		label = "模组"
 	}
-	feedback.Modal(c, &p.open, feedback.ModalProps{Title: "Modrinth " + label, Width: 640, NoFooter: true}, func() {
+	feedback.Modal(c, &p.open, feedback.ModalProps{Title: "Modrinth " + label, Width: 720, NoFooter: true}, func() {
 		ui.Column(c).Gap(9).Children(func() {
 			panelHeading(c, lucide.PackageSearch(), p.target.Name, "Minecraft "+p.target.Version)
-			if p.project.ID == "" {
-				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-					submit := false
-					ui.Column(c).Grow(1).MinWidth(0).Children(func() {
-						submit = field.Input(c, &p.query, field.InputProps{Placeholder: "搜索兼容" + label}).
-							Label(label + "关键词").Disabled(p.busy).Submitted()
-					})
-					if button(c, "搜索", action.Primary, p.busy) || submit && !p.busy {
-						a.searchPacks(p)
-					}
+			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+				submit := false
+				ui.Column(c).Grow(1).MinWidth(0).Children(func() {
+					submit = field.Input(c, &p.query, field.InputProps{Placeholder: "搜索兼容" + label}).
+						Label(label + "关键词").Disabled(p.busy).Submitted()
 				})
-				if !p.busy && p.err == "" && len(p.hits) > 0 {
+				if button(c, "搜索", action.Primary, p.busy) || submit && !p.busy {
+					a.searchPacks(p)
+				}
+			})
+			ui.Column(c).Height(240).Children(func() {
+				splitWorkspace(c, 215, func() {
 					layout.ScrollArea(c, layout.ScrollAreaProps{}, func() {
 						items := make([]display.ListItem, 0, len(p.hits))
 						for _, hit := range p.hits {
-							items = append(items, display.ListItem{Key: hit.ID, Label: hit.Title, Description: hit.Author})
+							items = append(items, display.ListItem{Key: hit.ID, Label: hit.Title, Description: hit.Author, Disabled: p.busy})
 						}
-						id := display.List(c, display.ListProps{Items: items, Compact: true})
+						if len(items) == 0 {
+							muted(c, "暂无搜索结果").Padding(4)
+							return
+						}
+						id := display.List(c, display.ListProps{Items: items, Active: p.project.ID, Compact: true})
 						for _, hit := range p.hits {
-							if hit.ID == id {
+							if hit.ID == id && id != p.project.ID {
 								a.browsePack(p, hit)
+								c.Invalidate()
 								break
 							}
 						}
-					}).Height(232)
-				} else if p.searched && !p.busy && p.err == "" {
-					muted(c, "没有匹配的"+label)
-				}
-			} else {
-				panelHeading(c, lucide.Package(), p.project.Title, p.project.Author)
-				if len(p.versions) > 0 {
-					options := make([]field.SelectOption, 0, len(p.versions))
-					for _, v := range p.versions {
-						options = append(options, field.SelectOption{Value: v.ID, Label: v.Number})
-					}
-					field.Select(c, &p.version, field.SelectProps{Options: options}).Label(label + "版本")
-					if p.kind == launcher.FabricMods {
-						muted(c, "会同时下载必要依赖。换版本前请停用旧模组。")
-					} else {
-						muted(c, "下载后可在游戏内启用资源包。")
-					}
-				} else if !p.busy && p.err == "" {
-					muted(c, "没有可用的兼容版本")
-				}
-				ui.Row(c).Gap(8).Justify(ui.End).Children(func() {
-					if button(c, "返回搜索", action.Text, p.busy) {
-						p.project, p.err = launcher.PackProject{}, ""
-					}
-					if button(c, "下载"+label, action.Primary, p.busy || p.version == "" || a.busy || a.running != nil) {
-						for _, version := range p.versions {
-							if version.ID == p.version {
-								p.open = false
-								a.runInstanceTask(p.target, "下载"+label, func(ctx context.Context) error {
-									return launcher.DownloadModrinth(ctx, p.target, p.kind, version)
-								})
-								break
-							}
-						}
-					}
+					}).Grow(1).MinHeight(0)
+				}, func() {
+					detailPane(c.Key(p.project.ID), func() { a.packDetails(c, p, label) })
 				})
-			}
-			if p.busy {
-				muted(c, "正在读取 Modrinth…")
-			}
-			if p.err != "" {
-				feedback.Alert(c, p.err, feedback.AlertProps{Type: feedback.Error})
-			}
+			})
 		})
 	})
+}
+
+func (a *desktop) packDetails(c *ui.Context, p *packBrowser, label string) {
+	if p.project.ID != "" {
+		panelHeading(c, lucide.Package(), p.project.Title, p.project.Author)
+	}
+	switch {
+	case p.busy:
+		flightLoading(c, "正在读取 Modrinth…")
+	case p.err != "":
+		feedback.Alert(c, p.err, feedback.AlertProps{Type: feedback.Error})
+		if p.project.ID != "" && button(c, "重试读取版本", action.Default, false) {
+			a.browsePack(p, p.project)
+		}
+	case p.project.ID == "":
+		title := "选择" + label + "查看详情"
+		if len(p.hits) == 0 {
+			title = "搜索兼容的" + label
+			if p.searched {
+				title = "没有匹配的" + label
+			}
+		}
+		display.Empty(c, display.EmptyProps{Icon: lucide.PackageSearch(), Title: title})
+	case len(p.versions) == 0:
+		muted(c, "没有可用的兼容版本")
+	default:
+		options := make([]field.SelectOption, 0, len(p.versions))
+		for _, v := range p.versions {
+			options = append(options, field.SelectOption{Value: v.ID, Label: v.Number})
+		}
+		field.Select(c, &p.version, field.SelectProps{Options: options}).Label(label + "版本")
+		if p.kind == launcher.FabricMods {
+			muted(c, "会同时下载必要依赖。换版本前请停用旧模组。")
+		} else {
+			muted(c, "下载后可在游戏内启用资源包。")
+		}
+		if button(c, "下载"+label, action.Primary, p.version == "" || a.busy || a.running != nil) {
+			for _, version := range p.versions {
+				if version.ID == p.version {
+					p.open = false
+					a.runInstanceTask(p.target, "下载"+label, func(ctx context.Context) error {
+						return launcher.DownloadModrinth(ctx, p.target, p.kind, version)
+					})
+					break
+				}
+			}
+		}
+	}
 }

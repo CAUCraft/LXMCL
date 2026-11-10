@@ -32,7 +32,22 @@ var mainTabs = []nav.TabItem{
 }
 
 func button(c *ui.Context, label string, variant action.ButtonVariant, disabled bool) bool {
-	return action.Button(c, label, action.ButtonProps{Variant: variant}).Disabled(disabled).Clicked()
+	b := action.Button(c, label, action.ButtonProps{Variant: variant}).Disabled(disabled)
+	if variant == action.Primary && !disabled {
+		tintPrimary(b)
+	}
+	return b.Clicked()
+}
+
+func tintPrimary(b ui.Element) {
+	bg := ui.Hex("#1762ba")
+	switch {
+	case b.Pressed():
+		bg = ui.Hex("#134d91")
+	case b.Hovered():
+		bg = ui.Hex("#2070cb")
+	}
+	b.Background(bg).Border(1, bg).TextColor(ui.Hex("#ffffff"))
 }
 
 func icon(c *ui.Context, svg *ui.SVG, label string, disabled bool) bool {
@@ -45,16 +60,16 @@ func muted(c *ui.Context, label string) ui.Element {
 
 func brand(c *ui.Context) (ink, wash ui.Color) {
 	if c.Theme().Dark {
-		return ui.Hex("#9ed9b5"), ui.Hex("#233830")
+		return ui.Hex("#96c8ff"), ui.Hex("#1e324c")
 	}
-	return ui.Hex("#24684b"), ui.Hex("#e5f3e9")
+	return ui.Hex("#175ca7"), ui.Hex("#e6f1ff")
 }
 
 func workspaceColor(c *ui.Context) ui.Color {
 	if c.Theme().Dark {
-		return ui.Hex("#161b19")
+		return ui.Hex("#151c27")
 	}
-	return ui.Hex("#f1f5f2")
+	return ui.Hex("#edf3fb")
 }
 
 func leadIcon(c *ui.Context, svg *ui.SVG, size float32) {
@@ -119,7 +134,7 @@ func (a *desktop) view(c *ui.Context) {
 				}
 			})
 		case !a.ready:
-			ui.Column(c).Grow(1).Center().Children(func() { muted(c, "正在读取启动器设置…") })
+			ui.Column(c).Grow(1).Center().Children(func() { flightLoading(c, "正在读取启动器设置…") })
 		default:
 			switch a.page {
 			case pageHome:
@@ -156,7 +171,7 @@ func (a *desktop) noticeBar(c *ui.Context) {
 		feedback.Alert(c, a.notice, feedback.AlertProps{Type: tone, Variant: feedback.Plain}).Grow(1).MinWidth(0)
 		if a.noticeAccount {
 			if button(c, "账号设置", action.Text, false) {
-				a.page, a.settingsPage = pageSettings, 2
+				a.page, a.settingsPage, a.browsedAccount = pageSettings, 2, ""
 			}
 		} else if a.noticeJava {
 			if button(c, "Java 设置", action.Text, false) {
@@ -216,16 +231,18 @@ func (a *desktop) topBar(c *ui.Context) {
 			account := action.StyleButton(c, ui.ButtonBase(c).Label("账号设置"), "",
 				action.ButtonProps{Variant: action.Text, Size: theme.Small}).PaddingX(5).Gap(6).Shrink(0).Disabled(!a.ready)
 			account.Children(func() {
-				ink, wash := brand(c)
-				display.Avatar(c, name, display.AvatarProps{
-					Size: 20, Shape: display.AvatarCircle, Fallback: display.AvatarText, Background: wash,
-				})
+				a.accountAvatar(c, name, a.state.MicrosoftProfile != "", 24)
+				ink, _ := brand(c)
 				if w >= 920 {
 					display.Text(c, name, display.TextProps{FontSize: 12, Rows: 1}).MaxWidth(88).Ellipsis("…").TextColor(ink)
 				}
 			})
 			if account.Clicked() {
 				a.page, a.settingsPage = pageSettings, 2
+				a.browsedAccount = a.state.Settings.Player
+				if a.state.MicrosoftProfile != "" {
+					a.browsedAccount = ""
+				}
 			}
 		})
 	})
@@ -303,19 +320,12 @@ func (a *desktop) playButton(c *ui.Context, i launcher.Instance, disabled bool) 
 	return launchButton(c, label, glyph, disabled || a.busy || a.running != nil)
 }
 
-// Keep Lobe's button focus, hit testing and transition; tint the one primary hero action.
+// Keep Lobe's button focus, hit testing and transition.
 func launchButton(c *ui.Context, label string, glyph *ui.SVG, disabled bool) bool {
 	b := action.StyleButton(c, ui.ButtonBase(c).Label(label), "", action.ButtonProps{Variant: action.Primary, Size: theme.Large}).
 		Height(36).FillWidth().Disabled(disabled)
 	if !disabled {
-		bg := ui.Hex("#24684b")
-		switch {
-		case b.Pressed():
-			bg = ui.Hex("#174936")
-		case b.Hovered():
-			bg = ui.Hex("#2c7656")
-		}
-		b.Background(bg).Border(1, bg).TextColor(ui.Hex("#ffffff"))
+		tintPrimary(b)
 	} else {
 		tk := theme.TokensOf(c)
 		b.Background(tk.FillSecondary).Border(1, tk.BorderSecondary).TextColor(tk.TextSecondary)
@@ -348,10 +358,6 @@ var libraryTabs = []nav.TabItem{
 
 func (a *desktop) library(c *ui.Context) {
 	workspace(c, func() {
-		if i, ok := a.state.Find(a.inspected); ok && a.libraryPage == 0 {
-			a.details(c, i)
-			return
-		}
 		contextTabs(c, &a.libraryPage, libraryTabs)
 		if a.libraryPage == 1 {
 			a.tasks(c)
@@ -382,58 +388,70 @@ func (a *desktop) library(c *ui.Context) {
 				a.create()
 			}
 		})
-		if len(a.state.Instances) == 0 {
-			emptyPanel(c, lucide.PackageOpen(), "暂无实例")
-			return
-		}
-		layout.ScrollArea(c, layout.ScrollAreaProps{State: &a.scroll}, func() {
-			query := strings.ToLower(strings.TrimSpace(a.query))
-			var items []display.ListItem
-			for _, i := range a.state.Instances {
-				if !strings.Contains(strings.ToLower(i.Name+" "+i.Version+" "+loaderName(i)), query) {
-					continue
-				}
-				if a.instanceFilter == 1 && !a.installed[i.ID] || a.instanceFilter == 2 && a.installed[i.ID] {
-					continue
-				}
-				status, _ := a.instanceStatus(i)
-				if i.ID == a.state.Selected {
-					status = "启动目标 · " + status
-				}
-				items = append(items, display.ListItem{
-					Key: strconv.Itoa(i.ID), Label: i.Name,
-					Description: i.Version + " · " + loaderName(i),
-					Avatar:      func() { leadIcon(c, lucide.Package(), 28) },
-					Extra:       status,
-					Actions: func() {
-						if icon(c, lucide.FolderOpen(), "打开 "+i.Name+" 的目录", false) {
-							a.openPath(i.GameDir, true)
-						}
-					},
-				})
-			}
-			if len(items) == 0 {
-				surface(c).Padding(12).Children(func() {
-					display.Empty(c, display.EmptyProps{Icon: lucide.SearchX(), Title: "未找到实例", Action: func() {
-						if button(c, "清除筛选", action.Default, false) {
-							a.query, a.instanceFilter = "", 0
-						}
-					}})
-				})
-				return
-			}
-			surface(c).Padding(5).Children(func() {
-				clicked := display.List(c, display.ListProps{
-					Items: items, Active: strconv.Itoa(a.state.Selected), Compact: true,
-				})
-				if id, err := strconv.Atoi(clicked); err == nil {
-					if i, ok := a.state.Find(id); ok {
-						a.inspect(i)
-					}
+		w, _ := c.Size()
+		splitWorkspace(c, listWidth(w), func() {
+			muted(c, "实例列表").Padding(3, 5)
+			layout.ScrollArea(c, layout.ScrollAreaProps{State: &a.scroll}, func() {
+				a.instanceList(c)
+			}).Grow(1).MinHeight(0)
+		}, func() {
+			i, ok := a.state.Find(a.inspected)
+			detailPane(c.Key(a.inspected), func() {
+				switch {
+				case ok:
+					a.details(c, i)
+				case len(a.state.Instances) == 0:
+					emptyPanel(c, lucide.PackageOpen(), "暂无实例")
+				default:
+					surface(c).Grow(1).Center().Children(func() {
+						display.Empty(c, display.EmptyProps{Icon: lucide.Package(), Title: "选择一个实例查看详情"})
+					})
 				}
 			})
-		}).Grow(1).MinHeight(0)
+		})
 	})
+}
+
+func (a *desktop) instanceList(c *ui.Context) {
+	if len(a.state.Instances) == 0 {
+		muted(c, "暂无实例").Padding(5)
+		return
+	}
+	query := strings.ToLower(strings.TrimSpace(a.query))
+	var items []display.ListItem
+	for _, i := range a.state.Instances {
+		if !strings.Contains(strings.ToLower(i.Name+" "+i.Version+" "+loaderName(i)), query) {
+			continue
+		}
+		if a.instanceFilter == 1 && !a.installed[i.ID] || a.instanceFilter == 2 && a.installed[i.ID] {
+			continue
+		}
+		detail := i.Version + " · " + loaderName(i)
+		if i.ID == a.state.Selected {
+			detail += " · 启动目标"
+		}
+		items = append(items, display.ListItem{
+			Key: strconv.Itoa(i.ID), Label: i.Name,
+			Description: detail, Icon: lucide.Package(),
+		})
+	}
+	if len(items) == 0 {
+		display.Empty(c, display.EmptyProps{Icon: lucide.SearchX(), Title: "未找到实例", Action: func() {
+			if button(c, "清除筛选", action.Default, false) {
+				a.query, a.instanceFilter = "", 0
+			}
+		}})
+		return
+	}
+	clicked := display.List(c, display.ListProps{
+		Items: items, Active: strconv.Itoa(a.inspected), Compact: true,
+	})
+	if id, err := strconv.Atoi(clicked); err == nil && id != a.inspected {
+		if i, ok := a.state.Find(id); ok {
+			a.inspect(i)
+			c.Invalidate()
+		}
+	}
 }
 
 func loaderName(i launcher.Instance) string {
@@ -529,7 +547,7 @@ func (a *desktop) editor(c *ui.Context) {
 				})
 				switch {
 				case a.catalogBusy:
-					muted(c, "正在读取官方版本列表…").FontSize(12)
+					flightLoading(c, "正在读取官方版本列表…")
 				case a.catalogErr != "":
 					feedback.Alert(c, a.catalogErr, feedback.AlertProps{Type: feedback.Warning})
 					if button(c, "重试获取版本列表", action.Text, a.busy) {
@@ -561,7 +579,7 @@ func (a *desktop) loaderForm(c *ui.Context) {
 	field.Select(c, &f.version, field.SelectProps{Options: options, Disabled: a.busy}).Label("加载器")
 	switch {
 	case f.loaderLoading:
-		muted(c, "正在读取 Fabric 版本…")
+		flightLoading(c, "正在读取 Fabric 版本…")
 	case f.loaderError != "":
 		feedback.Alert(c, f.loaderError, feedback.AlertProps{Type: feedback.Warning})
 		if button(c, "重试读取版本", action.Text, a.busy) {

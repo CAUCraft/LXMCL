@@ -53,6 +53,9 @@ func (a *desktop) load() {
 				a.message("无法读取 Microsoft 登录", accountErr)
 				a.noticeAccount = true
 			}
+			if s.MicrosoftProfile != "" && s.MicrosoftProfile == account.Profile.ID {
+				a.startAppearance()
+			}
 		})
 	}()
 }
@@ -296,6 +299,8 @@ func (a *desktop) saveSettings() {
 }
 
 func (a *desktop) selectOfflinePlayer(name string) {
+	name = strings.TrimSpace(name)
+	browsed := a.browsedAccount
 	next := a.state.Clone()
 	if err := next.UseOfflinePlayer(name); err != nil {
 		a.message("无法切换离线账号", err)
@@ -304,6 +309,12 @@ func (a *desktop) selectOfflinePlayer(name string) {
 	a.save(next, 0, func(err error) {
 		if err == nil {
 			a.draft.Player = name
+			if a.browsedAccount == browsed {
+				a.browsedAccount = name
+			}
+			if browsed == addOfflineAccount {
+				a.newOfflinePlayer = ""
+			}
 		}
 		a.message("切换离线账号 · "+name, err)
 	})
@@ -312,7 +323,12 @@ func (a *desktop) selectOfflinePlayer(name string) {
 func (a *desktop) forgetOfflinePlayer(name string) {
 	next := a.state.Clone()
 	next.ForgetOfflinePlayer(name)
-	a.save(next, 0, func(err error) { a.message("移除离线账号 · "+name, err) })
+	a.save(next, 0, func(err error) {
+		if err == nil && a.browsedAccount == name {
+			a.browsedAccount = a.state.Settings.Player
+		}
+		a.message("移除离线账号 · "+name, err)
+	})
 }
 
 func (a *desktop) detectJava() {

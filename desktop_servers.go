@@ -96,35 +96,55 @@ func (a *desktop) network(c *ui.Context) {
 			emptyPanel(c, lucide.Server(), "暂无收藏")
 			return
 		}
-		layout.ScrollArea(c, layout.ScrollAreaProps{}, func() {
-			surface(c).Padding(5, 12).Gap(4).Children(func() {
-				for idx, server := range a.state.Servers {
-					if idx > 0 {
-						layout.Divider(c, layout.DividerProps{})
-					}
-					ui.Row(c.Key(server.Address)).MinHeight(49).Gap(8).AlignItems(ui.Center).Children(func() {
-						leadIcon(c, lucide.Server(), 28)
-						check := a.serverStatus[server.Address]
-						ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
-							display.Text(c, server.Name, display.TextProps{Strong: true, Rows: 1}).Ellipsis("…")
-							detail := server.Address
-							if check != nil {
-								detail += " · " + check.message
-							}
-							muted(c, detail).FontSize(12).SingleLine().Ellipsis("…")
-						})
-						if button(c, "查询", action.Default, check != nil && check.pending) {
-							a.checkServer(server)
+		server := a.state.Servers[0]
+		items := make([]display.ListItem, 0, len(a.state.Servers))
+		for _, entry := range a.state.Servers {
+			items = append(items, display.ListItem{
+				Key: entry.Address, Label: entry.Name, Description: entry.Address, Icon: lucide.Server(),
+			})
+			if entry.Address == a.browsedServer {
+				server = entry
+			}
+		}
+		w, _ := c.Size()
+		splitWorkspace(c, listWidth(w), func() {
+			muted(c, "服务器列表").Padding(3, 5)
+			layout.ScrollArea(c, layout.ScrollAreaProps{}, func() {
+				if key := display.List(c, display.ListProps{Items: items, Active: server.Address, Compact: true}); key != "" {
+					a.browsedServer = key
+					c.Invalidate()
+					for _, entry := range a.state.Servers {
+						if entry.Address == key {
+							server = entry
+							break
 						}
+					}
+				}
+			}).Grow(1).MinHeight(0)
+		}, func() {
+			detailPane(c.Key(server.Address), func() {
+				surface(c).Padding(14).Gap(10).Children(func() {
+					panelHeading(c, lucide.Server(), server.Name, server.Address)
+					check := a.serverStatus[server.Address]
+					if check != nil && check.pending {
+						flightLoading(c, check.message)
+					} else if check != nil {
+						muted(c, check.message).FontSize(13)
+					}
+					ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 						if button(c, "启动并加入", action.Primary, !selected || a.busy || a.running != nil) {
 							a.playOnServer(i, false, server.Address)
 						}
+						if button(c, "查询状态", action.Default, check != nil && check.pending) {
+							a.checkServer(server)
+						}
+						ui.Spacer(c).Grow(1)
 						if icon(c, lucide.X(), "移除服务器 "+server.Name, a.busy) {
 							a.removeServer(server)
 						}
 					})
-				}
+				})
 			})
-		}).Grow(1).MinHeight(0)
+		})
 	})
 }

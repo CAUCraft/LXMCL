@@ -113,8 +113,10 @@ func (c authClient) request(ctx context.Context, service, endpoint, method, cont
 		_ = json.Unmarshal(data, &failure)
 		return &authResponseError{service: service, status: res.StatusCode, code: failure.Error, xbox: failure.XErr}
 	}
-	if err := json.Unmarshal(data, out); err != nil {
-		return fmt.Errorf("%s 返回无法解析的认证响应", service)
+	if out != nil {
+		if err := json.Unmarshal(data, out); err != nil {
+			return fmt.Errorf("%s 返回无法解析的认证响应", service)
+		}
 	}
 	return nil
 }

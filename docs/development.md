@@ -23,6 +23,8 @@ Fabric 加载器与库来自 Fabric Meta 和 Maven；Modrinth 文件按 SHA-512 
 
 Microsoft 登录在系统浏览器授权，随后检查 Xbox、Java 版权益和档案。Windows 使用 DPAPI 加密刷新凭据，其他平台仅保留当前会话。更换构建的公开应用 ID 时，旧账号需要重新登录。
 
+点击顶栏账号头像可查看当前账号。在 Microsoft 账号详情中，选择 64 × 64 或 64 × 32 的 PNG 先预览，再应用皮肤；披风可从账号已拥有的款式中选择，也可设为不佩戴。应用会更新 Minecraft Java 版档案。离线账号的孪枭头像和预览仅在启动器中显示。
+
 ## 验证与发布
 
 [CI](https://github.com/CAUCraft/LXMCL/actions) 在 Windows 上运行测试和打包，在 Linux 上运行启动器核心测试。UI 测试使用软件渲染，可通过 `LXMCL_UI_CAPTURE` 保存截图；系统窗控、输入法及实际进入游戏需要另行验证。

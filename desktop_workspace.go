@@ -205,49 +205,53 @@ var settingsTabs = []nav.TabItem{
 
 func (a *desktop) settings(c *ui.Context) {
 	workspace(c, func() {
-		contextTabs(c, &a.settingsPage, settingsTabs)
-		disabled := a.busy || a.pickerBusy
-		layout.ScrollArea(c.Key(a.settingsPage), layout.ScrollAreaProps{}, func() {
-			ui.Column(c).Gap(10).FillWidth().MaxWidth(860).Children(func() {
-				switch a.settingsPage {
-				case 0:
-					a.gameSettings(c, disabled)
-				case 1:
-					a.javaSettings(c, disabled)
-				case 2:
-					a.microsoftSettings(c, disabled)
-					a.offlineAccounts(c, disabled)
-				case 3:
-					a.help(c)
+		splitWorkspace(c, 168, func() {
+			muted(c, "设置").Padding(3, 5)
+			items := make([]display.ListItem, 0, len(settingsTabs))
+			for id, item := range settingsTabs {
+				items = append(items, display.ListItem{Key: strconv.Itoa(id), Label: item.Label, Icon: item.Icon})
+			}
+			if key := display.List(c, display.ListProps{Items: items, Active: strconv.Itoa(a.settingsPage), Compact: true}); key != "" {
+				a.settingsPage, _ = strconv.Atoi(key)
+				c.Invalidate()
+			}
+			if a.settingsPage == 2 {
+				layout.Divider(c, layout.DividerProps{})
+				a.accountList(c)
+			}
+		}, func() {
+			key := strconv.Itoa(a.settingsPage)
+			if a.settingsPage == 2 {
+				key += "/" + a.browsedAccount
+			}
+			detailPane(c.Key(key), func() {
+				disabled := a.busy || a.pickerBusy
+				layout.ScrollArea(c.Key(key), layout.ScrollAreaProps{}, func() {
+					ui.Column(c).Gap(10).FillWidth().MaxWidth(860).Children(func() {
+						switch a.settingsPage {
+						case 0:
+							heading(c, "游戏设置")
+							a.gameSettings(c, disabled)
+						case 1:
+							heading(c, "Java 设置")
+							a.javaSettings(c, disabled)
+						case 2:
+							if a.browsedAccount == "" {
+								a.startAppearance()
+								a.microsoftSettings(c, disabled || a.busy)
+							} else {
+								a.offlineAccount(c, disabled)
+							}
+						case 3:
+							a.help(c)
+						}
+					})
+				}).Grow(1).MinHeight(0)
+				if a.settingsPage < 2 {
+					a.settingsFooter(c)
 				}
 			})
-		}).Grow(1).MinHeight(0)
-		if a.settingsPage != 3 {
-			a.settingsFooter(c)
-		}
-	})
-}
-
-func (a *desktop) offlineAccounts(c *ui.Context, disabled bool) {
-	surface(c).Padding(8, 14).Gap(5).Children(func() {
-		settingsRow(c, "离线玩家名", func() {
-			settingsInput(c, "离线玩家名", &a.draft.Player, "Player", 240, disabled)
 		})
-		for _, name := range a.state.Players() {
-			layout.Divider(c, layout.DividerProps{})
-			settingsRow(c.Key(name), name, func() {
-				if name == a.state.Settings.Player && a.state.MicrosoftProfile == "" {
-					display.Tag(c, "使用中", display.TagProps{Color: display.TagGreen, Size: theme.Small})
-					return
-				}
-				if button(c, "切换", action.Default, disabled) {
-					a.selectOfflinePlayer(name)
-				}
-				if name != a.state.Settings.Player && icon(c, lucide.X(), "移除离线账号 "+name, disabled) {
-					a.forgetOfflinePlayer(name)
-				}
-			})
-		}
 	})
 }
 
@@ -302,76 +306,106 @@ func (a *desktop) openTasks() {
 }
 
 func (a *desktop) tasks(c *ui.Context) {
-	layout.ScrollArea(c, layout.ScrollAreaProps{}, func() {
-		ui.Column(c).Gap(8).FillWidth().Children(func() {
-			if a.task.Stage != "" {
-				surface(c).Padding(10, 14).Gap(6).Children(func() {
-					ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-						ui.Column(c).Grow(1).MinWidth(0).Children(func() {
-							panelHeading(c, lucide.Download(), a.taskName, a.task.Stage)
-						})
-						if a.cancelTask != nil && button(c, "取消任务", action.Default, false) {
-							a.cancelTask()
-						}
+	ui.Column(c).Grow(1).Basis(0).MinHeight(0).Gap(8).Children(func() {
+		if a.task.Stage != "" {
+			surface(c).Padding(10, 14).Gap(6).Children(func() {
+				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+					ui.Column(c).Grow(1).MinWidth(0).Children(func() {
+						display.Text(c, a.taskName, display.TextProps{Strong: true, FontSize: 15})
+						flightLoading(c, a.task.Stage)
 					})
-					a.taskProgress(c)
-				})
-			}
-			if a.running != nil {
-				surface(c).Padding(10, 14).Gap(6).Children(func() {
-					name := "Minecraft"
-					if i, ok := a.state.Find(a.runningID); ok {
-						name = i.Name
-					}
-					panelHeading(c, lucide.Gamepad2(), name, fmt.Sprintf("游戏进程运行中 · PID %d", a.running.PID))
-					if a.lastLog != "" && button(c, "查看当前日志", action.Default, false) {
-						a.showLog(a.lastLog)
+					if a.cancelTask != nil && button(c, "取消任务", action.Default, false) {
+						a.cancelTask()
 					}
 				})
-			}
-			if len(a.history) > 0 {
-				ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-					display.Text(c, "历史记录", display.TextProps{Heading: 4})
-					ui.Spacer(c).Grow(1)
-					action.Segmented(c, &a.taskFilter, []string{"全部任务", "失败 / 取消"},
-						action.SegmentedProps{Size: theme.Small}).Label("历史任务筛选")
-					if a.lastLog != "" && button(c, "打开日志目录", action.Text, false) {
-						a.openLogFolder()
-					}
-				})
-				visible := a.history
-				if a.taskFilter == 1 {
-					visible = nil
-					for _, row := range a.history {
-						if row.Status == taskFailed || row.Status == taskCanceled {
-							visible = append(visible, row)
-						}
+				a.taskProgress(c)
+			})
+		}
+		if a.running != nil {
+			surface(c).Padding(10, 14).Gap(6).Children(func() {
+				name := "Minecraft"
+				if i, ok := a.state.Find(a.runningID); ok {
+					name = i.Name
+				}
+				panelHeading(c, lucide.Gamepad2(), name, fmt.Sprintf("游戏进程运行中 · PID %d", a.running.PID))
+				if a.lastLog != "" && button(c, "查看当前日志", action.Default, false) {
+					a.showLog(a.lastLog)
+				}
+			})
+		}
+		if len(a.history) > 0 {
+			ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+				display.Text(c, "历史记录", display.TextProps{Heading: 4})
+				ui.Spacer(c).Grow(1)
+				action.Segmented(c, &a.taskFilter, []string{"全部任务", "失败 / 取消"},
+					action.SegmentedProps{Size: theme.Small}).Label("历史任务筛选")
+				if a.lastLog != "" && button(c, "打开日志目录", action.Text, false) {
+					a.openLogFolder()
+				}
+			})
+			visible := a.history
+			if a.taskFilter == 1 {
+				visible = nil
+				for _, row := range a.history {
+					if row.Status == taskFailed || row.Status == taskCanceled {
+						visible = append(visible, row)
 					}
 				}
-				if len(visible) == 0 {
-					emptyPanel(c, lucide.CircleCheck(), "没有失败或取消的任务")
-					return
-				}
-				surface(c).Padding(4, 12).Gap(4).Children(func() {
-					for idx, row := range visible {
-						if idx > 0 {
-							layout.Divider(c, layout.DividerProps{})
-						}
-						a.taskRow(c.Key(row.At.UnixNano()), row)
-					}
-				})
-			} else if a.lastLog != "" && a.running == nil {
-				surface(c).Padding(16).Gap(8).Children(func() {
-					property(c, "最近日志", a.lastLog)
-					if button(c, "查看日志", action.Default, false) {
-						a.showLog(a.lastLog)
-					}
-				})
-			} else if a.task.Stage == "" && a.running == nil {
-				emptyPanel(c, lucide.Activity(), "暂无任务")
 			}
+			if len(visible) == 0 {
+				emptyPanel(c, lucide.CircleCheck(), "没有失败或取消的任务")
+				return
+			}
+			a.taskHistoryPane(c, visible)
+		} else if a.lastLog != "" && a.running == nil {
+			surface(c).Padding(16).Gap(8).Children(func() {
+				property(c, "最近日志", a.lastLog)
+				if button(c, "查看日志", action.Default, false) {
+					a.showLog(a.lastLog)
+				}
+			})
+		} else if a.task.Stage == "" && a.running == nil {
+			emptyPanel(c, lucide.Activity(), "暂无任务")
+		}
+	})
+}
+
+func (a *desktop) taskHistoryPane(c *ui.Context, rows []taskRecord) {
+	selected := rows[0]
+	items := make([]display.ListItem, 0, len(rows))
+	for _, row := range rows {
+		key := taskKey(row)
+		items = append(items, display.ListItem{Key: key, Label: row.Name,
+			Description: row.Status + " · " + row.Action, Icon: lucide.Activity()})
+		if key == a.browsedTask {
+			selected = row
+		}
+	}
+	w, _ := c.Size()
+	splitWorkspace(c, listWidth(w), func() {
+		layout.ScrollArea(c, layout.ScrollAreaProps{}, func() {
+			if key := display.List(c, display.ListProps{Items: items, Active: taskKey(selected), Compact: true}); key != "" {
+				a.browsedTask = key
+				for _, row := range rows {
+					if taskKey(row) == key {
+						selected = row
+						break
+					}
+				}
+				c.Invalidate()
+			}
+		}).Grow(1).MinHeight(0)
+	}, func() {
+		detailPane(c.Key(taskKey(selected)), func() {
+			layout.ScrollArea(c, layout.ScrollAreaProps{}, func() {
+				surface(c).Padding(8, 14).Children(func() { a.taskRow(c, selected) })
+			}).Grow(1).MinHeight(0)
 		})
-	}).Grow(1).MinHeight(0)
+	})
+}
+
+func taskKey(row taskRecord) string {
+	return strconv.FormatInt(row.At.UnixNano(), 10)
 }
 
 func (a *desktop) taskRow(c *ui.Context, row taskRecord) {
@@ -426,7 +460,7 @@ func (a *desktop) progress(c *ui.Context) {
 	tk := theme.TokensOf(c)
 	layout.Divider(c, layout.DividerProps{})
 	ui.Row(c).Padding(4, 14).Gap(10).AlignItems(ui.Center).Background(tk.BgContainer).Children(func() {
-		leadIcon(c, lucide.Activity(), 26)
+		flightIndicator(c)
 		ui.Column(c).Gap(2).Width(210).MinWidth(120).Children(func() {
 			display.Text(c, a.taskName, display.TextProps{Strong: true, Rows: 1}).Ellipsis("…")
 			muted(c, a.task.Stage).FontSize(12).SingleLine().Ellipsis("…")

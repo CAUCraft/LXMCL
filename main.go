@@ -116,6 +116,10 @@ type desktop struct {
 	microsoftAccount launcher.MicrosoftAccount
 	minecraftSession launcher.MinecraftSession
 	microsoft        *microsoftLoginView
+	appearance       *appearanceView
+	browsedAccount   string
+	newOfflinePlayer string
+	browsedServer    string
 
 	page, settingsPage, libraryPage        int
 	inspected                              int
@@ -130,6 +134,7 @@ type desktop struct {
 	focusSearch                            bool
 	instanceFilter                         int
 	taskFilter                             int
+	browsedTask                            string
 	scroll                                 ui.ScrollState
 	form                                   editor
 	installed                              map[int]bool

@@ -36,25 +36,33 @@ func (a *desktop) accountName() string {
 func (a *desktop) microsoftSettings(c *ui.Context, disabled bool) {
 	profile := a.microsoftAccount.Profile
 	selected := a.state.MicrosoftProfile
-	surface(c).Padding(9, 14).Gap(5).Children(func() {
-		settingsRow(c, "Microsoft 账号", func() {
+	syncing := a.appearance != nil && a.appearance.syncing
+	surface(c).Padding(12, 14).Gap(8).Children(func() {
+		ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
+			name := profile.Name
+			if name == "" {
+				name = "Microsoft 账号"
+			}
+			a.accountAvatar(c, name, true, 40)
+			ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
+				display.Text(c, name, display.TextProps{Strong: true, FontSize: 17, Rows: 1}).Ellipsis("…")
+				muted(c, "Minecraft: Java 版").FontSize(12)
+			})
 			if profile.ID != "" {
-				display.Text(c, profile.Name, display.TextProps{Strong: true})
 				if selected == profile.ID {
 					display.Tag(c, "使用中", display.TagProps{Color: display.TagGreen, Size: theme.Small})
 				} else if button(c, "切换", action.Default, disabled) {
 					a.selectMicrosoft(profile.ID)
 				}
 			}
-			ui.Spacer(c).Grow(1)
 			label := "登录 Microsoft"
 			if profile.ID != "" {
 				label = "重新登录"
 			}
-			if button(c, label, action.Primary, disabled) {
+			if button(c, label, action.Primary, disabled || syncing) {
 				a.beginMicrosoftLogin()
 			}
-			if (profile.ID != "" || selected != "") && button(c, "退出登录", action.Text, disabled) {
+			if (profile.ID != "" || selected != "") && button(c, "退出登录", action.Text, disabled || syncing) {
 				a.forgetMicrosoft()
 			}
 		})
@@ -64,6 +72,92 @@ func (a *desktop) microsoftSettings(c *ui.Context, disabled bool) {
 		if !launcher.MicrosoftCredentialsPersist() {
 			muted(c, "此平台的 Microsoft 登录仅在本次运行中保留。").FontSize(12)
 		}
+		if profile.ID == "" {
+			muted(c, "登录后可预览、更换 Java 版皮肤与披风。").FontSize(13)
+		}
+	})
+	if p := a.appearance; p != nil && p.id == profile.ID {
+		a.appearancePanel(c, p, disabled)
+	}
+}
+
+const addOfflineAccount = ":add"
+
+func (a *desktop) accountList(c *ui.Context) {
+	profile := a.microsoftAccount.Profile
+	name, description := "Microsoft 账号", "Java 版 · 未登录"
+	if profile.ID != "" {
+		name, description = profile.Name, "Microsoft"
+		if a.state.MicrosoftProfile == profile.ID {
+			description += " · 使用中"
+		}
+	}
+	items := []display.ListItem{{Key: ":microsoft", Label: name, Description: description,
+		Avatar: func() { a.accountAvatar(c, name, true, 25) }}}
+	for _, player := range a.state.Players() {
+		description := "离线"
+		if a.state.MicrosoftProfile == "" && a.state.Settings.Player == player {
+			description += " · 使用中"
+		}
+		items = append(items, display.ListItem{Key: player, Label: player, Description: description,
+			Avatar: func() { a.accountAvatar(c, player, false, 25) }})
+	}
+	items = append(items, display.ListItem{Key: addOfflineAccount, Label: "添加离线账号", Icon: lucide.Plus()})
+	active := a.browsedAccount
+	if active == "" {
+		active = ":microsoft"
+	}
+	layout.ScrollArea(c, layout.ScrollAreaProps{}, func() {
+		if clicked := display.List(c, display.ListProps{Items: items, Active: active, Compact: true}); clicked != "" {
+			if clicked == ":microsoft" {
+				clicked = ""
+			}
+			a.browsedAccount = clicked
+			c.Invalidate()
+		}
+	}).Grow(1).MinHeight(0)
+}
+
+func (a *desktop) offlineAccount(c *ui.Context, disabled bool) {
+	name := a.browsedAccount
+	if name == addOfflineAccount {
+		surface(c).Padding(12, 14).Gap(10).Children(func() {
+			heading(c, "添加离线账号")
+			settingsRow(c, "离线玩家名", func() {
+				settingsInput(c, "离线玩家名", &a.newOfflinePlayer, "3–16 位字母、数字或下划线", 0, disabled)
+				if button(c, "添加并切换", action.Primary, disabled || a.newOfflinePlayer == "") {
+					a.selectOfflinePlayer(a.newOfflinePlayer)
+				}
+			})
+			muted(c, "离线账号仅能加入允许离线登录的服务器。").FontSize(13)
+		})
+		return
+	}
+	surface(c).Padding(12, 14).Gap(10).Children(func() {
+		ui.Row(c).Gap(9).AlignItems(ui.Center).Children(func() {
+			a.accountAvatar(c, name, false, 40)
+			display.Text(c, name, display.TextProps{Strong: true, FontSize: 17}).Grow(1)
+			if name == a.state.Settings.Player && a.state.MicrosoftProfile == "" {
+				display.Tag(c, "使用中", display.TagProps{Color: display.TagGreen, Size: theme.Small})
+			} else if button(c, "切换", action.Primary, disabled) {
+				a.selectOfflinePlayer(name)
+			}
+			if name != a.state.Settings.Player && button(c, "移除离线账号", action.Text, disabled) {
+				a.forgetOfflinePlayer(name)
+			}
+		})
+		muted(c, "启动器使用孪枭作为离线账号头像。要在 Minecraft 中更换皮肤或披风，请登录 Microsoft。").FontSize(13)
+		if a.microsoftAccount.Profile.ID == "" && button(c, "登录 Microsoft", action.Default, disabled) {
+			a.browsedAccount = ""
+			a.beginMicrosoftLogin()
+		}
+	})
+	surface(c).Padding(12, 14).Gap(8).Children(func() {
+		heading(c, "孪枭 · 皮肤预览")
+		ui.Row(c).Gap(8).Children(func() {
+			appearanceTile(c, "正面", clubSkin.front, lucide.UserRound())
+			appearanceTile(c, "背面", clubSkin.back, lucide.UserRound())
+		})
 	})
 }
 
@@ -77,7 +171,7 @@ func (a *desktop) selectMicrosoft(id string) {
 }
 
 func (a *desktop) forgetMicrosoft() {
-	if a.busy {
+	if a.busy || (a.appearance != nil && a.appearance.syncing) {
 		return
 	}
 	next := a.state.Clone()
@@ -93,6 +187,7 @@ func (a *desktop) forgetMicrosoft() {
 			a.busy = false
 			if removed {
 				a.microsoftAccount, a.minecraftSession = launcher.MicrosoftAccount{}, launcher.MinecraftSession{}
+				a.appearance = nil
 			}
 			if err == nil {
 				a.state = next
@@ -103,7 +198,7 @@ func (a *desktop) forgetMicrosoft() {
 }
 
 func (a *desktop) beginMicrosoftLogin() {
-	if a.busy {
+	if a.busy || (a.appearance != nil && a.appearance.syncing) {
 		return
 	}
 	if a.microsoft != nil && a.microsoft.cancel != nil {
@@ -159,6 +254,7 @@ func (a *desktop) saveMicrosoftLogin(p *microsoftLoginView, account launcher.Mic
 			a.busy, p.saving = false, false
 			if stored {
 				a.microsoftAccount, a.minecraftSession = account, session
+				a.appearance = nil
 			}
 			if err != nil {
 				if p.open {
@@ -171,6 +267,7 @@ func (a *desktop) saveMicrosoftLogin(p *microsoftLoginView, account launcher.Mic
 			}
 			a.state, p.open = next, false
 			a.message("已登录 Microsoft · "+account.Profile.Name, nil)
+			a.startAppearance()
 		})
 	})
 }
@@ -184,14 +281,14 @@ func (a *desktop) microsoftLoginDialog(c *ui.Context) {
 		ui.Column(c).Gap(10).Children(func() {
 			switch {
 			case p.saving:
-				muted(c, "正在保存登录…")
+				flightLoading(c, "正在保存登录…")
 			case p.err != "":
 				feedback.Alert(c, p.err, feedback.AlertProps{Type: feedback.Error})
 				if button(c, "重新获取登录代码", action.Default, a.busy) {
 					a.beginMicrosoftLogin()
 				}
 			case p.code.Code == "":
-				muted(c, "正在向 Microsoft 获取登录代码…")
+				flightLoading(c, "正在向 Microsoft 获取登录代码…")
 			default:
 				panelHeading(c, lucide.ShieldCheck(), "在浏览器完成登录", "输入以下设备代码，回到启动器等待确认。")
 				surface(c).Padding(10, 12).Children(func() {
