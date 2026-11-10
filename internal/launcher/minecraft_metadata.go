@@ -26,9 +26,12 @@ type rule struct {
 type metadata struct {
 	ID, Type, MainClass string
 	Arguments           struct{ JVM, Game []json.RawMessage }
-	JavaVersion         struct{ MajorVersion int }
-	Downloads           struct{ Client artifact }
-	AssetIndex          struct {
+	JavaVersion         struct {
+		MajorVersion int
+		Component    string
+	}
+	Downloads  struct{ Client artifact }
+	AssetIndex struct {
 		ID string
 		artifact
 	}

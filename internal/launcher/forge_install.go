@@ -14,7 +14,9 @@ import (
 
 	"github.com/CAUCraft/LXMCL/internal/i18n"
 	"github.com/CAUCraft/LXMCL/internal/instance"
+	"github.com/CAUCraft/LXMCL/internal/javaruntime"
 	launcherlog "github.com/CAUCraft/LXMCL/internal/log"
+	"github.com/CAUCraft/LXMCL/internal/process"
 	"github.com/CAUCraft/LXMCL/internal/storage"
 )
 
@@ -61,14 +63,14 @@ func (g Game) installForge(ctx context.Context, i Instance, m metadata, javaPath
 		return err
 	}
 	report(Progress{Stage: i18n.Text("progress.check_installer_java")})
-	j, err := FindJava(ctx, i.Launch.JavaExecutable(javaPath), m.JavaVersion.MajorVersion)
+	j, err := g.resolveJava(ctx, i.Launch.JavaExecutable(javaPath), m, report)
 	if err != nil {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
 		return i18n.Error("forge.java_required", ErrJavaRequired, i.LoaderName(), m.JavaVersion.MajorVersion, err)
 	}
-	j.Path = javaConsole(j.Path)
+	j.Path = javaruntime.Console(j.Path)
 	src, err := forgeInstallerURL(i)
 	if err != nil {
 		return err
@@ -202,10 +204,10 @@ func (g Game) runForgeInstaller(ctx context.Context, java, installer, game strin
 	defer stop()
 	cmd := exec.CommandContext(ctx, java, "-Djava.awt.headless=true", "-Duser.home="+game,
 		"-jar", installer, "--installClient", game)
-	hideConsole(cmd)
+	process.HideConsole(cmd)
 	cmd.Dir, cmd.Stdout, cmd.Stderr = game, log, log
 	// Do not pass key/token environment variables or inherited Java agents.
-	cmd.Env = javaEnvironment(true)
+	cmd.Env = javaruntime.Environment(true)
 	if err := cmd.Run(); err != nil {
 		if errors.Is(ctx.Err(), context.Canceled) {
 			return context.Canceled

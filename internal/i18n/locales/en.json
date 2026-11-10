@@ -311,5 +311,11 @@
   "version.select_supported": "Select a supported Minecraft release",
   "xbox.authorization_denied": "Xbox authorization failed (%d). Check your Xbox profile, region or family settings",
   "xbox.minecraft_token_missing": "Xbox did not return the credentials required by Minecraft",
-  "xbox.user_token_missing": "Xbox Live did not return a user token"
+  "xbox.user_token_missing": "Xbox Live did not return a user token",
+  "java.runtime_manifest_invalid": "The Java runtime manifest is invalid or unsafe",
+  "java.runtime_platform_unsupported": "Automatic Java installation is unavailable on this platform. Select a local Java installation",
+  "java.runtime_requirement_invalid": "Invalid Java runtime requirement or managed directory",
+  "java.runtime_source_invalid": "Unsupported Java runtime source",
+  "java.runtime_unavailable": "No official Java runtime is available for %s",
+  "progress.install_java": "Downloading and verifying the Java runtime"
 }

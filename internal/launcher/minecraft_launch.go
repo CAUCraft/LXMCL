@@ -13,7 +13,9 @@ import (
 
 	"github.com/CAUCraft/LXMCL/internal/i18n"
 	"github.com/CAUCraft/LXMCL/internal/instance"
+	"github.com/CAUCraft/LXMCL/internal/javaruntime"
 	launcherlog "github.com/CAUCraft/LXMCL/internal/log"
+	"github.com/CAUCraft/LXMCL/internal/process"
 )
 
 type Running struct {
@@ -55,6 +57,10 @@ func stationIdentity(session StationSession) (gameIdentity, error) {
 }
 
 func (g Game) start(ctx context.Context, i Instance, settings Settings, server string, identity gameIdentity, station *StationSession) (Running, error) {
+	return g.startProgress(ctx, i, settings, server, identity, station, nil)
+}
+
+func (g Game) startProgress(ctx context.Context, i Instance, settings Settings, server string, identity gameIdentity, station *StationSession, report func(Progress)) (Running, error) {
 	if err := i.Validate(); err != nil {
 		return Running{}, err
 	}
@@ -105,7 +111,7 @@ func (g Game) start(ctx context.Context, i Instance, settings Settings, server s
 			return Running{}, i18n.Error("launch.cache_path_separator", os.PathListSeparator)
 		}
 	}
-	j, err := FindJava(ctx, i.Launch.JavaExecutable(settings.JavaPath), m.JavaVersion.MajorVersion)
+	j, err := g.resolveJava(ctx, i.Launch.JavaExecutable(settings.JavaPath), m, report)
 	if err != nil {
 		if ctx.Err() != nil {
 			return Running{}, ctx.Err()
@@ -159,9 +165,9 @@ func (g Game) start(ctx context.Context, i Instance, settings Settings, server s
 	}
 	// The game process owns its own lifetime after Start, independent of the launcher window.
 	cmd := exec.Command(j.Path, args...)
-	hideConsole(cmd)
+	process.HideConsole(cmd)
 	cmd.Dir, cmd.Stdout, cmd.Stderr = i.GameDir, log, log
-	cmd.Env = javaEnvironment(false)
+	cmd.Env = javaruntime.Environment(false)
 	if err := ctx.Err(); err != nil {
 		log.Close()
 		return Running{}, err

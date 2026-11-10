@@ -311,5 +311,11 @@
   "version.select_supported": "请选择受支持的 Minecraft 正式版本",
   "xbox.authorization_denied": "Xbox 未授权（%d），请检查 Xbox 档案、地区或家庭设置",
   "xbox.minecraft_token_missing": "Xbox 未返回 Minecraft 所需的凭据",
-  "xbox.user_token_missing": "Xbox Live 未返回用户凭据"
+  "xbox.user_token_missing": "Xbox Live 未返回用户凭据",
+  "java.runtime_manifest_invalid": "Java 运行时清单无效或不安全",
+  "java.runtime_platform_unsupported": "此平台暂不支持自动安装 Java，请指定本地 Java",
+  "java.runtime_requirement_invalid": "Java 运行时要求或管理目录无效",
+  "java.runtime_source_invalid": "Java 运行时来源不受支持",
+  "java.runtime_unavailable": "官方目录没有可用的 Java 运行时：%s",
+  "progress.install_java": "下载并校验 Java 运行时"
 }

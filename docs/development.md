@@ -19,13 +19,13 @@ go tool mygo build -platform windows/amd64
 
 默认根目录为 `%LOCALAPPDATA%\org.caucraft.lxmcl`：`launcher.json` 保存设置和实例，`tasks.json` 保存最近 24 条任务，`cache` 保存共享的客户端、库和资源。首次迁移会读取旧版配置。存档、游戏设置和 `launcher-logs` 位于各实例目录；移除实例配置不会删除这些文件。
 
-实例可继承或覆盖全局 Java 与内存，并指定启动分辨率或全屏。检测 Java 读取实际版本元数据；复制实例配置只复制版本和启动设置，并分配新目录。
+实例可继承或覆盖全局 Java 与内存，并指定启动分辨率或全屏。检测 Java 读取实际版本元数据，只检查本地运行时；游戏启动或加载器安装缺少 Java 时，Windows x64 会根据元数据中的组件和最低版本下载 Mojang 官方运行时。缓存位于 `cache/java/windows-x64/`，文件与清单按官方 SHA-1 和大小校验，实际运行 Java 探测版本后才发布安装目录。指定 Java 路径时不会自动替换。复制实例配置只复制版本和启动设置，并分配新目录。
 
 「下载 → 游戏版本」从官方目录选 Minecraft 和加载器版本。原版不需要额外配置，Fabric、Forge、NeoForge 和 Quilt 会分别列出可选版本，预览版单独标注。「安装实例」会保存配置并下载游戏文件，不启动游戏，也不切换已有的启动目标。失败或取消后可在下载任务中重试。
 
 「下载 → 整合包」从 Modrinth 或 CurseForge 选项目和版本，也可用系统文件窗口导入 Modrinth `.mrpack` 或 CurseForge 导出的 `.zip`。确认名称后下载必需的客户端依赖并应用包内文件；选装文件和服务器专用文件默认跳过。整合包与游戏文件校验完毕后才登记新实例。取消或失败后，可返回安装页重试，已校验的下载可以复用。
 
-整合包按清单安装指定版本的 Fabric、Forge、NeoForge 或 Quilt。Forge 和 NeoForge 使用经过校验的官方客户端安装器，首次安装需有兼容 Java；如检测失败，可在「设置」指定 Java 后重试。Minecraft 1.20.1–1.20.4 建议使用 Java 17，1.20.5 和 1.21 系列建议使用 Java 21，较新版本以 Minecraft 元数据为准。安装器日志位于数据目录的 `cache/installer-logs/`。
+整合包按清单安装指定版本的 Fabric、Forge、NeoForge 或 Quilt。Forge 和 NeoForge 使用经过校验的官方客户端安装器，并复用上述 Java 解析与安装流程。网络不可用时可在「设置」指定兼容 Java 后重试。Java 版本要求以 Minecraft 元数据为准，安装器日志位于数据目录的 `cache/installer-logs/`。
 
 NeoForge 官方 Maven 请求失败时，启动器会尝试 NeoForge CDN。NeoForge、Forge 和 Fabric Maven 文件可回退到 BMCLAPI 镜像，始终沿用加载器元数据或官方 Maven 提供的校验值。校验地址遇到临时网络错误时会限次重试。所有来源都无法提供匹配文件时，任务失败并保留可复用的已校验缓存。
 
@@ -47,6 +47,6 @@ Microsoft 登录在系统浏览器授权，随后检查 Xbox、Java 版权益和
 
 ## 验证与发布
 
-[CI](https://github.com/CAUCraft/LXMCL/actions) 在 Windows 上运行测试和打包，在 Linux 上运行启动器核心测试。UI 测试使用软件渲染，可通过 `LXMCL_UI_CAPTURE` 保存截图；系统窗控、输入法及实际进入游戏需要另行验证。
+[CI](https://github.com/CAUCraft/LXMCL/actions) 在 Windows 上运行测试和打包，在 Linux 上运行全部 `internal` 包的测试。自动安装 Java 的平台测试在 Windows x64 运行，清单校验等测试可跨平台运行。新增后端行为须覆盖任务取消、失败后无成品发布及旧数据兼容等相关边界；可使用可控的 HTTP transport 验证文件字节与摘要。用 `$env:LXMCL_LOCALE = 'en'; go test ./...` 检查英文目录。UI 测试使用软件渲染，可通过 `LXMCL_UI_CAPTURE` 保存截图；系统窗控、输入法及实际进入游戏需要另行验证。
 
 Windows 构建产物保留 14 天，包含便携版、安装包、许可归档、对应源码和 SHA-256 清单。源码包包含构建所需的 Go 依赖，解压后按上方命令构建。`NSISCONFDIR` 让安装器使用 zlib。更新 `mygo.json` 版本后推送对应的 `v主.次.修订` 标签，CI 通过后生成 Release 草稿。更新依赖时同步核对[第三方许可](../THIRD_PARTY_NOTICES.txt)。
