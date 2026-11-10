@@ -19,7 +19,11 @@ go tool mygo build -platform windows/amd64
 
 实例可继承或覆盖全局 Java 与内存，并指定启动分辨率或全屏。检测 Java 读取实际版本元数据；复制实例配置只复制版本和启动设置，并分配新目录。
 
-Fabric 加载器与库来自 Fabric Meta 和 Maven；Modrinth 文件按 SHA-512 校验。本地模组和资源包分别需要 `fabric.mod.json` 和 `pack.mcmeta`。存档备份位于数据目录的 `backups/`，恢复支持包含 `世界名/level.dat` 的 ZIP，不覆盖已有世界。
+「下载 → 游戏版本」从官方目录选版本，再选原版或 Fabric。「安装实例」会保存配置并下载游戏文件，不启动 Java，也不切换已有的启动目标。失败或取消后可在下载任务中重试。
+
+Modrinth 按目标实例的游戏版本搜索，模组另按 Fabric 筛选。资源下载按 SHA-512 校验，重试绑定原实例、配置修订和资源版本。模组 JAR、资源包 ZIP 和光影 ZIP 分别需要 `fabric.mod.json`、`pack.mcmeta` 和 `shaders/` 内容。使用光影需要 Iris 等兼容模组。Fabric 加载器与库来自 Fabric Meta 和 Maven。
+
+存档备份位于数据目录的 `backups/`，恢复支持包含 `世界名/level.dat` 的 ZIP，不覆盖已有世界。
 
 Microsoft 登录在系统浏览器授权，随后检查 Xbox、Java 版权益和档案。Windows 使用 DPAPI 加密刷新凭据，其他平台仅保留当前会话。更换构建的公开应用 ID 时，旧账号需要重新登录。
 

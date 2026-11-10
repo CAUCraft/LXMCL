@@ -20,6 +20,7 @@ import (
 const (
 	pageHome = iota
 	pageLibrary
+	pageDownloads
 	pageNetwork
 	pageSettings
 	pageAccount
@@ -27,7 +28,8 @@ const (
 
 var mainTabs = []nav.TabItem{
 	{Label: "主页", Icon: lucide.Gamepad2()},
-	{Label: "版本", Icon: lucide.Package()},
+	{Label: "实例", Icon: lucide.Package()},
+	{Label: "下载", Icon: lucide.Download()},
 	{Label: "联机", Icon: lucide.Server()},
 	{Label: "设置", Icon: lucide.Settings()},
 }
@@ -83,11 +85,11 @@ const (
 
 func (a *desktop) view(c *ui.Context) {
 	theme.Apply(c)
-	if a.ready && !a.form.open && !a.logOpen && !a.licensesOpen && (a.pack == nil || !a.pack.open) &&
+	if a.ready && !a.form.open && !a.logOpen && !a.licensesOpen &&
 		(a.stationLogin == nil || !a.stationLogin.open) &&
 		(a.microsoft == nil || !a.microsoft.open) {
 		if mods, key, ok := display.HotkeyBinding(searchHotkey, display.HotkeyAuto); ok && c.Shortcut(mods, key) {
-			a.page, a.libraryPage, a.inspected = pageLibrary, 0, 0
+			a.page, a.inspected = pageLibrary, 0
 			a.instanceFilter = 0
 			a.focusSearch = len(a.state.Instances) > 0
 		}
@@ -128,6 +130,8 @@ func (a *desktop) view(c *ui.Context) {
 				a.home(c)
 			case pageLibrary:
 				a.library(c)
+			case pageDownloads:
+				a.downloads(c)
 			case pageNetwork:
 				a.network(c)
 			case pageSettings:
@@ -136,7 +140,7 @@ func (a *desktop) view(c *ui.Context) {
 				a.accounts(c.Key("accounts"))
 			}
 		}
-		if a.task.Stage != "" && !(a.page == pageLibrary && a.libraryPage == 1 && a.inspected == 0) {
+		if a.task.Stage != "" && !(a.page == pageDownloads && a.downloadPage == downloadTasks) {
 			a.progress(c)
 		} else if a.notice != "" && a.task.Stage == "" {
 			a.noticeBar(c)
@@ -144,7 +148,6 @@ func (a *desktop) view(c *ui.Context) {
 		a.editor(c.Key("instance-editor"))
 		a.logDialog(c.Key("game-log"))
 		a.licensesDialog(c.Key("third-party-licenses"))
-		a.packDialog(c.Key("modrinth-packs"))
 		a.microsoftLoginDialog(c.Key("microsoft-login"))
 		a.stationLoginDialog(c.Key("station-login"))
 	})
@@ -282,7 +285,7 @@ func (a *desktop) launchCard(c *ui.Context) {
 	i, ok := a.state.Find(a.state.Selected)
 	if len(a.state.Instances) == 0 {
 		panelHeading(c, lucide.PackageOpen(), "暂无实例", "")
-		if launchButton(c, "新建实例", lucide.Plus(), a.busy) {
+		if launchButton(c, "安装实例…", lucide.Download(), false) {
 			a.create()
 		}
 		return
@@ -356,24 +359,14 @@ func workspace(c *ui.Context, content func()) {
 	ui.Column(c).Grow(1).MinHeight(0).Padding(12, 18).Gap(10).Children(content)
 }
 
-var libraryTabs = []nav.TabItem{
-	{Label: "我的实例", Icon: lucide.Package()},
-	{Label: "任务", Icon: lucide.Activity()},
-}
-
 func (a *desktop) library(c *ui.Context) {
 	workspace(c, func() {
-		contextTabs(c, &a.libraryPage, libraryTabs)
-		if a.libraryPage == 1 {
-			a.tasks(c)
-			return
-		}
 		if len(a.state.Instances) == 0 {
 			ui.Column(c).Grow(1).Center().Children(func() {
 				display.Empty(c, display.EmptyProps{Icon: lucide.PackageOpen(), Title: "暂无实例",
-					Description: "新建一个实例，选择要运行的 Minecraft 版本。",
+					Description: "安装一个 Minecraft 版本后即可启动。",
 					Action: func() {
-						if button(c, "新建实例", action.Primary, a.busy) {
+						if button(c, "安装实例…", action.Primary, false) {
 							a.create()
 						}
 					}})
@@ -397,7 +390,7 @@ func (a *desktop) library(c *ui.Context) {
 			ui.Spacer(c).Grow(1)
 			action.Segmented(c, &a.instanceFilter, []string{"全部", "已缓存", "待下载"},
 				action.SegmentedProps{Size: theme.Small}).Label("实例筛选")
-			if button(c, "新建实例", action.Primary, a.busy) {
+			if button(c, "安装实例…", action.Primary, false) {
 				a.create()
 			}
 		})
@@ -444,6 +437,8 @@ func (a *desktop) instanceList(c *ui.Context) {
 		items = append(items, display.ListItem{
 			Key: strconv.Itoa(i.ID), Label: i.Name,
 			Description: detail, Icon: lucide.Package(),
+			Actions:    func() { a.instanceMenu(c.Key("list-"+strconv.Itoa(i.ID)), i, true) },
+			ShowAction: i.ID == a.listMenuID,
 		})
 	}
 	if len(items) == 0 {
@@ -500,8 +495,6 @@ func (a *desktop) editor(c *ui.Context) {
 	switch a.form.mode {
 	case "remove":
 		title, okText = "移除实例配置", "移除配置"
-	case "create":
-		title, okText = "创建实例", "创建"
 	case "version":
 		title, okText = "更换版本", "保存版本"
 	case "duplicate":
@@ -545,7 +538,7 @@ func (a *desktop) editor(c *ui.Context) {
 					submit = in.Submitted()
 				})
 			}
-			if a.form.mode == "create" || a.form.mode == "version" {
+			if a.form.mode == "version" {
 				ui.Column(c).Gap(5).Children(func() {
 					display.Text(c, "游戏版本", display.TextProps{Strong: true})
 					opts := make([]field.SelectOption, 0, len(a.releases))

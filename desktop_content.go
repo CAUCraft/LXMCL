@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"time"
 
 	"github.com/CAUCraft/LXMCL/internal/launcher"
@@ -12,7 +13,6 @@ import (
 	"github.com/lobehub/lobe-mygo/pkg/action"
 	"github.com/lobehub/lobe-mygo/pkg/display"
 	"github.com/lobehub/lobe-mygo/pkg/feedback"
-	"github.com/lobehub/lobe-mygo/pkg/field"
 	"github.com/lobehub/lobe-mygo/pkg/layout"
 	"github.com/lobehub/lobe-mygo/pkg/lucide"
 	"github.com/lobehub/lobe-mygo/pkg/theme"
@@ -27,13 +27,20 @@ type contentView struct {
 }
 
 func (v contentView) kind() launcher.ContentKind {
-	if v.tab == 1 {
+	switch v.tab {
+	case 1:
 		return launcher.FabricMods
+	case 2:
+		return launcher.ShaderPacks
+	default:
+		return launcher.ResourcePacks
 	}
-	return launcher.ResourcePacks
 }
 
 func (a *desktop) refreshContent(i launcher.Instance) {
+	if a.ctx == nil {
+		return
+	}
 	a.contentRequest++
 	request, kind := a.contentRequest, a.content.kind()
 	a.content.reading, a.content.err, a.content.files = true, "", nil
@@ -60,7 +67,7 @@ func (a *desktop) instanceContent(c *ui.Context, i launcher.Instance) {
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 		if i.Fabric() {
 			old := v.tab
-			action.Segmented(c, &v.tab, []string{"资源包", "Fabric 模组"}, action.SegmentedProps{Size: theme.Small}).Label("资源类型")
+			action.Segmented(c, &v.tab, []string{"资源包", "模组", "光影包"}, action.SegmentedProps{Size: theme.Small}).Label("资源类型")
 			if old != v.tab {
 				a.refreshContent(i)
 			}
@@ -69,10 +76,10 @@ func (a *desktop) instanceContent(c *ui.Context, i launcher.Instance) {
 		}
 		ui.Spacer(c).Grow(1)
 		kind := v.kind()
-		if button(c, "搜索 Modrinth", action.Default, disabled) {
-			a.pack = &packBrowser{open: true, target: i, kind: kind}
+		if button(c, "下载"+contentLabel(kind)+"…", action.Primary, false) {
+			a.openResourceDownloads(i, kind)
 		}
-		if button(c, "导入本地文件…", action.Primary, disabled) {
+		if button(c, "导入…", action.Default, disabled) {
 			ext := "zip"
 			if kind == launcher.FabricMods {
 				ext = "jar"
@@ -85,6 +92,9 @@ func (a *desktop) instanceContent(c *ui.Context, i launcher.Instance) {
 		}
 		if icon(c, lucide.RefreshCw(), "刷新资源", v.reading) {
 			a.refreshContent(i)
+		}
+		if icon(c, lucide.FolderOpen(), "打开"+contentLabel(kind)+"目录", false) {
+			a.openPath(filepath.Join(i.GameDir, string(kind)), true)
 		}
 	})
 	switch {
@@ -123,18 +133,22 @@ func (a *desktop) instanceContent(c *ui.Context, i launcher.Instance) {
 }
 
 func (a *desktop) runInstanceTask(i launcher.Instance, label string, work func(context.Context) error) {
+	a.runContentTask(i, label, nil, func(ctx context.Context, _ func(launcher.Progress)) error { return work(ctx) })
+}
+
+func (a *desktop) runContentTask(i launcher.Instance, label string, resource *resourceTask, work func(context.Context, func(launcher.Progress)) error) {
 	current, ok := a.state.Find(i.ID)
-	if !ok || current.Revision != i.Revision || a.busy || a.running != nil {
+	if !ok || current.Revision != i.Revision || a.busy || a.running != nil || a.ctx == nil {
 		return
 	}
 	ctx, cancel := context.WithCancel(a.ctx)
 	a.busy, a.taskName, a.cancelTask = true, i.Name, cancel
 	a.task, a.notice = launcher.Progress{Stage: label}, ""
 	history := a.taskSnapshot()
-	row := taskRecord{InstanceID: i.ID, Revision: i.Revision, Name: i.Name, Version: i.Version, Action: label, At: time.Now()}
+	row := taskRecord{InstanceID: i.ID, Revision: i.Revision, Name: i.Name, Version: i.Version, Action: label, At: time.Now(), Resource: resource}
 	a.writes.Go(func() {
 		defer cancel()
-		err := work(ctx)
+		err := work(ctx, func(p launcher.Progress) { a.post(func() { a.task = p }) })
 		row.Status = taskCompleted
 		if errors.Is(err, context.Canceled) {
 			row.Status = taskCanceled
@@ -150,146 +164,4 @@ func (a *desktop) runInstanceTask(i launcher.Instance, label string, work func(c
 			}
 		})
 	})
-}
-
-type packBrowser struct {
-	open, busy, searched bool
-	target               launcher.Instance
-	kind                 launcher.ContentKind
-	query, err, version  string
-	hits                 []launcher.PackProject
-	project              launcher.PackProject
-	versions             []launcher.PackVersion
-}
-
-func (a *desktop) searchPacks(p *packBrowser) {
-	p.busy, p.err, p.searched = true, "", true
-	p.project, p.version, p.versions = launcher.PackProject{}, "", nil
-	query := p.query
-	go func() {
-		ctx, cancel := context.WithTimeout(a.ctx, 15*time.Second)
-		defer cancel()
-		hits, err := launcher.SearchModrinth(ctx, p.target.Version, p.kind, query)
-		a.post(func() {
-			p.busy, p.hits = false, hits
-			if err != nil {
-				p.err = err.Error()
-			}
-		})
-	}()
-}
-
-func (a *desktop) browsePack(p *packBrowser, project launcher.PackProject) {
-	p.project, p.version, p.versions, p.err, p.busy = project, "", nil, "", true
-	go func() {
-		ctx, cancel := context.WithTimeout(a.ctx, 15*time.Second)
-		defer cancel()
-		versions, err := launcher.ModrinthVersions(ctx, project.ID, p.target.Version, p.kind)
-		a.post(func() {
-			p.busy, p.versions = false, versions
-			if err != nil {
-				p.err = err.Error()
-			} else if len(versions) > 0 {
-				p.version = versions[0].ID
-			}
-		})
-	}()
-}
-
-func (a *desktop) packDialog(c *ui.Context) {
-	p := a.pack
-	if p == nil || !p.open {
-		return
-	}
-	label := "资源包"
-	if p.kind == launcher.FabricMods {
-		label = "模组"
-	}
-	feedback.Modal(c, &p.open, feedback.ModalProps{Title: "Modrinth " + label, Width: 720, NoFooter: true}, func() {
-		ui.Column(c).Gap(9).Children(func() {
-			panelHeading(c, lucide.PackageSearch(), p.target.Name, "Minecraft "+p.target.Version)
-			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-				submit := false
-				ui.Column(c).Grow(1).MinWidth(0).Children(func() {
-					submit = field.Input(c, &p.query, field.InputProps{Placeholder: "搜索兼容" + label}).
-						Label(label + "关键词").Disabled(p.busy).Submitted()
-				})
-				if button(c, "搜索", action.Primary, p.busy) || submit && !p.busy {
-					a.searchPacks(p)
-				}
-			})
-			ui.Column(c).Height(240).Children(func() {
-				splitWorkspace(c, 215, func() {
-					layout.ScrollArea(c, layout.ScrollAreaProps{}, func() {
-						items := make([]display.ListItem, 0, len(p.hits))
-						for _, hit := range p.hits {
-							items = append(items, display.ListItem{Key: hit.ID, Label: hit.Title, Description: hit.Author, Disabled: p.busy})
-						}
-						if len(items) == 0 {
-							muted(c, "暂无搜索结果").Padding(4)
-							return
-						}
-						id := display.List(c, display.ListProps{Items: items, Active: p.project.ID, Compact: true})
-						for _, hit := range p.hits {
-							if hit.ID == id && id != p.project.ID {
-								a.browsePack(p, hit)
-								c.Invalidate()
-								break
-							}
-						}
-					}).Grow(1).MinHeight(0)
-				}, func() {
-					detailPane(c.Key(p.project.ID), func() { a.packDetails(c, p, label) })
-				})
-			})
-		})
-	})
-}
-
-func (a *desktop) packDetails(c *ui.Context, p *packBrowser, label string) {
-	if p.project.ID != "" {
-		panelHeading(c, lucide.Package(), p.project.Title, p.project.Author)
-	}
-	switch {
-	case p.busy:
-		flightLoading(c, "正在读取 Modrinth…")
-	case p.err != "":
-		feedback.Alert(c, p.err, feedback.AlertProps{Type: feedback.Error})
-		if p.project.ID != "" && button(c, "重试读取版本", action.Default, false) {
-			a.browsePack(p, p.project)
-		}
-	case p.project.ID == "":
-		title := "选择" + label + "查看详情"
-		if len(p.hits) == 0 {
-			title = "搜索兼容的" + label
-			if p.searched {
-				title = "没有匹配的" + label
-			}
-		}
-		display.Empty(c, display.EmptyProps{Icon: lucide.PackageSearch(), Title: title})
-	case len(p.versions) == 0:
-		muted(c, "没有可用的兼容版本")
-	default:
-		options := make([]field.SelectOption, 0, len(p.versions))
-		for _, v := range p.versions {
-			options = append(options, field.SelectOption{Value: v.ID, Label: v.Number})
-		}
-		catalogPicker(c, &p.version, options, label+"版本", "", false)
-		if p.kind == launcher.FabricMods {
-			muted(c, "会同时下载必要依赖。换版本前请停用旧模组。")
-		} else {
-			muted(c, "下载后可在游戏内启用资源包。")
-		}
-		if button(c, "下载"+label, action.Primary, p.version == "" || a.busy || a.running != nil) {
-			for _, version := range p.versions {
-				if version.ID == p.version {
-					p.open = false
-					a.runInstanceTask(p.target, "下载"+label, func(ctx context.Context) error {
-						return launcher.DownloadModrinth(ctx, p.target, p.kind, version)
-					})
-					break
-				}
-			}
-		}
-	}
 }

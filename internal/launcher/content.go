@@ -18,6 +18,7 @@ type ContentKind string
 const (
 	ResourcePacks  ContentKind = "resourcepacks"
 	FabricMods     ContentKind = "mods"
+	ShaderPacks    ContentKind = "shaderpacks"
 	maxContentSize             = 512 << 20
 )
 
@@ -35,8 +36,17 @@ func (k ContentKind) format(i Instance) (ext, marker string, err error) {
 		if i.Fabric() {
 			return ".jar", "fabric.mod.json", nil
 		}
+	case ShaderPacks:
+		if i.Fabric() {
+			return ".zip", "shaders/", nil
+		}
 	}
 	return "", "", errors.New("此实例不支持该资源类型")
+}
+
+func (k ContentKind) Supports(i Instance) bool {
+	_, _, err := k.format(i)
+	return err == nil && supported(i) == nil
 }
 
 func contentDirectory(i Instance, kind ContentKind, create bool) (*os.Root, error) {
@@ -195,7 +205,8 @@ func writeContent(ctx context.Context, i Instance, kind ContentKind, name string
 		return fmt.Errorf("资源不是有效的 ZIP/JAR：%w", err)
 	}
 	for _, entry := range z.File {
-		if entry.Name == marker && !entry.FileInfo().IsDir() {
+		if !entry.FileInfo().IsDir() && (entry.Name == marker ||
+			kind == ShaderPacks && strings.HasPrefix(entry.Name, marker)) {
 			return ctx.Err()
 		}
 	}

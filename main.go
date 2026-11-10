@@ -125,18 +125,20 @@ type desktop struct {
 	stationPreviews  map[string]*stationPreview
 	browsedServer    string
 
-	page, settingsPage, libraryPage        int
+	page, settingsPage, downloadPage       int
 	inspected                              int
 	detailPage                             int
 	launchDrafts                           map[int]*instanceLaunchDraft
 	content                                contentView
 	contentRequest                         uint64
-	pack                                   *packBrowser
+	install                                installView
+	packs                                  map[launcher.ContentKind]*packBrowser
 	serverName, serverAddress, serverError string
 	serverStatus                           map[string]*serverCheck
 	query                                  string
 	focusSearch                            bool
 	instanceFilter                         int
+	listMenuID                             int
 	taskFilter                             int
 	browsedTask                            string
 	scroll                                 ui.ScrollState

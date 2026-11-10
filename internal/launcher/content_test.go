@@ -60,13 +60,17 @@ func TestModrinthDownloadsRequiredFabricDependency(t *testing.T) {
 		t.Fatalf("unexpected dependency request: %s", req.URL)
 		return nil, nil
 	})}}
-	if err := downloadModrinth(ctx, i, FabricMods, mod, d); err != nil {
+	var progress []Progress
+	if err := downloadModrinth(ctx, i, FabricMods, mod, d, func(p Progress) { progress = append(progress, p) }); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Join(downloadsSeen, ",") != "dep.jar,mod.jar" {
 		t.Fatalf("dependency was not installed first: %v", downloadsSeen)
 	}
-	if err := downloadModrinth(ctx, i, FabricMods, mod, d); err != nil || len(downloadsSeen) != 2 {
+	if last := progress[len(progress)-1]; last.Done != 2 || last.Total != 2 {
+		t.Fatalf("verified mod download did not report both files: %+v", progress)
+	}
+	if err := downloadModrinth(ctx, i, FabricMods, mod, d, nil); err != nil || len(downloadsSeen) != 2 {
 		t.Fatalf("verified local files were not reused: %v, %v", downloadsSeen, err)
 	}
 }
@@ -84,14 +88,14 @@ func TestModrinthPackVerifiesContentAndTargetsInstance(t *testing.T) {
 	file := PackFile{URL: "https://cdn.modrinth.com/data/pack.zip", Filename: "pack.zip", Size: int64(len(content)), Primary: true}
 	file.Hashes.SHA512 = strings.Repeat("0", 128)
 	version := PackVersion{GameVersions: []string{"1.21.1"}, Files: []PackFile{file}}
-	if err := downloadModrinth(t.Context(), instance, ResourcePacks, version, d); err == nil {
+	if err := downloadModrinth(t.Context(), instance, ResourcePacks, version, d, nil); err == nil {
 		t.Fatal("accepted a pack with a mismatched SHA-512")
 	}
 	if files, err := ListContent(instance, ResourcePacks); len(files) != 0 || err != nil {
 		t.Fatalf("bad download left files: %v, %v", files, err)
 	}
 	version.Files[0].Hashes.SHA512 = fmt.Sprintf("%x", sha512.Sum512(content))
-	if err := downloadModrinth(t.Context(), instance, ResourcePacks, version, d); err != nil {
+	if err := downloadModrinth(t.Context(), instance, ResourcePacks, version, d, nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := SetContentEnabled(instance, ResourcePacks, "pack.zip", false); err != nil {
@@ -102,6 +106,53 @@ func TestModrinthPackVerifiesContentAndTargetsInstance(t *testing.T) {
 	}
 	if files, err := ListContent(other, ResourcePacks); len(files) != 0 || err != nil {
 		t.Fatalf("changed the wrong instance: %v, %v", files, err)
+	}
+}
+
+func TestModrinthSearchPaginatesAndUsesCorrectCategory(t *testing.T) {
+	var got []string
+	d := &downloads{http: &http.Client{Transport: transportFunc(func(req *http.Request) (*http.Response, error) {
+		q := req.URL.Query()
+		if req.URL.Path != "/v2/search" || q.Get("query") != "test" || q.Get("index") != "updated" ||
+			q.Get("limit") != "20" || q.Get("offset") != "40" || !strings.Contains(q.Get("facets"), "versions:1.21.1") {
+			t.Fatalf("unexpected search request: %s", req.URL)
+		}
+		got = append(got, q.Get("facets"))
+		return fixtureResponse(200, []byte(`{"total_hits":54,"hits":[{"project_id":"valid","title":"Demo","description":"Pack"},{"project_id":"../bad","title":"Invalid"}]}`)), nil
+	})}}
+	for _, kind := range []ContentKind{FabricMods, ShaderPacks} {
+		result, err := searchModrinth(t.Context(), "1.21.1", kind, " test ", "updated", 2, d)
+		if err != nil || result.Total != 54 || len(result.Hits) != 1 || result.Hits[0].Description != "Pack" {
+			t.Fatalf("unexpected result: %+v / %v", result, err)
+		}
+	}
+	if !strings.Contains(got[0], "categories:fabric") || !strings.Contains(got[1], "project_type:shader") ||
+		strings.Contains(got[1], "categories:fabric") {
+		t.Fatalf("incompatible search facets: %v", got)
+	}
+}
+
+func TestShaderPackRequiresShadersDirectoryAndFabricInstance(t *testing.T) {
+	i := Instance{GameDir: t.TempDir(), Loader: "Vanilla"}
+	source := filepath.Join(t.TempDir(), "test.zip")
+	if err := os.WriteFile(source, testZIP(t, map[string]string{"shaders/composite.fsh": "// sample"}), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := ImportContent(t.Context(), i, ShaderPacks, source); err == nil {
+		t.Fatal("offered an unconfigured vanilla instance as a shader target")
+	}
+	i.Loader = "Fabric"
+	if err := ImportContent(t.Context(), i, ShaderPacks, source); err != nil {
+		t.Fatal(err)
+	}
+	if files, err := ListContent(i, ShaderPacks); err != nil || len(files) != 1 || files[0].Name != "test.zip" {
+		t.Fatalf("shader not installed: %v %v", files, err)
+	}
+	if err := os.WriteFile(filepath.Join(filepath.Dir(source), "bad.zip"), testZIP(t, map[string]string{"pack.mcmeta": "{}"}), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := ImportContent(t.Context(), i, ShaderPacks, filepath.Join(filepath.Dir(source), "bad.zip")); err == nil {
+		t.Fatal("accepted a resource pack as a shader")
 	}
 }
 

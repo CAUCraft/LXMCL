@@ -38,7 +38,7 @@ func (a *desktop) details(c *ui.Context, i launcher.Instance) {
 		if a.state.Selected != i.ID && button(c, "设为启动目标", action.Default, a.busy) {
 			a.choose(i.ID)
 		}
-		a.instanceMenu(c.Key(i.ID), i)
+		a.instanceMenu(c.Key(i.ID), i, false)
 		ui.Column(c).Width(152).Shrink(0).Children(func() {
 			d := a.launchDrafts[i.ID]
 			if d != nil && d.revision == i.Revision && d.fields != launchFields(i.Launch) &&
@@ -107,19 +107,48 @@ func (a *desktop) instanceOverview(c *ui.Context, i launcher.Instance) {
 	}).Grow(1).MinHeight(0)
 }
 
-func (a *desktop) instanceMenu(c *ui.Context, i launcher.Instance) {
+func (a *desktop) instanceMenu(c *ui.Context, i launcher.Instance, inList bool) {
 	box := ui.Row(c).Shrink(0)
 	open := ui.Local(box, "open", func() bool { return false })
+	title := "更多实例操作"
+	if inList {
+		title = "实例操作 " + i.Name
+	}
 	box.Children(func() {
+		install := "下载游戏文件"
+		if a.installed[i.ID] {
+			install = "校验游戏文件"
+		}
+		renameKey := ""
+		if a.inspected == i.ID {
+			renameKey = "f2"
+		}
 		chosen := overlay.DropdownMenu(c, open, overlay.DropdownMenuProps{Items: []overlay.MenuItem{
-			{Key: "rename", Label: "重命名", Icon: lucide.Pencil(), Hotkey: "f2", Disabled: a.busy},
+			{Key: "launch", Label: "启动此实例", Icon: lucide.Play(), Disabled: a.busy || a.running != nil},
+			{Key: "verify", Label: install, Icon: lucide.Download(), Disabled: a.busy || a.running != nil},
+			{Key: "folder", Label: "打开游戏目录", Icon: lucide.FolderOpen()},
+			{Divider: true},
+			{Key: "rename", Label: "重命名", Icon: lucide.Pencil(), Hotkey: renameKey, Disabled: a.busy},
 			{Key: "duplicate", Label: "复制实例配置…", Icon: lucide.Copy(), Disabled: a.busy || (!i.Vanilla() && !i.Fabric())},
 			{Divider: true},
 			{Key: "remove", Label: "移除配置…", Icon: lucide.Trash2(), Danger: true, Disabled: a.busy || a.runningID == i.ID},
 		}}, func(trigger ui.Element) {
-			action.StyleActionIcon(c, trigger, lucide.Ellipsis(), action.ActionIconProps{Title: "更多实例操作", BlockSize: 32})
+			action.StyleActionIcon(c, trigger, lucide.Ellipsis(), action.ActionIconProps{Title: title, BlockSize: 28})
 		})
+		if inList && *open && a.listMenuID != i.ID {
+			a.listMenuID = i.ID
+			c.Invalidate()
+		} else if inList && !*open && a.listMenuID == i.ID {
+			a.listMenuID = 0
+			c.Invalidate()
+		}
 		switch chosen {
+		case "launch":
+			a.play(i, false)
+		case "verify":
+			a.play(i, true)
+		case "folder":
+			a.openPath(i.GameDir, true)
 		case "rename":
 			a.edit(i)
 		case "duplicate":
@@ -287,7 +316,7 @@ func (a *desktop) help(c *ui.Context) {
 }
 
 func (a *desktop) openTasks() {
-	a.page, a.libraryPage, a.inspected = pageLibrary, 1, 0
+	a.page, a.downloadPage = pageDownloads, downloadTasks
 }
 
 func (a *desktop) tasks(c *ui.Context) {
@@ -409,6 +438,9 @@ func (a *desktop) taskRow(c *ui.Context, row taskRecord) {
 			ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
 				display.Text(c, row.Name, display.TextProps{Strong: true, Rows: 1}).Ellipsis("…")
 				detail := row.Action + " · " + row.Version + " · " + row.At.Local().Format("01-02 15:04")
+				if row.Resource != nil {
+					detail = row.Resource.Title + " · " + detail
+				}
 				if row.Server != "" {
 					detail += " · " + row.Server
 				}
@@ -420,7 +452,11 @@ func (a *desktop) taskRow(c *ui.Context, row taskRecord) {
 			}
 			if i, ok := row.retryTarget(a.state); ok {
 				if button(c, "重试", action.Default, a.busy || a.running != nil) {
-					a.playOnServer(i, row.Action == taskVerify, row.Server)
+					if row.Resource != nil {
+						a.downloadResource(i, *row.Resource, launcher.PackVersion{})
+					} else {
+						a.playOnServer(i, row.Action == taskVerify, row.Server)
+					}
 				}
 			}
 		})

@@ -405,6 +405,12 @@ func (g Game) install(ctx context.Context, i Instance, report func(Progress), d 
 	if err := supported(i); err != nil {
 		return err
 	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(i.GameDir, 0755); err != nil {
+		return fmt.Errorf("无法创建实例目录：%w", err)
+	}
 	if report == nil {
 		report = func(Progress) {}
 	}

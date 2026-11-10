@@ -12,7 +12,9 @@ import (
 	"net/url"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
+	"time"
 )
 
 const modrinthAPI = "https://api.modrinth.com/v2/"
@@ -20,18 +22,31 @@ const modrinthAPI = "https://api.modrinth.com/v2/"
 var modrinthID = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 
 type PackProject struct {
-	ID     string `json:"project_id"`
-	Title  string `json:"title"`
-	Author string `json:"author"`
+	ID          string `json:"project_id"`
+	Title       string `json:"title"`
+	Author      string `json:"author"`
+	Description string `json:"description"`
+	Downloads   int    `json:"downloads"`
+}
+
+func (p PackProject) PageURL(kind ContentKind) string {
+	if !modrinthID.MatchString(p.ID) {
+		return ""
+	}
+	if projectType := kind.modrinthType(); projectType != "" {
+		return "https://modrinth.com/" + projectType + "/" + p.ID
+	}
+	return ""
 }
 
 type PackVersion struct {
-	ID           string   `json:"id"`
-	ProjectID    string   `json:"project_id"`
-	Number       string   `json:"version_number"`
-	Type         string   `json:"version_type"`
-	GameVersions []string `json:"game_versions"`
-	Loaders      []string `json:"loaders"`
+	ID           string    `json:"id"`
+	ProjectID    string    `json:"project_id"`
+	Number       string    `json:"version_number"`
+	Type         string    `json:"version_type"`
+	GameVersions []string  `json:"game_versions"`
+	Loaders      []string  `json:"loaders"`
+	Published    time.Time `json:"date_published"`
 	Files        []PackFile
 	Dependencies []ModDependency
 }
@@ -49,24 +64,62 @@ type PackFile struct {
 	Hashes        struct{ SHA512 string }
 }
 
-func SearchModrinth(ctx context.Context, game string, kind ContentKind, query string) ([]PackProject, error) {
-	if !modernRelease(game) {
-		return nil, errors.New("请选择受支持的 Minecraft 正式版本")
+const PackPageSize = 20
+
+type PackSearch struct {
+	Hits  []PackProject
+	Total int `json:"total_hits"`
+}
+
+func (k ContentKind) modrinthType() string {
+	switch k {
+	case FabricMods:
+		return "mod"
+	case ResourcePacks:
+		return "resourcepack"
+	case ShaderPacks:
+		return "shader"
 	}
-	filter := [][]string{{"project_type:resourcepack"}, {"versions:" + game}}
+	return ""
+}
+
+func SearchModrinth(ctx context.Context, game string, kind ContentKind, query, order string, page int) (PackSearch, error) {
+	return searchModrinth(ctx, game, kind, query, order, page, &downloads{http: officialHTTP})
+}
+
+func searchModrinth(ctx context.Context, game string, kind ContentKind, query, order string, page int, d *downloads) (PackSearch, error) {
+	if !modernRelease(game) {
+		return PackSearch{}, errors.New("请选择受支持的 Minecraft 正式版本")
+	}
+	projectType := kind.modrinthType()
+	if projectType == "" || page < 0 || page > 500 || len(query) > 512 {
+		return PackSearch{}, errors.New("资源搜索条件无效")
+	}
+	if order != "downloads" && order != "updated" {
+		order = "relevance"
+	}
+	filter := [][]string{{"project_type:" + projectType}, {"versions:" + game}}
 	if kind == FabricMods {
-		filter[0][0] = "project_type:mod"
 		filter = append(filter, []string{"categories:fabric"})
 	}
 	facets, _ := json.Marshal(filter)
-	params := url.Values{"query": {strings.TrimSpace(query)}, "facets": {string(facets)}, "limit": {"15"}}
-	var result struct{ Hits []PackProject }
-	err := downloadJSON(ctx, &downloads{http: officialHTTP}, modrinthAPI+"search?"+params.Encode(), &result)
-	return result.Hits, err
+	params := url.Values{"query": {strings.TrimSpace(query)}, "facets": {string(facets)}, "index": {order},
+		"limit": {strconv.Itoa(PackPageSize)}, "offset": {strconv.Itoa(PackPageSize * page)}}
+	var result PackSearch
+	err := downloadJSON(ctx, d, modrinthAPI+"search?"+params.Encode(), &result)
+	result.Hits = slices.DeleteFunc(result.Hits, func(p PackProject) bool {
+		return !modrinthID.MatchString(p.ID) || p.Title == ""
+	})
+	return result, err
 }
 
 func ModrinthVersions(ctx context.Context, project, game string, kind ContentKind) ([]PackVersion, error) {
-	return modrinthVersions(ctx, project, game, kind, &downloads{http: officialHTTP})
+	versions, err := modrinthVersions(ctx, project, game, kind, &downloads{http: officialHTTP})
+	return slices.DeleteFunc(versions, func(v PackVersion) bool {
+		_, ok := v.DownloadFile(kind)
+		return v.ProjectID != project || !modrinthID.MatchString(v.ID) || !slices.Contains(v.GameVersions, game) ||
+			(kind == FabricMods && !v.fabricCompatible(game)) || !ok
+	}), err
 }
 
 func modrinthVersions(ctx context.Context, project, game string, kind ContentKind, d *downloads) ([]PackVersion, error) {
@@ -83,25 +136,47 @@ func modrinthVersions(ctx context.Context, project, game string, kind ContentKin
 	return result, err
 }
 
-func DownloadModrinth(ctx context.Context, i Instance, kind ContentKind, version PackVersion) error {
-	return downloadModrinth(ctx, i, kind, version, &downloads{http: officialHTTP})
+func ModrinthVersion(ctx context.Context, project, id string) (PackVersion, error) {
+	if !modrinthID.MatchString(project) || !modrinthID.MatchString(id) {
+		return PackVersion{}, errors.New("资源项目或版本无效")
+	}
+	var v PackVersion
+	if err := downloadJSON(ctx, &downloads{http: officialHTTP}, modrinthAPI+"version/"+id, &v); err != nil {
+		return PackVersion{}, err
+	}
+	if v.ID != id || v.ProjectID != project {
+		return PackVersion{}, errors.New("资源版本与项目不符")
+	}
+	return v, nil
 }
 
-func downloadModrinth(ctx context.Context, i Instance, kind ContentKind, version PackVersion, d *downloads) error {
+func DownloadModrinth(ctx context.Context, i Instance, kind ContentKind, version PackVersion, report func(Progress)) error {
+	return downloadModrinth(ctx, i, kind, version, &downloads{http: officialHTTP}, report)
+}
+
+func downloadModrinth(ctx context.Context, i Instance, kind ContentKind, version PackVersion, d *downloads, report func(Progress)) error {
 	if _, _, err := kind.format(i); err != nil {
 		return err
 	}
-	if kind != FabricMods {
-		return downloadModrinthFile(ctx, i, kind, version, d)
+	if report == nil {
+		report = func(Progress) {}
 	}
-	plan, err := fabricModPlan(ctx, i.Version, version, d)
-	if err != nil {
-		return err
+	plan := []PackVersion{version}
+	if kind == FabricMods {
+		report(Progress{Stage: "解析必要依赖"})
+		var err error
+		plan, err = fabricModPlan(ctx, i.Version, version, d)
+		if err != nil {
+			return err
+		}
 	}
+	const stage = "下载并校验资源"
+	report(Progress{Stage: stage, Total: len(plan)})
 	for n, v := range plan {
 		if err := downloadModrinthFile(ctx, i, kind, v, d); err != nil {
-			return fmt.Errorf("已就绪 %d/%d 个模组文件：%w", n, len(plan), err)
+			return fmt.Errorf("已就绪 %d/%d 个资源文件：%w", n, len(plan), err)
 		}
+		report(Progress{Stage: stage, Done: n + 1, Total: len(plan)})
 	}
 	return nil
 }
@@ -186,13 +261,10 @@ func resolveModDependency(ctx context.Context, game string, dep ModDependency, d
 	return result, nil
 }
 
-func downloadModrinthFile(ctx context.Context, i Instance, kind ContentKind, v PackVersion, d *downloads) error {
-	if !slices.Contains(v.GameVersions, i.Version) || kind == FabricMods && !v.fabricCompatible(i.Version) {
-		return errors.New("此资源版本与当前实例不兼容")
-	}
-	ext, _, err := kind.format(i)
-	if err != nil {
-		return err
+func (v PackVersion) DownloadFile(kind ContentKind) (PackFile, bool) {
+	ext := ".zip"
+	if kind == FabricMods {
+		ext = ".jar"
 	}
 	valid := func(f PackFile) bool { return contentName(f.Filename, ext) }
 	n := slices.IndexFunc(v.Files, func(f PackFile) bool { return f.Primary && valid(f) })
@@ -200,9 +272,19 @@ func downloadModrinthFile(ctx context.Context, i Instance, kind ContentKind, v P
 		n = slices.IndexFunc(v.Files, valid)
 	}
 	if n == -1 {
-		return fmt.Errorf("此版本没有 %s 文件", ext)
+		return PackFile{}, false
 	}
-	file := v.Files[n]
+	return v.Files[n], true
+}
+
+func downloadModrinthFile(ctx context.Context, i Instance, kind ContentKind, v PackVersion, d *downloads) error {
+	if !slices.Contains(v.GameVersions, i.Version) || kind == FabricMods && !v.fabricCompatible(i.Version) {
+		return errors.New("此资源版本与当前实例不兼容")
+	}
+	file, ok := v.DownloadFile(kind)
+	if !ok {
+		return errors.New("此版本没有可下载的资源文件")
+	}
 	u, err := url.Parse(file.URL)
 	if err != nil || u.Hostname() != "cdn.modrinth.com" || !officialURL(u) {
 		return errors.New("资源下载来源不受支持")

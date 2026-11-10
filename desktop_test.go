@@ -141,8 +141,8 @@ func TestDesktopTasksReachableDuringDownload(t *testing.T) {
 	if err := tt.Click("查看任务"); err != nil {
 		t.Fatal(err)
 	}
-	if a.page != pageLibrary || a.libraryPage != 1 || a.state.Selected != 1 {
-		t.Fatalf("unexpected task navigation: page %d, tab %d, target %d", a.page, a.libraryPage, a.state.Selected)
+	if a.page != pageDownloads || a.downloadPage != downloadTasks || a.state.Selected != 1 {
+		t.Fatalf("unexpected task navigation: page %d, tab %d, target %d", a.page, a.downloadPage, a.state.Selected)
 	}
 	if _, ok := tt.Find("历史记录"); !ok {
 		t.Fatal("task history was not rendered")
@@ -218,7 +218,7 @@ func TestCompactSettingsAndLicenses(t *testing.T) {
 func TestInstanceFilterAndVersionEditor(t *testing.T) {
 	a, tt := testDesktop(t)
 	a.releases = []launcher.Version{{ID: "1.21.4"}, {ID: "1.21.1"}}
-	if err := tt.Click("版本"); err != nil {
+	if err := tt.Click("实例"); err != nil {
 		t.Fatal(err)
 	}
 	if err := tt.Click("待下载"); err != nil {
@@ -258,7 +258,7 @@ func TestTaskCenterFiltersAndDisablesStaleRetry(t *testing.T) {
 	if err := tt.Click("任务中心"); err != nil {
 		t.Fatal(err)
 	}
-	if a.page != pageLibrary || a.libraryPage != 1 {
+	if a.page != pageDownloads || a.downloadPage != downloadTasks {
 		t.Fatal("title bar action did not open the task center")
 	}
 	if err := tt.Click("主页"); err != nil {
@@ -266,7 +266,7 @@ func TestTaskCenterFiltersAndDisablesStaleRetry(t *testing.T) {
 	}
 	mods, key, _ := display.HotkeyBinding(tasksHotkey, display.HotkeyAuto)
 	tt.Key(mods, key)
-	if a.page != pageLibrary || a.libraryPage != 1 || a.state.Selected != 1 {
+	if a.page != pageDownloads || a.downloadPage != downloadTasks || a.state.Selected != 1 {
 		t.Fatal("task shortcut did not preserve the launch selection")
 	}
 	if err := tt.Click("失败 / 取消"); err != nil {
@@ -291,7 +291,7 @@ func TestInstanceSettingsKeepDraftAndLaunchTargetSeparate(t *testing.T) {
 	tt.SetSize(820, 530)
 	tt.SetDark(true)
 	tt.Frame()
-	for _, name := range []string{"版本", "建筑测试", "启动设置", "8 GiB"} {
+	for _, name := range []string{"实例", "建筑测试", "启动设置", "8 GiB"} {
 		if err := tt.Click(name); err != nil {
 			t.Fatal(err)
 		}
@@ -349,7 +349,7 @@ func testDesktop(t *testing.T) (*desktop, *ui.Tester) {
 	}
 	a := &desktop{
 		logo: logo, hero: hero, ready: true, installed: map[int]bool{1: true},
-		state: launcher.State{Selected: 1, Settings: launcher.Settings{Player: "Player", Memory: 4096, GameRoot: t.TempDir()},
+		state: launcher.State{Selected: 1, NextID: 3, Settings: launcher.Settings{Player: "Player", Memory: 4096, GameRoot: t.TempDir()},
 			Instances: []launcher.Instance{
 				{ID: 1, Name: "生存世界", Version: "1.21.1", Loader: "Vanilla", GameDir: t.TempDir()},
 				{ID: 2, Name: "建筑测试", Version: "1.21.4", Loader: "Vanilla", GameDir: t.TempDir()},
@@ -376,13 +376,13 @@ func TestResourceAndServerEntrypoints(t *testing.T) {
 		t.Fatal(err)
 	}
 	capture(t, tt, "fabric-mods")
-	if err := tt.Click("搜索 Modrinth"); err != nil {
+	if err := tt.Click("下载模组…"); err != nil {
 		t.Fatal(err)
 	}
-	if a.pack == nil || !a.pack.open || a.pack.target.ID != i.ID || a.pack.kind != launcher.FabricMods || a.state.Selected != 1 {
+	p := a.browserFor(launcher.FabricMods)
+	if a.page != pageDownloads || a.downloadPage != downloadMods || p.target.ID != i.ID || a.state.Selected != 1 {
 		t.Fatal("mod download did not capture the inspected Fabric instance")
 	}
-	tt.Key(0, ui.KeyEscape)
 	if err := a.state.AddServer("测试服务器", "localhost:25565"); err != nil {
 		t.Fatal(err)
 	}

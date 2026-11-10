@@ -112,14 +112,7 @@ func (a *desktop) choose(id int) {
 }
 
 func (a *desktop) create() {
-	version := "1.21.1"
-	if len(a.releases) > 0 {
-		version = a.releases[0].ID
-	}
-	a.form = editor{open: true, mode: "create", version: version, focus: true}
-	if len(a.releases) == 0 {
-		a.refreshCatalog()
-	}
+	a.openInstall("", false)
 }
 
 func (a *desktop) edit(i launcher.Instance) {
@@ -162,7 +155,7 @@ func (a *desktop) fetchFabricVersions(i launcher.Instance) {
 }
 
 func (a *desktop) inspect(i launcher.Instance) {
-	a.page, a.libraryPage, a.inspected = pageLibrary, 0, i.ID
+	a.page, a.inspected = pageLibrary, i.ID
 	a.detailPage = detailOverview
 }
 
@@ -175,9 +168,6 @@ func (a *desktop) submitEditor() {
 	var err error
 	checkID := 0
 	switch form.mode {
-	case "create":
-		err = next.Create(form.name, strings.TrimSpace(form.version))
-		checkID = next.Selected
 	case "rename":
 		err = next.Rename(form.target.ID, form.target.Revision, form.name)
 	case "duplicate":
@@ -226,7 +216,7 @@ func (a *desktop) submitEditor() {
 			a.form.open = false
 		}
 		switch form.mode {
-		case "create", "duplicate":
+		case "duplicate":
 			i, _ := a.state.Find(checkID)
 			if visible {
 				a.query, a.instanceFilter = "", 0
@@ -250,7 +240,7 @@ func (a *desktop) submitEditor() {
 }
 
 func (a *desktop) refreshCatalog() {
-	if a.catalogBusy {
+	if a.catalogBusy || a.ctx == nil {
 		return
 	}
 	a.catalogBusy, a.catalogErr = true, ""
@@ -261,7 +251,7 @@ func (a *desktop) refreshCatalog() {
 		a.post(func() {
 			a.catalogBusy = false
 			if err != nil {
-				a.catalogErr = "未能取得官方版本列表，可手动输入版本号。"
+				a.catalogErr = "无法读取官方版本列表：" + err.Error()
 			} else {
 				a.releases = versions
 			}

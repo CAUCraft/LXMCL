@@ -27,24 +27,32 @@ const (
 	taskVerify    = "下载 / 校验"
 )
 
+type resourceTask struct {
+	Kind    launcher.ContentKind `json:"kind"`
+	Project string               `json:"project"`
+	Version string               `json:"version"`
+	Title   string               `json:"title"`
+}
+
 type taskRecord struct {
-	InstanceID int       `json:"instance_id,omitempty"`
-	Revision   uint64    `json:"instance_revision,omitempty"`
-	Name       string    `json:"name"`
-	Version    string    `json:"version"`
-	Server     string    `json:"server,omitempty"`
-	Account    string    `json:"account,omitempty"`
-	Action     string    `json:"action"`
-	Status     string    `json:"status"`
-	Detail     string    `json:"detail,omitempty"`
-	Log        string    `json:"log,omitempty"`
-	PID        int       `json:"pid,omitempty"`
-	At         time.Time `json:"at"`
+	InstanceID int           `json:"instance_id,omitempty"`
+	Revision   uint64        `json:"instance_revision,omitempty"`
+	Name       string        `json:"name"`
+	Version    string        `json:"version"`
+	Server     string        `json:"server,omitempty"`
+	Account    string        `json:"account,omitempty"`
+	Action     string        `json:"action"`
+	Status     string        `json:"status"`
+	Detail     string        `json:"detail,omitempty"`
+	Log        string        `json:"log,omitempty"`
+	PID        int           `json:"pid,omitempty"`
+	At         time.Time     `json:"at"`
+	Resource   *resourceTask `json:"resource,omitempty"`
 }
 
 func (r taskRecord) retryTarget(s launcher.State) (launcher.Instance, bool) {
 	if r.InstanceID == 0 || (r.Status != taskFailed && r.Status != taskCanceled) ||
-		(r.Action != taskLaunch && r.Action != taskVerify) {
+		(r.Action != taskLaunch && r.Action != taskVerify && r.Resource == nil) {
 		return launcher.Instance{}, false
 	}
 	if r.Action == taskLaunch && (r.Account != "" && r.Account != s.AccountKey() ||
@@ -52,7 +60,8 @@ func (r taskRecord) retryTarget(s launcher.State) (launcher.Instance, bool) {
 		return launcher.Instance{}, false
 	}
 	i, ok := s.Find(r.InstanceID)
-	return i, ok && i.Revision == r.Revision && i.Version == r.Version
+	return i, ok && i.Revision == r.Revision && i.Version == r.Version &&
+		(r.Resource == nil || (r.Resource.Project != "" && r.Resource.Version != "" && r.Resource.Kind.Supports(i)))
 }
 
 func loadTaskHistory(root string) ([]taskRecord, error) {

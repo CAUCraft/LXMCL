@@ -13,18 +13,12 @@ func TestVersionPickerKeepsLongCatalogInsidePopup(t *testing.T) {
 	for i := 31; i > 0; i-- {
 		a.releases = append(a.releases, launcher.Version{ID: fmt.Sprintf("1.21.%02d", i)})
 	}
-	a.state.Instances = nil
 	tt.SetSize(820, 530)
 	tt.SetDark(true)
-	if err := tt.Click("版本"); err != nil {
-		t.Fatal(err)
-	}
-	if _, ok := tt.Find("实例列表"); ok {
-		t.Fatal("empty library should show one action instead of two empty panes")
-	}
-	capture(t, tt, "library-empty")
-	if err := tt.Click("新建实例"); err != nil {
-		t.Fatal(err)
+	for _, label := range []string{"实例", "建筑测试", "更换版本"} {
+		if err := tt.Click(label); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if err := tt.Click("选择游戏版本"); err != nil {
 		t.Fatal(err)
