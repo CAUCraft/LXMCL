@@ -1,4 +1,4 @@
-package launcher
+package minecraft
 
 import (
 	"context"
@@ -20,8 +20,8 @@ type LoaderRelease struct {
 	Preview bool
 }
 
-func LoaderVersions(ctx context.Context, game, kind string) ([]LoaderRelease, error) {
-	return loaderVersions(ctx, game, kind, &downloads{http: officialHTTP})
+func (c Client) LoaderVersions(ctx context.Context, game, kind string) ([]LoaderRelease, error) {
+	return loaderVersions(ctx, game, kind, c.downloads())
 }
 
 func loaderVersions(ctx context.Context, game, kind string, d *downloads) ([]LoaderRelease, error) {
@@ -31,11 +31,11 @@ func loaderVersions(ctx context.Context, game, kind string, d *downloads) ([]Loa
 	var versions []string
 	previews := make(map[string]bool)
 	switch kind {
-	case LoaderVanilla:
+	case instance.LoaderVanilla:
 		return nil, nil
-	case LoaderFabric, LoaderQuilt:
+	case instance.LoaderFabric, instance.LoaderQuilt:
 		source := fabricMeta
-		if kind == LoaderQuilt {
+		if kind == instance.LoaderQuilt {
 			source = quiltMeta
 		}
 		var entries []struct {
@@ -53,12 +53,12 @@ func loaderVersions(ctx context.Context, game, kind string, d *downloads) ([]Loa
 				previews[e.Loader.Version] = true
 			}
 		}
-	case LoaderForge, LoaderNeoForge:
+	case instance.LoaderForge, instance.LoaderNeoForge:
 		source, prefix := forgeMaven+"net/minecraftforge/forge/", game+"-"
 		switch {
-		case kind == LoaderNeoForge && game == "1.20.1":
+		case kind == instance.LoaderNeoForge && game == "1.20.1":
 			source = neoMaven + "net/neoforged/forge/"
-		case kind == LoaderNeoForge:
+		case kind == instance.LoaderNeoForge:
 			source = neoMaven + "net/neoforged/neoforge/"
 			prefix = neoGamePrefix(game)
 		}
@@ -66,7 +66,7 @@ func loaderVersions(ctx context.Context, game, kind string, d *downloads) ([]Loa
 			Versions []string `xml:"versioning>versions>version"`
 		}
 		budget := 12 * time.Second
-		if kind == LoaderNeoForge {
+		if kind == instance.LoaderNeoForge {
 			budget = 25 * time.Second
 		}
 		query, stop := context.WithTimeout(ctx, budget)
@@ -82,7 +82,7 @@ func loaderVersions(ctx context.Context, game, kind string, d *downloads) ([]Loa
 		})
 		stop()
 		if err != nil {
-			if kind == LoaderForge && ctx.Err() == nil {
+			if kind == instance.LoaderForge && ctx.Err() == nil {
 				// The smaller official promotions index is useful on slow connections.
 				var fallback struct{ Promos map[string]string }
 				if alternate := downloadJSON(ctx, d, "https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json", &fallback); alternate == nil {
@@ -96,7 +96,7 @@ func loaderVersions(ctx context.Context, game, kind string, d *downloads) ([]Loa
 			if !strings.HasPrefix(version, prefix) {
 				continue
 			}
-			if kind == LoaderForge || game == "1.20.1" {
+			if kind == instance.LoaderForge || game == "1.20.1" {
 				version = strings.TrimPrefix(version, prefix)
 			}
 			versions = append(versions, version)

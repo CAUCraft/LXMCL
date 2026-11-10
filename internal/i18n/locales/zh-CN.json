@@ -108,6 +108,7 @@
   "launch.cache_path_separator": "缓存目录不能包含 Java 类路径分隔符 %q",
   "launch.client_args_failed": "无法生成游戏参数：%w",
   "launch.display_mode_invalid": "请选择有效的窗口模式",
+  "launch.identity_required": "请选择有效的账号后再启动",
   "launch.java_mode_invalid": "请选择有效的 Java 模式",
   "launch.java_path_required": "自选 Java 须填写可执行文件的绝对路径",
   "launch.java_required": "需要兼容的 Java 运行时",

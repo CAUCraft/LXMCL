@@ -9,10 +9,11 @@ LXMCL 使用 Go、MyGo 原生窗口和 Lobe MyGo 组件。主包负责界面状�
 | `internal/launcher` | 应用编排与外部服务适配。`Game.Execute` 接收 `LaunchRequest`，返回 `LaunchResult`；现有游戏、账号与资源 API 保持兼容。 |
 | `internal/account` | Microsoft、皮肤站认证及外观协议；`Client` 提供可注入的网络接口，`Vault` 加密保存凭据，`LaunchIdentity` 提供已校验的游戏身份。 |
 | `internal/instance` | 实例配置、加载器和启动参数校验，不执行网络或 UI 操作。 |
+| `internal/minecraft` | `Client` 查询游戏与加载器目录；`Runtime` 管理原版和加载器安装、缓存校验、Java 要求与启动。`LaunchOptions` 输入身份及可选 JVM 准备回调，`Running` 返回进程和日志。 |
 | `internal/javaruntime` | `Probe` / `Find` 探测 Java；`Manager.Local` 只检查本地；`Resolve` 按需求选取或安装；`Ensure` 校验并安装受管运行时。 |
 | `internal/content` | `Kind` 定义资源格式；`List` / `Import` / `SetEnabled` / `WriteVerified` 管理实例资源文件，`ValidateArchive` 统一检查新文件和复用文件的格式，不依赖下载平台。 |
 | `internal/catalog` | `Client` 查询 Modrinth / CurseForge 项目、版本、前置和图标；`DownloadAsset` 返回可校验的文件描述；`CurseForgeResolver` 提供整合包依赖解析。 |
-| `internal/distribution` | `Asset` 描述来源、大小和摘要；`Cache.Ensure` 下载并校验平台文件，管理来源、重定向和可复用缓存。 |
+| `internal/distribution` | `Asset` 描述来源、大小和摘要；`Asset.Fetch` 管理流式下载的来源、重定向和重试；`Cache.Ensure` 校验并保存可复用缓存。 |
 | `internal/modpack` | `Prepare` / `PrepareLocal` 生成不可修改的预览；`Install` 解析清单、安装到临时目录、发布文件并提交实例，失败时回滚。 |
 | `internal/tasks` | `Run` 管理一次执行的进度生命周期；`Record` 保存任务目标与结果；`Journal` 串行更新历史。 |
 | `internal/server` | 服务器地址校验和状态探测。 |
@@ -23,7 +24,7 @@ LXMCL 使用 Go、MyGo 原生窗口和 Lobe MyGo 组件。主包负责界面状�
 | `internal/log` | 游戏与加载器安装器的日志路径、写入文件创建及游戏日志预览。 |
 | `internal/i18n` | 从嵌入式 JSON 按键读取后端文案，保留错误链与语言回退。 |
 
-依赖向下流动：桌面调用应用编排，编排组合领域模块和基础设施。`account`、`catalog`、`content`、`distribution`、`modpack`、`javaruntime`、`tasks`、`instance` 等包不反向导入 `launcher`。任务记录可引用资源类型，不能引用桌面组件或启动器实例状态。`launcher` 的公开类型别名和薄包装保留现有调用接口，协议和文件操作交给对应模块。
+依赖向下流动：桌面调用应用编排，编排组合领域模块和基础设施。`minecraft`、`account`、`catalog`、`content`、`distribution`、`modpack`、`javaruntime`、`tasks`、`instance` 等包不反向导入 `launcher`。任务记录可引用资源类型，不能引用桌面组件或启动器实例状态。`launcher` 的公开类型别名和薄包装保留现有调用接口，协议和文件操作交给对应模块。
 
 ```mermaid
 flowchart TD
@@ -32,6 +33,13 @@ flowchart TD
     Launcher --> Tasks
     Launcher --> Account[account]
     Launcher --> Java[javaruntime]
+    Launcher --> Minecraft[minecraft 安装与启动]
+    Minecraft --> Java
+    Minecraft --> Account
+    Minecraft --> Instance
+    Minecraft --> Transfer
+    Minecraft --> Process
+    Minecraft --> Logs
     Launcher --> Content[content]
     Launcher --> Catalog[catalog 项目与版本查询]
     Catalog --> Content
@@ -66,6 +74,16 @@ flowchart TD
 会话通过 `LaunchIdentity()` 返回已校验的身份，离线身份由 `OfflineIdentity` 创建。身份的 `Arguments()` 返回独立的 Minecraft 参数映射，启动器不再读取会话内部令牌；该映射含访问凭据，不可记录到日志。身份对象本身的 JSON 和格式化输出不含令牌。`Vault` 沿用 `microsoft-account.dat` 和 `skin-stations/<key>.dat`、旧 JSON 字段及当前 Windows 用户的 DPAPI 加密；其他平台不写明文凭据。账号选择仍存于 `launcher.json`，与凭据文件分离。
 
 调用方负责串行执行会修改配置的操作。`Execute` 在调用线程运行，应放入后台任务；进度回调也在工作线程触发。取消影响认证、下载和启动前的准备，成功创建的游戏进程独立于启动器窗口。`Running` 只表示 Java 进程已启动，`Running.Done` 表示进程退出，均不等同于游戏可玩。
+
+## Minecraft 安装与启动
+
+`minecraft.Client` 的零值访问固定官方来源，`Transport` 可注入传输而不能更改来源和重定向校验。`Catalog`、`Releases`、`LoaderVersions` 与 `FabricVersions` 不依赖实例状态；JSON 必须完整且不超过 8 MiB。`Runtime{Cache, Client}` 复用该传输安装游戏、加载器和受管 Java，不导入 `launcher`、资源平台查询或整合包模块。
+
+`Installed` 只做缓存存在性检查。`Install` / `InstallWithJava` 校验实际文件并补齐缺损；`Start` 每次校验收据、元数据、资源索引、库与素材，再合并加载器参数、选择 Java 和创建进程。`LaunchOptions.Identity` 必须来自账号模块；皮肤站的 authlib-injector 准备通过 `PrepareJVM` 延迟注入，在文件和 Java 检查通过后才执行。回调失败或启动前取消均不会创建游戏进程。`ErrRepairRequired` / `ErrJavaRequired` 保留错误身份，应用层决定是否修复、重试或引导选择 Java。
+
+内部按元数据、文件清单、安装、收据、校验、加载器协议、启动参数和进程分文件。共享缓存继续使用 `versions/<id>`、`libraries`、`assets`，Fabric / Quilt 沿用各自目录，Forge / NeoForge 保留游戏版本、加载器版本和平台分层。新收据记录官方版本摘要及平台；历史 `verified = 1` 仍兼容，启动会校验其元数据列出的文件，显式修复后升级收据。调用方串行执行同一实例和缓存的写操作。
+
+资源文件下载通过 `distribution.Asset.Fetch` 与 `content.WriteVerified` 组合，不再依赖 Minecraft 下载器。`Fetch` 在每次尝试中调用消费者，消费者负责摘要、归档格式校验及原子发布；缓存消费者使用 `CopyVerified`。CurseForge 和 Modrinth 的 CDN 跳转分别保持在对应平台范围内，文件请求不继承 API Cookie。
 
 ## Java 运行时
 

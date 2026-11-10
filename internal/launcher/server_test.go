@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/binary"
-	"encoding/json"
 	"fmt"
 	"image"
 	"image/png"
@@ -16,7 +15,7 @@ import (
 	"time"
 )
 
-func TestPingJavaServerAndBuildQuickPlayArguments(t *testing.T) {
+func TestPingJavaServer(t *testing.T) {
 	var favicon bytes.Buffer
 	if err := png.Encode(&favicon, image.NewRGBA(image.Rect(0, 0, 64, 64))); err != nil {
 		t.Fatal(err)
@@ -62,13 +61,5 @@ func TestPingJavaServerAndBuildQuickPlayArguments(t *testing.T) {
 	}
 	if err := <-reply; err != nil {
 		t.Fatal(err)
-	}
-	var m metadata
-	if err := json.Unmarshal([]byte(`[{"rules":[{"action":"allow","features":{"is_quick_play_multiplayer":true}}],"value":["--quickPlayMultiplayer","${quickPlayMultiplayer}"]}]`), &m.Arguments.Game); err != nil {
-		t.Fatal(err)
-	}
-	args, err := clientArgs(m, map[string]string{}, LaunchOptions{}, address)
-	if err != nil || !slices.Equal(args, []string{"--quickPlayMultiplayer", address}) {
-		t.Fatalf("quick play = %v, %v", args, err)
 	}
 }

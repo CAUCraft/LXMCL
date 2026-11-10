@@ -1,4 +1,4 @@
-package launcher
+package minecraft
 
 import (
 	"context"
@@ -13,11 +13,12 @@ import (
 	"strings"
 
 	"github.com/CAUCraft/LXMCL/internal/i18n"
+	"github.com/CAUCraft/LXMCL/internal/instance"
 	"github.com/CAUCraft/LXMCL/internal/storage"
 	"github.com/CAUCraft/LXMCL/internal/transfer"
 )
 
-func (g Game) prefetchForgeLibraries(ctx context.Context, d *downloads, game string, installer, client []forgeLibrary, report func(Progress)) error {
+func (g Runtime) prefetchForgeLibraries(ctx context.Context, d *downloads, game string, installer, client []forgeLibrary, report func(Progress)) error {
 	seen := make(map[string]artifact)
 	var files []fileDownload
 	for _, lib := range append(slices.Clone(installer), client...) {
@@ -142,7 +143,7 @@ func attestForgeLibraries(ctx context.Context, root string, libs []forgeLibrary)
 // Forge discovers the patched client and some libraries through libraryDirectory
 // rather than through the version profile's classpath.
 
-func (g Game) verifyForge(ctx context.Context, i Instance, p forgeProfile) ([]string, error) {
+func (g Runtime) verifyForge(ctx context.Context, i instance.Instance, p forgeProfile) ([]string, error) {
 	root := filepath.Join(g.forgeDir(i), "libraries")
 	var files []fileDownload
 	var cp []string
@@ -160,7 +161,7 @@ func (g Game) verifyForge(ctx context.Context, i Instance, p forgeProfile) ([]st
 	return cp, transfer.Batch(ctx, files, verifyArtifact, nil)
 }
 
-func (g Game) mergeForgeClasspath(m metadata, p forgeProfile, base, loader []string) []string {
+func (g Runtime) mergeForgeClasspath(m metadata, p forgeProfile, base, loader []string) []string {
 	replaced := make(map[string]bool)
 	for _, lib := range p.Libraries {
 		if k := mavenLibraryKey(lib.Name); k != "" {

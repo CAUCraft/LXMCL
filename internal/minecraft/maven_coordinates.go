@@ -1,10 +1,13 @@
-package launcher
+package minecraft
 
 import (
+	"regexp"
 	"strings"
 
 	"github.com/CAUCraft/LXMCL/internal/i18n"
 )
+
+var mavenPart = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9.+_-]{0,127}$`)
 
 func mavenLibraryPath(name string) (string, error) {
 	name, ext, hasExt := strings.Cut(name, "@")

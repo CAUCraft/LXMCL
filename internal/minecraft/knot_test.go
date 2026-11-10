@@ -1,4 +1,4 @@
-package launcher
+package minecraft
 
 import (
 	"crypto/sha1"
@@ -8,12 +8,14 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/CAUCraft/LXMCL/internal/instance"
 )
 
 func TestKnotInstallVerifiesLibrariesSeparatelyFromVanilla(t *testing.T) {
 	for _, cfg := range []struct{ loader, version, meta, main, jar, coordinate, repo string }{
-		{LoaderFabric, "0.16.14", fabricMeta, "net.fabricmc.loader.impl.launch.knot.KnotClient", "fabric-loader", "net.fabricmc", fabricMaven},
-		{LoaderQuilt, "0.30.2", quiltMeta, "org.quiltmc.loader.impl.launch.knot.KnotClient", "quilt-loader", "org.quiltmc", "https://maven.quiltmc.org/repository/release/"},
+		{instance.LoaderFabric, "0.16.14", fabricMeta, "net.fabricmc.loader.impl.launch.knot.KnotClient", "fabric-loader", "net.fabricmc", fabricMaven},
+		{instance.LoaderQuilt, "0.30.2", quiltMeta, "org.quiltmc.loader.impl.launch.knot.KnotClient", "quilt-loader", "org.quiltmc", "https://maven.quiltmc.org/repository/release/"},
 	} {
 		t.Run(cfg.loader, func(t *testing.T) {
 			testKnotInstall(t, cfg.loader, cfg.version, cfg.meta, cfg.main, cfg.jar, cfg.coordinate, cfg.repo)
@@ -24,14 +26,14 @@ func TestKnotInstallVerifiesLibrariesSeparatelyFromVanilla(t *testing.T) {
 func testKnotInstall(t *testing.T, loader, version, meta, main, jar, group, repo string) {
 	t.Helper()
 	f := newInstallFixture(t)
-	d := &downloads{http: &http.Client{Transport: transportFunc(f.request)}}
-	g := Game{Cache: t.TempDir()}
-	vanilla := Instance{Version: "1.21.1", GameDir: t.TempDir()}
+	d := &downloads{http: &http.Client{Transport: transportFunc(f.RoundTrip)}}
+	g := Runtime{Cache: t.TempDir()}
+	vanilla := instance.Instance{Version: "1.21.1", GameDir: t.TempDir()}
 	modified := vanilla
 	modified.Loader, modified.LoaderVersion = loader, version
 	fileURL := repo + strings.ReplaceAll(group, ".", "/") + "/" + jar + "/" + version + "/" + jar + "-" + version + ".jar"
-	f.files[fileURL] = []byte(jar)
-	f.files[fileURL+".sha1"] = []byte(fmt.Sprintf("%x", sha1.Sum(f.files[fileURL])))
+	f.Files[fileURL] = []byte(jar)
+	f.Files[fileURL+".sha1"] = []byte(fmt.Sprintf("%x", sha1.Sum(f.Files[fileURL])))
 	profile, err := json.Marshal(map[string]any{
 		"id": jar + "-" + version + "-1.21.1", "inheritsFrom": "1.21.1",
 		"mainClass": main,
@@ -40,7 +42,7 @@ func testKnotInstall(t *testing.T, loader, version, meta, main, jar, group, repo
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.files[meta+"1.21.1/"+version+"/profile/json"] = profile
+	f.Files[meta+"1.21.1/"+version+"/profile/json"] = profile
 	if err := g.install(t.Context(), vanilla, nil, d); err != nil {
 		t.Fatal(err)
 	}

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net/http"
 	"strings"
 
 	"github.com/CAUCraft/LXMCL/internal/catalog"
@@ -16,10 +17,10 @@ import (
 )
 
 func DownloadModrinth(ctx context.Context, i Instance, kind ContentKind, version PackVersion, report func(Progress)) error {
-	return downloadModrinth(ctx, i, kind, version, &downloads{http: officialHTTP}, report)
+	return downloadModrinth(ctx, i, kind, version, nil, report)
 }
 
-func downloadModrinth(ctx context.Context, i Instance, kind ContentKind, version PackVersion, d *downloads, report func(Progress)) error {
+func downloadModrinth(ctx context.Context, i Instance, kind ContentKind, version PackVersion, client *http.Client, report func(Progress)) error {
 	if _, _, err := kind.Format(i); err != nil {
 		return err
 	}
@@ -31,18 +32,18 @@ func downloadModrinth(ctx context.Context, i Instance, kind ContentKind, version
 	}
 	stage := i18n.Text("progress.download_resources")
 	report(Progress{Stage: stage, Total: 1})
-	if err := downloadModrinthFile(ctx, i, kind, version, d); err != nil {
+	if err := downloadModrinthFile(ctx, i, kind, version, client); err != nil {
 		return err
 	}
 	report(Progress{Stage: stage, Done: 1, Total: 1})
 	return nil
 }
 
-func downloadModrinthFile(ctx context.Context, i Instance, kind ContentKind, v PackVersion, d *downloads) error {
+func downloadModrinthFile(ctx context.Context, i Instance, kind ContentKind, v PackVersion, client *http.Client) error {
 	if !v.Compatible(i, kind) {
 		return i18n.Error("modrinth.resource_incompatible")
 	}
-	file, _, err := v.DownloadAsset(kind)
+	file, asset, err := v.DownloadAsset(kind)
 	if err != nil {
 		return err
 	}
@@ -50,13 +51,8 @@ func downloadModrinthFile(ctx context.Context, i Instance, kind ContentKind, v P
 	if err != nil || existing {
 		return err
 	}
-	return retry(ctx, func() error {
-		res, err := d.get(ctx, file.URL)
-		if err != nil {
-			return err
-		}
-		defer res.Body.Close()
-		return content.WriteVerified(ctx, i, kind, file.Filename, res.Body, file.Size, sha512.New(), file.Hashes.SHA512)
+	return asset.Fetch(ctx, client, func(ctx context.Context, reader io.Reader) error {
+		return content.WriteVerified(ctx, i, kind, file.Filename, reader, file.Size, sha512.New(), file.Hashes.SHA512)
 	})
 }
 

@@ -1,4 +1,4 @@
-package launcher
+package minecraft
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"io"
 
 	"github.com/CAUCraft/LXMCL/internal/i18n"
+	"github.com/CAUCraft/LXMCL/internal/transfer"
 )
 
 func downloadJSON(ctx context.Context, d *downloads, source string, out any) error {
@@ -15,7 +16,7 @@ func downloadJSON(ctx context.Context, d *downloads, source string, out any) err
 			return err
 		}
 		defer res.Body.Close()
-		body, err := io.ReadAll(io.LimitReader(res.Body, maxMetadata+1))
+		body, err := io.ReadAll(io.LimitReader(transfer.Reader(ctx, res.Body), maxMetadata+1))
 		if err != nil {
 			return err
 		}

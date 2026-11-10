@@ -1,4 +1,4 @@
-package launcher
+package minecraft
 
 import (
 	"encoding/json"
@@ -8,6 +8,8 @@ import (
 	"strconv"
 
 	"github.com/CAUCraft/LXMCL/internal/i18n"
+	"github.com/CAUCraft/LXMCL/internal/instance"
+	"github.com/CAUCraft/LXMCL/internal/server"
 )
 
 var variable = regexp.MustCompile("\\$\\{([^}]+)\\}")
@@ -97,15 +99,15 @@ func gameArgs(raw []json.RawMessage, values map[string]string, features map[stri
 	return args, nil
 }
 
-func clientArgs(m metadata, values map[string]string, opts LaunchOptions, server string) ([]string, error) {
+func clientArgs(m metadata, values map[string]string, opts instance.LaunchOptions, addressText string) ([]string, error) {
 	features := make(map[string]bool)
-	if opts.Display == DisplayResolution {
+	if opts.Display == instance.DisplayResolution {
 		features["has_custom_resolution"] = true
 		values["resolution_width"] = strconv.Itoa(opts.Width)
 		values["resolution_height"] = strconv.Itoa(opts.Height)
 	}
-	if server != "" {
-		address, err := ServerAddress(server)
+	if addressText != "" {
+		address, err := server.Address(addressText)
 		if err != nil {
 			return nil, err
 		}
@@ -116,10 +118,10 @@ func clientArgs(m metadata, values map[string]string, opts LaunchOptions, server
 	if err != nil {
 		return nil, err
 	}
-	if opts.Display == DisplayFullscreen && !slices.Contains(args, "--fullscreen") {
+	if opts.Display == instance.DisplayFullscreen && !slices.Contains(args, "--fullscreen") {
 		args = append(args, "--fullscreen")
 	}
-	if server != "" && !slices.Contains(args, "--quickPlayMultiplayer") {
+	if addressText != "" && !slices.Contains(args, "--quickPlayMultiplayer") {
 		return nil, i18n.Error("launch.quick_play_unsupported")
 	}
 	return args, nil

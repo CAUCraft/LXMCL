@@ -1,4 +1,4 @@
-package launcher
+package minecraft
 
 import (
 	"archive/zip"
@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/CAUCraft/LXMCL/internal/i18n"
+	"github.com/CAUCraft/LXMCL/internal/instance"
 	"github.com/CAUCraft/LXMCL/internal/storage"
 )
 
@@ -65,7 +66,7 @@ func forgeMetadata(path string) (forgeInstaller, forgeProfile, error) {
 	return installer, profile, nil
 }
 
-func validateForgeProfile(i Instance, p forgeProfile) error {
+func validateForgeProfile(i instance.Instance, p forgeProfile) error {
 	if p.InheritsFrom != i.Version || !storage.ValidPortablePath(p.ID) || strings.Contains(p.ID, "/") ||
 		!javaClass.MatchString(p.MainClass) || len(p.Libraries) == 0 {
 		return i18n.Error("forge.client_profile_mismatch", i.LoaderName(), i.Version)
@@ -135,7 +136,7 @@ func (p forgeInstaller) clientLibraries() ([]forgeLibrary, error) {
 	return out, nil
 }
 
-func (g Game) readForge(i Instance) (forgeProfile, error) {
+func (g Runtime) readForge(i instance.Instance) (forgeProfile, error) {
 	var p forgeProfile
 	ok, err := storage.ReadJSON(filepath.Join(g.forgeDir(i), "verified.json"), &p)
 	if err != nil {

@@ -1,9 +1,11 @@
-package launcher
+package minecraft
 
 import (
 	"net/http"
 	"slices"
 	"testing"
+
+	"github.com/CAUCraft/LXMCL/internal/instance"
 )
 
 func TestLoaderCatalogFiltersMinecraftAndKeepsStableFirst(t *testing.T) {
@@ -33,10 +35,10 @@ func TestLoaderCatalogFiltersMinecraftAndKeepsStableFirst(t *testing.T) {
 		kind, mc string
 		want     []LoaderRelease
 	}{
-		{LoaderForge, "1.21.1", []LoaderRelease{{"52.0.10", false}, {"52.0.9", false}}},
-		{LoaderNeoForge, "1.21.1", []LoaderRelease{{"21.1.10", false}, {"21.1.9", false}, {"21.1.12-beta", true}}},
-		{LoaderNeoForge, "26.1", []LoaderRelease{{"26.1.0.3", false}, {"26.1.0.5-beta", true}}},
-		{LoaderQuilt, "1.21.1", []LoaderRelease{{"0.30.2", false}, {"0.28.0", false}, {"0.29.2-beta.10", true}, {"0.29.2-beta.9", true}}},
+		{instance.LoaderForge, "1.21.1", []LoaderRelease{{"52.0.10", false}, {"52.0.9", false}}},
+		{instance.LoaderNeoForge, "1.21.1", []LoaderRelease{{"21.1.10", false}, {"21.1.9", false}, {"21.1.12-beta", true}}},
+		{instance.LoaderNeoForge, "26.1", []LoaderRelease{{"26.1.0.3", false}, {"26.1.0.5-beta", true}}},
+		{instance.LoaderQuilt, "1.21.1", []LoaderRelease{{"0.30.2", false}, {"0.28.0", false}, {"0.29.2-beta.10", true}, {"0.29.2-beta.9", true}}},
 	} {
 		got, err := loaderVersions(t.Context(), tc.mc, tc.kind, d)
 		if err != nil || !slices.Equal(got, tc.want) {

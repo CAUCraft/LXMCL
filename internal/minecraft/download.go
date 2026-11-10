@@ -1,4 +1,4 @@
-package launcher
+package minecraft
 
 import (
 	"context"
@@ -28,6 +28,19 @@ var officialHTTP = &http.Client{
 	},
 }
 
+// Client accesses Minecraft, loader and managed Java downloads. The zero value uses official
+// endpoints. Transport can be customized without changing source or redirect rules.
+type Client struct{ Transport http.RoundTripper }
+
+func (c Client) downloads() *downloads {
+	if c.Transport == nil {
+		return &downloads{http: officialHTTP}
+	}
+	client := *officialHTTP
+	client.Transport = c.Transport
+	return &downloads{http: &client}
+}
+
 type downloads struct {
 	http            *http.Client
 	mu              sync.Mutex
@@ -41,7 +54,7 @@ func officialURL(u *url.URL) bool {
 		slices.Contains([]string{"piston-meta.mojang.com", "piston-data.mojang.com",
 			"libraries.minecraft.net", "resources.download.minecraft.net", "launcher.mojang.com",
 			"launchermeta.mojang.com", "meta.fabricmc.net", "maven.fabricmc.net",
-			"cdn.modrinth.com", "maven.minecraftforge.net", "files.minecraftforge.net",
+			"maven.minecraftforge.net", "files.minecraftforge.net",
 			"meta.quiltmc.org", "maven.quiltmc.org",
 			"maven.neoforged.net", "repo.maven.apache.org", "repo1.maven.org"}, u.Hostname())
 }

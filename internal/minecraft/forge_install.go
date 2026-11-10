@@ -1,58 +1,22 @@
-package launcher
+package minecraft
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"runtime"
-	"strings"
-	"syscall"
-	"time"
 
 	"github.com/CAUCraft/LXMCL/internal/i18n"
 	"github.com/CAUCraft/LXMCL/internal/instance"
 	"github.com/CAUCraft/LXMCL/internal/javaruntime"
-	launcherlog "github.com/CAUCraft/LXMCL/internal/log"
-	"github.com/CAUCraft/LXMCL/internal/process"
 	"github.com/CAUCraft/LXMCL/internal/storage"
 )
-
-const (
-	forgeMaven = "https://maven.minecraftforge.net/"
-	neoMaven   = "https://maven.neoforged.net/releases/"
-)
-
-func forgeInstallerURL(i Instance) (string, error) {
-	loader, version, err := instance.NormalizeLoader(i.Version, i.Loader, i.LoaderVersion)
-	if err != nil {
-		return "", err
-	}
-	coordinate := i.Version + "-" + version
-	switch loader {
-	case LoaderForge:
-		return forgeMaven + "net/minecraftforge/forge/" + coordinate + "/forge-" + coordinate + "-installer.jar", nil
-	case LoaderNeoForge:
-		if i.Version == "1.20.1" {
-			return neoMaven + "net/neoforged/forge/" + coordinate + "/forge-" + coordinate + "-installer.jar", nil
-		}
-		return neoMaven + "net/neoforged/neoforge/" + version + "/neoforge-" + version + "-installer.jar", nil
-	default:
-		return "", i18n.Error("forge.loader_required")
-	}
-}
-
-func (g Game) forgeDir(i Instance) string {
-	_, version, _ := instance.NormalizeLoader(i.Version, i.Loader, i.LoaderVersion)
-	return filepath.Join(g.Cache, strings.ToLower(i.Loader), i.Version, version, strings.ReplaceAll(platformKey(), "/", "-"))
-}
 
 // The installer's download runs from an empty Mojang-style directory. It never
 // receives the modpack directory, launcher credentials, or the user's profiles.
 
-func (g Game) installForge(ctx context.Context, i Instance, m metadata, javaPath string, d *downloads, report func(Progress)) error {
+func (g Runtime) installForge(ctx context.Context, i instance.Instance, m metadata, javaPath string, d *downloads, report func(Progress)) error {
 	dest := g.forgeDir(i)
 	if p, err := g.readForge(i); err == nil {
 		if _, err := g.verifyForge(ctx, i, p); err == nil {
@@ -171,51 +135,6 @@ func (g Game) installForge(ctx context.Context, i Instance, m metadata, javaPath
 			return errors.Join(err, restore)
 		}
 		return err
-	}
-	return nil
-}
-
-func renameForgeCache(ctx context.Context, from, to string) error {
-	var err error
-	for attempt := range 6 {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		err = os.Rename(from, to)
-		if err == nil || runtime.GOOS != "windows" || attempt == 5 ||
-			(!errors.Is(err, os.ErrPermission) && !errors.Is(err, syscall.Errno(32))) {
-			return err
-		}
-		// Windows scanners may briefly hold newly installed JARs open.
-		if err := waitContext(ctx, time.Duration(1<<attempt)*50*time.Millisecond); err != nil {
-			return err
-		}
-	}
-	return err
-}
-
-func (g Game) runForgeInstaller(ctx context.Context, java, installer, game string, i Instance) error {
-	log, err := launcherlog.CreateInstaller(g.Cache, i.Loader)
-	if err != nil {
-		return err
-	}
-	defer log.Close()
-	ctx, stop := context.WithTimeout(ctx, 15*time.Minute)
-	defer stop()
-	cmd := exec.CommandContext(ctx, java, "-Djava.awt.headless=true", "-Duser.home="+game,
-		"-jar", installer, "--installClient", game)
-	process.HideConsole(cmd)
-	cmd.Dir, cmd.Stdout, cmd.Stderr = game, log, log
-	// Do not pass key/token environment variables or inherited Java agents.
-	cmd.Env = javaruntime.Environment(true)
-	if err := cmd.Run(); err != nil {
-		if errors.Is(ctx.Err(), context.Canceled) {
-			return context.Canceled
-		}
-		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			return i18n.Error("forge.installer_timed_out", i.LoaderName(), log.Name(), ctx.Err())
-		}
-		return i18n.Error("forge.installer_process_failed", i.LoaderName(), err, log.Name())
 	}
 	return nil
 }

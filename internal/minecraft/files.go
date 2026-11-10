@@ -1,91 +1,16 @@
-package launcher
+package minecraft
 
 import (
-	"context"
-	"crypto/sha1"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
-	"io"
-	"os"
 	"path/filepath"
 	"runtime"
-	"slices"
 	"strings"
 
 	"github.com/CAUCraft/LXMCL/internal/i18n"
 	"github.com/CAUCraft/LXMCL/internal/storage"
 )
 
-type rule struct {
-	Action   string
-	Features map[string]bool
-	OS       struct{ Name, Arch, Version string }
-}
-
-type metadata struct {
-	ID, Type, MainClass string
-	Arguments           struct{ JVM, Game []json.RawMessage }
-	JavaVersion         struct {
-		MajorVersion int
-		Component    string
-	}
-	Downloads  struct{ Client artifact }
-	AssetIndex struct {
-		ID string
-		artifact
-	}
-	Libraries []struct {
-		Name      string
-		Rules     []rule
-		Downloads struct{ Artifact artifact }
-		Natives   map[string]string
-	}
-	Logging struct {
-		Client struct {
-			Argument string
-			File     struct {
-				ID string
-				artifact
-			}
-		}
-	}
-}
-
-type assetIndex struct {
-	Objects map[string]struct {
-		Hash string
-		Size int64
-	}
-}
-
-func (g Game) versionDir(id string) string { return filepath.Join(g.Cache, "versions", id) }
-
-func (g Game) readVersion(id, expectedSHA string) (metadata, error) {
-	var m metadata
-	f, err := os.Open(filepath.Join(g.versionDir(id), "version.json"))
-	if err != nil {
-		return m, err
-	}
-	defer f.Close()
-	b, err := io.ReadAll(io.LimitReader(f, maxMetadata+1))
-	if err != nil {
-		return m, err
-	}
-	sum := sha1.Sum(b)
-	if len(b) > maxMetadata || (expectedSHA != "" && !strings.EqualFold(hex.EncodeToString(sum[:]), expectedSHA)) {
-		return m, i18n.Error("metadata.checksum_failed")
-	}
-	if err := json.Unmarshal(b, &m); err != nil {
-		return m, i18n.Error("metadata.read_failed", err)
-	}
-	if m.ID != id || m.Type != "release" || m.MainClass == "" || len(m.Arguments.JVM) == 0 || m.JavaVersion.MajorVersion < 17 {
-		return m, i18n.Error("metadata.version_invalid")
-	}
-	return m, nil
-}
-
-func (g Game) binaries(m metadata) ([]fileDownload, []string, error) {
+func (g Runtime) binaries(m metadata) ([]fileDownload, []string, error) {
 	client := filepath.Join(g.versionDir(m.ID), "client.jar")
 	files := []fileDownload{{client, m.Downloads.Client}}
 	seen := make(map[string]artifact)
@@ -126,14 +51,14 @@ func (g Game) binaries(m metadata) ([]fileDownload, []string, error) {
 	return files, append(cp, client), nil
 }
 
-func (g Game) indexPath(m metadata) (string, error) {
+func (g Runtime) indexPath(m metadata) (string, error) {
 	if !versionID.MatchString(m.AssetIndex.ID) {
 		return "", i18n.Error("metadata.asset_index_invalid")
 	}
 	return filepath.Join(g.Cache, "assets", "indexes", m.AssetIndex.ID+".json"), nil
 }
 
-func (g Game) assets(indexPath string) ([]fileDownload, error) {
+func (g Runtime) assets(indexPath string) ([]fileDownload, error) {
 	var assets assetIndex
 	if found, err := storage.ReadJSON(indexPath, &assets); err != nil || !found {
 		return nil, errors.Join(i18n.Error("metadata.asset_index_read_failed"), err)
@@ -158,21 +83,4 @@ func (g Game) assets(indexPath string) ([]fileDownload, error) {
 		files = append(files, fileDownload{filepath.Join(g.Cache, "assets", "objects", filepath.FromSlash(key)), obj})
 	}
 	return files, nil
-}
-
-func (g Game) downloadVersion(ctx context.Context, id string, d *downloads) (metadata, Version, error) {
-	all, err := d.releases(ctx)
-	if err != nil {
-		return metadata{}, Version{}, err
-	}
-	index := slices.IndexFunc(all, func(v Version) bool { return v.ID == id })
-	if index == -1 {
-		return metadata{}, Version{}, i18n.Error("version.release_not_found", id)
-	}
-	v := all[index]
-	if err := d.file(ctx, filepath.Join(g.versionDir(id), "version.json"), artifact{URL: v.URL, SHA: v.SHA, Size: unknownSize}); err != nil {
-		return metadata{}, Version{}, err
-	}
-	m, err := g.readVersion(id, v.SHA)
-	return m, v, err
 }

@@ -108,6 +108,7 @@
   "launch.cache_path_separator": "The cache path must not contain the Java classpath separator %q",
   "launch.client_args_failed": "Could not build game arguments: %w",
   "launch.display_mode_invalid": "Select a valid display mode",
+  "launch.identity_required": "Select a valid account before launching",
   "launch.java_mode_invalid": "Select a valid Java mode",
   "launch.java_path_required": "Enter an absolute path to the Java executable",
   "launch.java_required": "A compatible Java runtime is required",

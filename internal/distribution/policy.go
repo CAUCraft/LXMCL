@@ -25,7 +25,8 @@ func CurseCDN(u *url.URL) bool {
 var defaultHTTP = &http.Client{
 	Timeout: 5 * time.Minute,
 	CheckRedirect: func(req *http.Request, via []*http.Request) error {
-		if len(via) >= 6 || !AllowedURL(req.URL) || (CurseCDN(via[0].URL) && !CurseCDN(req.URL)) {
+		if len(via) >= 6 || !AllowedURL(req.URL) || (CurseCDN(via[0].URL) && !CurseCDN(req.URL)) ||
+			(via[0].URL.Hostname() == "cdn.modrinth.com" && req.URL.Hostname() != "cdn.modrinth.com") {
 			return i18n.Error("distribution.redirect_denied")
 		}
 		return nil

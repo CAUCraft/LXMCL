@@ -48,13 +48,13 @@ func TestModrinthDownloadOnlyInstallsSelectedFile(t *testing.T) {
 				Loaders: []string{strings.ToLower(i.Loader)}, Files: []PackFile{file},
 				Dependencies: []ModDependency{{ProjectID: "requiredProject", VersionID: "missingVersion", Type: "required"}}}
 			var calls int
-			d := &downloads{http: &http.Client{Transport: transportFunc(func(req *http.Request) (*http.Response, error) {
+			d := &http.Client{Transport: transportFunc(func(req *http.Request) (*http.Response, error) {
 				if req.URL.String() != fileURL {
 					t.Fatalf("install requested dependency metadata or files: %s", req.URL)
 				}
 				calls++
 				return fixtureResponse(http.StatusOK, body), nil
-			})}}
+			})}
 			var progress Progress
 			if err := downloadModrinth(t.Context(), i, Mods, v, d, func(p Progress) { progress = p }); err != nil {
 				t.Fatal(err)
@@ -84,10 +84,10 @@ func TestExistingResourceMustMatchLoaderFormat(t *testing.T) {
 	if err := os.WriteFile(filename, body, 0600); err != nil {
 		t.Fatal(err)
 	}
-	d := &downloads{http: &http.Client{Transport: transportFunc(func(*http.Request) (*http.Response, error) {
+	d := &http.Client{Transport: transportFunc(func(*http.Request) (*http.Response, error) {
 		t.Fatal("existing invalid resource triggered a network request")
 		return nil, nil
-	})}}
+	})}
 	if err := downloadModrinth(t.Context(), i, Mods, v, d, nil); err == nil {
 		t.Fatal("existing resource bypassed archive format validation")
 	}
@@ -100,12 +100,12 @@ func TestModrinthPackVerifiesContentAndTargetsInstance(t *testing.T) {
 	content := testZIP(t, map[string]string{"pack.mcmeta": "{}"})
 	instance := Instance{ID: 2, Version: "1.21.1", GameDir: t.TempDir()}
 	other := Instance{ID: 1, Version: "1.21.1", GameDir: t.TempDir()}
-	d := &downloads{http: &http.Client{Transport: transportFunc(func(req *http.Request) (*http.Response, error) {
+	d := &http.Client{Transport: transportFunc(func(req *http.Request) (*http.Response, error) {
 		if req.URL.Hostname() != "cdn.modrinth.com" {
 			t.Fatalf("unexpected origin: %s", req.URL)
 		}
 		return fixtureResponse(http.StatusOK, content), nil
-	})}}
+	})}
 	file := PackFile{URL: "https://cdn.modrinth.com/data/pack.zip", Filename: "pack.zip", Size: int64(len(content)), Primary: true}
 	file.Hashes.SHA512 = strings.Repeat("0", 128)
 	version := PackVersion{GameVersions: []string{"1.21.1"}, Files: []PackFile{file}}

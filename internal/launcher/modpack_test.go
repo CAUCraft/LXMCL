@@ -17,6 +17,7 @@ import (
 	"github.com/CAUCraft/LXMCL/internal/catalog"
 	"github.com/CAUCraft/LXMCL/internal/distribution"
 	"github.com/CAUCraft/LXMCL/internal/i18n"
+	"github.com/CAUCraft/LXMCL/internal/minecraft"
 	"github.com/CAUCraft/LXMCL/internal/modpack"
 )
 
@@ -104,9 +105,9 @@ func TestModpackInstallIsIndependentAndVerified(t *testing.T) {
 	store, old, next, i := packState(t, pack.Info())
 	g := Game{Cache: t.TempDir()}
 	fixture := newInstallFixture(t)
-	gameHTTP := &http.Client{Transport: transportFunc(fixture.request)}
+	gameHTTP := &http.Client{Transport: transportFunc(fixture.RoundTrip)}
 	install := func(ctx context.Context, work Instance, report func(Progress)) error {
-		return g.install(ctx, work, report, &downloads{http: gameHTTP})
+		return (minecraft.Runtime{Cache: g.Cache, Client: minecraft.Client{Transport: gameHTTP.Transport}}).Install(ctx, work, report)
 	}
 	data := strings.Repeat("x", len(dependency))
 	client := &http.Client{Transport: transportFunc(func(req *http.Request) (*http.Response, error) {

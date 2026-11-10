@@ -2,26 +2,15 @@ package launcher
 
 import (
 	"context"
-	"errors"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"strconv"
-	"strings"
 
 	"github.com/CAUCraft/LXMCL/internal/account"
-	"github.com/CAUCraft/LXMCL/internal/i18n"
-	"github.com/CAUCraft/LXMCL/internal/instance"
-	"github.com/CAUCraft/LXMCL/internal/javaruntime"
-	launcherlog "github.com/CAUCraft/LXMCL/internal/log"
-	"github.com/CAUCraft/LXMCL/internal/process"
+	"github.com/CAUCraft/LXMCL/internal/minecraft"
 )
 
-type Running struct {
-	PID  int
-	Log  string
-	Done <-chan error
-}
+type Running = minecraft.Running
+
+var ErrRepairRequired = minecraft.ErrRepairRequired
+var ErrJavaRequired = minecraft.ErrJavaRequired
 
 func (g Game) Start(ctx context.Context, i Instance, settings Settings) (Running, error) {
 	return g.StartOnServer(ctx, i, settings, "")
@@ -53,133 +42,6 @@ func (g Game) start(ctx context.Context, i Instance, settings Settings, server s
 	return g.startProgress(ctx, i, settings, server, identity, station, nil)
 }
 
-func (g Game) startProgress(ctx context.Context, i Instance, settings Settings, server string, identity gameIdentity, station *StationSession, report func(Progress)) (Running, error) {
-	if err := i.Validate(); err != nil {
-		return Running{}, err
-	}
-	if err := i.Launch.Validate(); err != nil {
-		return Running{}, err
-	}
-	memory := i.Launch.MaxMemory(settings.Memory)
-	if err := instance.ValidateMemory(memory); err != nil {
-		return Running{}, err
-	}
-	m, cp, err := g.verifyInstalled(ctx, i)
-	libraryDir, launchVersion := filepath.Join(g.Cache, "libraries"), m.ID
-	if err == nil && i.UsesKnot() {
-		var profile knotRuntime
-		var libs []string
-		profile, libs, err = g.verifyKnot(ctx, i)
-		if err == nil {
-			cp = append(libs, cp...)
-			m.MainClass = profile.MainClass
-			m.Arguments.JVM = append(m.Arguments.JVM, profile.Arguments.JVM...)
-			m.Arguments.Game = append(m.Arguments.Game, profile.Arguments.Game...)
-		}
-	}
-	if err == nil && i.UsesInstaller() {
-		var profile forgeProfile
-		profile, err = g.readForge(i)
-		if err == nil {
-			var libs []string
-			libs, err = g.verifyForge(ctx, i, profile)
-			if err == nil {
-				cp = g.mergeForgeClasspath(m, profile, cp, libs)
-				m.MainClass = profile.MainClass
-				m.Arguments.JVM = append(m.Arguments.JVM, profile.Arguments.JVM...)
-				m.Arguments.Game = append(m.Arguments.Game, profile.Arguments.Game...)
-				launchVersion = profile.ID
-				libraryDir = filepath.Join(g.forgeDir(i), "libraries")
-			}
-		}
-	}
-	if err != nil {
-		if ctx.Err() != nil {
-			return Running{}, ctx.Err()
-		}
-		return Running{}, i18n.Error("common.wrapped_errors", ErrRepairRequired, err)
-	}
-	for _, path := range cp {
-		if strings.ContainsRune(path, os.PathListSeparator) {
-			return Running{}, i18n.Error("launch.cache_path_separator", os.PathListSeparator)
-		}
-	}
-	j, err := g.resolveJava(ctx, i.Launch.JavaExecutable(settings.JavaPath), m, report)
-	if err != nil {
-		if ctx.Err() != nil {
-			return Running{}, ctx.Err()
-		}
-		return Running{}, i18n.Error("common.wrapped_errors", ErrJavaRequired, err)
-	}
-	if err := ctx.Err(); err != nil {
-		return Running{}, err
-	}
-	natives := filepath.Join(i.GameDir, ".lxmcl-natives")
-	if err := os.MkdirAll(natives, 0755); err != nil {
-		return Running{}, i18n.Error("launch.runtime_dir_create_failed", err)
-	}
-	values := map[string]string{
-		"natives_directory": natives, "launcher_name": "LXMCL", "launcher_version": "0.2",
-		"classpath": strings.Join(cp, string(os.PathListSeparator)), "classpath_separator": string(os.PathListSeparator),
-		"library_directory": libraryDir,
-		"version_name":      launchVersion, "game_directory": i.GameDir, "assets_root": filepath.Join(g.Cache, "assets"),
-		"assets_index_name": m.AssetIndex.ID,
-		"version_type":      m.Type,
-		"user_properties":   "{}",
-	}
-	for key, value := range identity.Arguments() {
-		values[key] = value
-	}
-	jvm, err := gameArgs(m.Arguments.JVM, values, nil)
-	if err != nil {
-		return Running{}, i18n.Error("launch.jvm_args_failed", err)
-	}
-	if i.UsesInstaller() {
-		ignoreCachedVanillaJar(jvm, launchVersion)
-	}
-	game, err := clientArgs(m, values, i.Launch, server)
-	if err != nil {
-		return Running{}, i18n.Error("launch.client_args_failed", err)
-	}
-	args := append([]string{"-Xmx" + strconv.Itoa(memory) + "M"}, jvm...)
-	if station != nil {
-		extra, err := station.LaunchArgs(ctx, g.Cache)
-		if err != nil {
-			return Running{}, err
-		}
-		args = append(args, extra...)
-	}
-	if l := m.Logging.Client; l.Argument != "" {
-		args = append(args, strings.ReplaceAll(l.Argument, "${path}", filepath.Join(g.Cache, "assets", "log_configs", l.File.ID)))
-	}
-	args = append(append(args, m.MainClass), game...)
-	log, err := launcherlog.CreateGame(i.GameDir, launcherlog.GameHeader{
-		Version: i.Version, JavaPath: j.Path, JavaMajor: j.Major, MemoryMiB: memory,
-	})
-	if err != nil {
-		return Running{}, err
-	}
-	// The game process owns its own lifetime after Start, independent of the launcher window.
-	cmd := exec.Command(j.Path, args...)
-	process.HideConsole(cmd)
-	cmd.Dir, cmd.Stdout, cmd.Stderr = i.GameDir, log, log
-	cmd.Env = javaruntime.Environment(false)
-	if err := ctx.Err(); err != nil {
-		log.Close()
-		return Running{}, err
-	}
-	if err := cmd.Start(); err != nil {
-		log.Close()
-		return Running{}, i18n.Error("launch.process_start_failed", err)
-	}
-	done := make(chan error, 1)
-	go func() {
-		done <- errors.Join(cmd.Wait(), log.Close())
-		close(done)
-	}()
-	return Running{PID: cmd.Process.Pid, Log: log.Name(), Done: done}, nil
-}
-
 type gameIdentity = account.LaunchIdentity
 
 func launchIdentity(offline string, session *MinecraftSession) (gameIdentity, error) {
@@ -189,9 +51,10 @@ func launchIdentity(offline string, session *MinecraftSession) (gameIdentity, er
 	return account.OfflineIdentity(offline)
 }
 
-var (
-	// ErrRepairRequired indicates that cached files cannot be used to start the client.
-	ErrRepairRequired = i18n.Error("launch.repair_required")
-	// ErrJavaRequired indicates that the selected game needs a usable Java runtime.
-	ErrJavaRequired = i18n.Error("launch.java_required")
-)
+func (g Game) startProgress(ctx context.Context, i Instance, settings Settings, server string, identity gameIdentity, station *StationSession, report func(Progress)) (Running, error) {
+	options := minecraft.LaunchOptions{Settings: settings, Server: server, Identity: identity}
+	if station != nil {
+		options.PrepareJVM = func(ctx context.Context) ([]string, error) { return station.LaunchArgs(ctx, g.Cache) }
+	}
+	return g.runtime().Start(ctx, i, options, report)
+}
