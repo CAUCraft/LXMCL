@@ -4,43 +4,27 @@ import (
 	"context"
 	"errors"
 	"io"
-	"net/url"
 	"os"
 	"path/filepath"
 
-	"github.com/CAUCraft/LXMCL/internal/content"
 	"github.com/CAUCraft/LXMCL/internal/distribution"
 	"github.com/CAUCraft/LXMCL/internal/i18n"
-	"github.com/CAUCraft/LXMCL/internal/modpack"
 )
 
 func (g Game) DownloadResourceFile(ctx context.Context, kind ContentKind, version PackVersion, folder string, report func(Progress)) error {
-	f, ok := version.DownloadFile(kind)
-	u, err := url.Parse(f.URL)
-	if !ok || modrinthType(kind) == "" || err != nil || u.Hostname() != "cdn.modrinth.com" || !officialURL(u) {
-		return i18n.Error("resource.no_download")
-	}
-	a := distribution.Asset{URLs: []string{f.URL}, Size: f.Size, Algorithm: "sha512", Digest: f.Hashes.SHA512}
-	if a.Size <= 0 || !a.Valid(content.MaxSize) {
-		return i18n.Error("resource.size_or_sha512_invalid")
+	f, a, err := version.DownloadAsset(kind)
+	if err != nil {
+		return err
 	}
 	return g.saveDownload(ctx, a, f.Filename, folder, report)
 }
 
-func (r ModpackRelease) Downloadable() bool {
-	ext := ".mrpack"
-	if r.source == CurseForgeModpacks {
-		ext = ".zip"
-	}
-	return (r.source == ModrinthModpacks || r.source == CurseForgeModpacks) && !r.downloadBlocked &&
-		content.ValidName(r.Filename, ext) && r.asset.Size > 0 && r.asset.Valid(modpack.MaxArchiveSize)
-}
-
 func (g Game) DownloadModpackFile(ctx context.Context, release ModpackRelease, folder string, report func(Progress)) error {
-	if !release.Downloadable() {
+	a, ok := release.DownloadAsset()
+	if !ok {
 		return i18n.Error("modpack.folder_file_unavailable")
 	}
-	return g.saveDownload(ctx, release.asset, release.Filename, folder, report)
+	return g.saveDownload(ctx, a, release.Filename, folder, report)
 }
 
 func (g Game) saveDownload(ctx context.Context, a distribution.Asset, name, folder string, report func(Progress)) error {

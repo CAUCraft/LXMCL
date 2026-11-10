@@ -3,15 +3,13 @@ package launcher
 import (
 	"context"
 	"crypto/sha512"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
-	"net/url"
-	"slices"
 	"strings"
 
+	"github.com/CAUCraft/LXMCL/internal/catalog"
 	"github.com/CAUCraft/LXMCL/internal/content"
 	"github.com/CAUCraft/LXMCL/internal/i18n"
 	"github.com/CAUCraft/LXMCL/internal/transfer"
@@ -25,7 +23,7 @@ func downloadModrinth(ctx context.Context, i Instance, kind ContentKind, version
 	if _, _, err := kind.Format(i); err != nil {
 		return err
 	}
-	if kind == Mods && (!modrinthID.MatchString(version.ProjectID) || !modrinthID.MatchString(version.ID)) {
+	if kind == Mods && (!catalog.ValidModrinthID(version.ProjectID) || !catalog.ValidModrinthID(version.ID)) {
 		return i18n.Error("modrinth.mod_project_or_version_invalid")
 	}
 	if report == nil {
@@ -40,47 +38,13 @@ func downloadModrinth(ctx context.Context, i Instance, kind ContentKind, version
 	return nil
 }
 
-func (v PackVersion) compatible(i Instance, kind ContentKind) bool {
-	if !slices.Contains(v.GameVersions, i.Version) {
-		return false
-	}
-	return kind != Mods || slices.Contains(v.Loaders, modrinthModLoader(i)) ||
-		i.Quilt() && v.ProjectID == fabricAPIProject && slices.Contains(v.Loaders, "fabric")
-}
-
-func (v PackVersion) DownloadFile(kind ContentKind) (PackFile, bool) {
-	ext := ".zip"
-	if kind == Mods {
-		ext = ".jar"
-	}
-	valid := func(f PackFile) bool { return content.ValidName(f.Filename, ext) }
-	n := slices.IndexFunc(v.Files, func(f PackFile) bool { return f.Primary && valid(f) })
-	if n == -1 {
-		n = slices.IndexFunc(v.Files, valid)
-	}
-	if n == -1 {
-		return PackFile{}, false
-	}
-	return v.Files[n], true
-}
-
 func downloadModrinthFile(ctx context.Context, i Instance, kind ContentKind, v PackVersion, d *downloads) error {
-	if !v.compatible(i, kind) {
+	if !v.Compatible(i, kind) {
 		return i18n.Error("modrinth.resource_incompatible")
 	}
-	file, ok := v.DownloadFile(kind)
-	if !ok {
-		return i18n.Error("modrinth.version_file_missing")
-	}
-	u, err := url.Parse(file.URL)
-	if err != nil || u.Hostname() != "cdn.modrinth.com" || !officialURL(u) {
-		return i18n.Error("modrinth.download_source_invalid")
-	}
-	if digest, err := hex.DecodeString(file.Hashes.SHA512); err != nil || len(digest) != sha512.Size {
-		return i18n.Error("modrinth.sha512_invalid")
-	}
-	if file.Size <= 0 || file.Size > content.MaxSize {
-		return i18n.Error("modrinth.file_size_invalid")
+	file, _, err := v.DownloadAsset(kind)
+	if err != nil {
+		return err
 	}
 	existing, err := alreadyDownloaded(ctx, i, kind, file)
 	if err != nil || existing {

@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/CAUCraft/LXMCL/internal/catalog"
 	"github.com/CAUCraft/LXMCL/internal/distribution"
 	"github.com/CAUCraft/LXMCL/internal/i18n"
 	"github.com/CAUCraft/LXMCL/internal/modpack"
@@ -124,14 +125,14 @@ func TestModpackInstallIsIndependentAndVerified(t *testing.T) {
 			t.Fatalf("failure left files in the game root: %v, %v", entries, err)
 		}
 	}
-	err = g.installModpack(ctx, store, next, i, pack, curseForge{}, client, install, nil)
+	err = g.installModpack(ctx, store, next, i, pack, nil, client, install, nil)
 	if err == nil || !strings.Contains(err.Error(), i18n.Text("distribution.integrity_failed")) {
 		t.Fatalf("corrupt dependency accepted: %v", err)
 	}
 	verifyNoInstance()
 	data = dependency
 	canceled, cancel := context.WithCancel(ctx)
-	err = g.installModpack(canceled, store, next, i, pack, curseForge{}, client, install, func(p Progress) {
+	err = g.installModpack(canceled, store, next, i, pack, nil, client, install, func(p Progress) {
 		if p.Stage == i18n.Text("progress.extract_modpack_overrides") {
 			cancel()
 		}
@@ -143,11 +144,11 @@ func TestModpackInstallIsIndependentAndVerified(t *testing.T) {
 	verifyNoInstance()
 	// Exercise failure after the staged directory has been filled and validated.
 	unwritable := Store{Root: file}
-	if err := g.installModpack(ctx, unwritable, next, i, pack, curseForge{}, client, install, nil); err == nil {
+	if err := g.installModpack(ctx, unwritable, next, i, pack, nil, client, install, nil); err == nil {
 		t.Fatal("install with an invalid store unexpectedly succeeded")
 	}
 	verifyNoInstance()
-	if err := g.installModpack(ctx, store, next, i, pack, curseForge{}, client, install, nil); err != nil {
+	if err := g.installModpack(ctx, store, next, i, pack, nil, client, install, nil); err != nil {
 		t.Fatal(err)
 	}
 	loaded, err := store.Load()
@@ -165,7 +166,7 @@ func TestModpackInstallIsIndependentAndVerified(t *testing.T) {
 			t.Fatalf("non-client file installed: %s, %v", path, err)
 		}
 	}
-	if err := g.installModpack(ctx, store, next, i, pack, curseForge{}, client, install, nil); err == nil {
+	if err := g.installModpack(ctx, store, next, i, pack, nil, client, install, nil); err == nil {
 		t.Fatal("install overwrote the existing instance directory")
 	}
 }
@@ -231,12 +232,13 @@ func TestCurseForgeCatalogAndImport(t *testing.T) {
 		}
 		return fixtureResponse(http.StatusOK, []byte(json)), nil
 	})}
-	cf, ctx := curseForge{apiKey, api}, t.Context()
-	found, err := cf.search(ctx, "Curse pack", "1.21.1", 0)
+	catalogClient, ctx := catalog.Client{Transport: api.Transport}, t.Context()
+	cf := catalogClient.CurseForgeResolver(apiKey)
+	found, err := catalogClient.SearchModpacks(ctx, CurseForgeModpacks, apiKey, "Curse pack", "1.21.1", 0)
 	if err != nil || len(found.Projects) != 1 {
 		t.Fatalf("catalog = %+v, %v", found, err)
 	}
-	releases, _, err := cf.releases(ctx, found.Projects[0].ID, "1.21.1", 0)
+	releases, _, err := catalogClient.ListModpackReleases(ctx, found.Projects[0], apiKey, "1.21.1", 0)
 	if err != nil || len(releases) != 1 || releases[0].Unavailable != "" {
 		t.Fatalf("versions = %+v, %v", releases, err)
 	}
@@ -254,7 +256,11 @@ func TestCurseForgeCatalogAndImport(t *testing.T) {
 		}
 	})}
 	g := Game{Cache: t.TempDir()}
-	downloaded, err := (distribution.Cache{Root: g.Cache, Client: client}).Ensure(ctx, releases[0].asset)
+	asset, ok := releases[0].DownloadAsset()
+	if !ok {
+		t.Fatal("release missing download")
+	}
+	downloaded, err := (distribution.Cache{Root: g.Cache, Client: client}).Ensure(ctx, asset)
 	if err != nil {
 		t.Fatal(err)
 	}

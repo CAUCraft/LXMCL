@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/CAUCraft/LXMCL/internal/catalog"
 	"github.com/CAUCraft/LXMCL/internal/distribution"
 	"github.com/CAUCraft/LXMCL/internal/i18n"
 	"github.com/CAUCraft/LXMCL/internal/modpack"
@@ -17,18 +18,18 @@ func (g Game) InstallModpack(ctx context.Context, store Store, next State, i Ins
 		return g.InstallWithJava(ctx, work, next.Settings.JavaPath, report)
 	}
 	return tasks.Run(ctx, func(ctx context.Context, progress func(Progress)) error {
-		return g.installModpack(ctx, store, next, i, pack, newCurseForge(key), nil, install, progress)
+		return g.installModpack(ctx, store, next, i, pack, (catalog.Client{}).CurseForgeResolver(key), nil, install, progress)
 	}, report)
 }
 
-func (g Game) installModpack(ctx context.Context, store Store, next State, i Instance, pack PreparedModpack, cf curseForge,
+func (g Game) installModpack(ctx context.Context, store Store, next State, i Instance, pack PreparedModpack, resolver modpack.Resolver,
 	client *http.Client, install func(context.Context, Instance, func(Progress)) error, report func(Progress)) error {
 	saved, exists := next.Find(i.ID)
 	if !exists || saved != i {
 		return i18n.Error("modpack.instance_changed")
 	}
 	return modpack.Install(ctx, pack, modpack.InstallOptions{
-		Target: i, Cache: distribution.Cache{Root: g.Cache, Client: client}, Resolver: cf,
+		Target: i, Cache: distribution.Cache{Root: g.Cache, Client: client}, Resolver: resolver,
 		InstallGame: install, Commit: func() error { return store.Save(next) },
 	}, report)
 }

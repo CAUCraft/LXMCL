@@ -157,7 +157,7 @@ func TestPatchedModpackInstallAndLaunch(t *testing.T) {
 			install := func(ctx context.Context, work Instance, report func(Progress)) error {
 				return game.installWithJava(ctx, work, next.Settings.JavaPath, report, &downloads{http: client})
 			}
-			if err := game.installModpack(ctx, store, next, i, pack, curseForge{}, client, install, nil); err != nil {
+			if err := game.installModpack(ctx, store, next, i, pack, nil, client, install, nil); err != nil {
 				t.Fatal(err)
 			}
 			state, err := store.Load()

@@ -11,6 +11,7 @@ LXMCL 使用 Go、MyGo 原生窗口和 Lobe MyGo 组件。主包负责界面状�
 | `internal/instance` | 实例配置、加载器和启动参数校验，不执行网络或 UI 操作。 |
 | `internal/javaruntime` | `Probe` / `Find` 探测 Java；`Manager.Local` 只检查本地；`Resolve` 按需求选取或安装；`Ensure` 校验并安装受管运行时。 |
 | `internal/content` | `Kind` 定义资源格式；`List` / `Import` / `SetEnabled` / `WriteVerified` 管理实例资源文件，`ValidateArchive` 统一检查新文件和复用文件的格式，不依赖下载平台。 |
+| `internal/catalog` | `Client` 查询 Modrinth / CurseForge 项目、版本、前置和图标；`DownloadAsset` 返回可校验的文件描述；`CurseForgeResolver` 提供整合包依赖解析。 |
 | `internal/distribution` | `Asset` 描述来源、大小和摘要；`Cache.Ensure` 下载并校验平台文件，管理来源、重定向和可复用缓存。 |
 | `internal/modpack` | `Prepare` / `PrepareLocal` 生成不可修改的预览；`Install` 解析清单、安装到临时目录、发布文件并提交实例，失败时回滚。 |
 | `internal/tasks` | `Run` 管理一次执行的进度生命周期；`Record` 保存任务目标与结果；`Journal` 串行更新历史。 |
@@ -22,7 +23,7 @@ LXMCL 使用 Go、MyGo 原生窗口和 Lobe MyGo 组件。主包负责界面状�
 | `internal/log` | 游戏与加载器安装器的日志路径、写入文件创建及游戏日志预览。 |
 | `internal/i18n` | 从嵌入式 JSON 按键读取后端文案，保留错误链与语言回退。 |
 
-依赖向下流动：桌面调用应用编排，编排组合领域模块和基础设施。`account`、`content`、`distribution`、`modpack`、`javaruntime`、`tasks`、`instance` 等包不反向导入 `launcher`。任务记录可引用资源类型，不能引用桌面组件或启动器实例状态。`launcher` 的公开类型别名和薄包装保留现有调用接口，协议和文件操作交给对应模块。
+依赖向下流动：桌面调用应用编排，编排组合领域模块和基础设施。`account`、`catalog`、`content`、`distribution`、`modpack`、`javaruntime`、`tasks`、`instance` 等包不反向导入 `launcher`。任务记录可引用资源类型，不能引用桌面组件或启动器实例状态。`launcher` 的公开类型别名和薄包装保留现有调用接口，协议和文件操作交给对应模块。
 
 ```mermaid
 flowchart TD
@@ -32,6 +33,11 @@ flowchart TD
     Launcher --> Account[account]
     Launcher --> Java[javaruntime]
     Launcher --> Content[content]
+    Launcher --> Catalog[catalog 项目与版本查询]
+    Catalog --> Content
+    Catalog --> Instance
+    Catalog --> Modpack
+    Catalog --> Distribution
     Launcher --> Modpack[modpack]
     Launcher --> Distribution[distribution]
     Modpack --> Distribution
@@ -85,7 +91,13 @@ flowchart TD
 
 实例使用独立游戏目录，共享经过官方哈希和大小校验的下载缓存。Minecraft 目录、元数据、安装校验、参数和进程启动分文件维护；Forge 安装器、运行库与配置，以及整合包清单和实例安装流程分别维护。
 
-Modrinth / CurseForge 适配器负责查询、版本选择和下载来源；`content` 负责 JAR / ZIP 格式、文件名、实例目录访问、启停和导入校验。已有资源同时通过大小、摘要和加载器标记检查后才能复用；失败会保留原文件。添加资源只安装选中文件，必要前置由用户选择。
+`catalog` 中的 Modrinth / CurseForge 适配器负责查询、版本选择和下载来源；`content` 负责 JAR / ZIP 格式、文件名、实例目录访问、启停和导入校验。已有资源同时通过大小、摘要和加载器标记检查后才能复用；失败会保留原文件。添加资源只安装选中文件，必要前置由用户选择。
+
+`catalog.Client` 的零值可用，通过 `Transport` 注入网络传输；超时、API 主机、凭据和重定向策略归模块维护。API 请求不跟随重定向，完整 JSON 响应最多 8 MiB，取消和限流等待复用 `transfer`。CurseForge 密钥仅由该 API 的请求及解析器持有，图标和文件请求不接收密钥。`.env` 读取、实例选择、状态保存和下载任务仍属于 `launcher`。
+
+资源目录的 `PackProject` / `PackVersion` / `PackFile` 保持原 JSON 字段，`ResourceFilter` 表示查询条件。`DownloadFile` 供界面选择展示文件，`DownloadAsset` 校验已选文件的来源、正大小及 SHA-512；目录列表与作者指定版本仅提供可校验的文件，不会因主文件无效而改用其他附件。前置浏览只查询元数据：在实例内验证原实例的版本和加载器，在独立浏览时尊重作者指定版本；未指定版本的 Fabric API 仍可回退到 Quilt API 包。
+
+`ModpackRelease` 的来源、文件描述和平台下载限制由目录模块持有。`DownloadAsset` 返回独立描述，修改展示文案或返回的 URL 列表不能改变平台限制。游戏或加载器不支持时仍允许保存可校验归档；安装入口还需通过整合包解析和实例校验。图标接口自行注册 PNG、JPEG、GIF 和 WebP 解码器，读取上限 2 MiB、尺寸上限 2048 × 2048，输出 96 × 96 图像，不依赖桌面初始化。
 
 `distribution.Asset` 支持 SHA-512、SHA-1 和 MD5，保留 `cache/modpacks/<algorithm>/<digest>` 路径；每次复用重新读取并校验文件，下载成功后才以临时文件发布。`Cache.Client` 可注入网络传输和超时，来源与重定向限制仍由模块执行。CurseForge CDN 的重定向不能跳出其 CDN 域名集合，API 密钥不参与文件下载。
 
@@ -99,6 +111,6 @@ Forge / NeoForge 官方客户端安装器在独立缓存临时目录运行，不
 
 ## 扩展约定与参考
 
-增加下载平台时实现查询与文件描述适配，复用 `content` 和 `distribution`；增加整合包格式时在 `modpack` 中实现解析并复用计划校验和安装事务；增加后台操作时提交独立目标快照，复用 `tasks`，在所属业务模块决定重试条件；新增日志格式或输出去向进入 `log`；新增文案同时维护中英文 JSON 的键和格式参数。接口由实际调用需求决定，目前没有插件 SDK、任务恢复调度器或账号提供者注册框架。
+增加下载平台时在 `catalog` 中实现查询与文件描述适配，复用 `content` 和 `distribution`；增加整合包格式时在 `modpack` 中实现解析并复用计划校验和安装事务；增加后台操作时提交独立目标快照，复用 `tasks`，在所属业务模块决定重试条件；新增日志格式或输出去向进入 `log`；新增文案同时维护中英文 JSON 的键和格式参数。接口由实际调用需求决定，目前没有插件 SDK、任务恢复调度器或账号提供者注册框架。
 
 设计参考了 [HMCL 的 Mojang Java 安装任务](https://github.com/HMCL-dev/HMCL/blob/main/HMCLCore/src/main/java/org/jackhuang/hmcl/download/java/mojang/MojangJavaDownloadTask.java)中运行时安装的独立职责，以及 [Prism Launcher 的任务接口](https://github.com/PrismLauncher/PrismLauncher/blob/develop/launcher/tasks/Task.h)中进度、取消与结束状态的区分。这里使用 Go context、明确的请求/结果和组合实现，未引入它们的任务类继承结构或复制实现源码。

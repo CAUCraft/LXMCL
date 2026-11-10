@@ -130,38 +130,6 @@ func TestModrinthPackVerifiesContentAndTargetsInstance(t *testing.T) {
 	}
 }
 
-func TestModrinthSearchPaginatesAndUsesCorrectCategory(t *testing.T) {
-	var got []string
-	d := &downloads{http: &http.Client{Transport: transportFunc(func(req *http.Request) (*http.Response, error) {
-		q := req.URL.Query()
-		if req.URL.Path != "/v2/search" || q.Get("query") != "test" || q.Get("index") != "updated" ||
-			q.Get("limit") != "20" || q.Get("offset") != "40" || !strings.Contains(q.Get("facets"), "versions:1.21.1") {
-			t.Fatalf("unexpected search request: %s", req.URL)
-		}
-		got = append(got, q.Get("facets"))
-		return fixtureResponse(200, []byte(`{"total_hits":54,"hits":[{"project_id":"valid","title":"Demo","description":"Pack"},{"project_id":"../bad","title":"Invalid"}]}`)), nil
-	})}}
-	for _, tc := range []struct {
-		kind          ContentKind
-		loader, facet string
-	}{
-		{Mods, LoaderFabric, "categories:fabric"},
-		{Mods, LoaderForge, "categories:forge"},
-		{Mods, LoaderNeoForge, "categories:neoforge"},
-		{Mods, LoaderQuilt, "categories:quilt"},
-		{ShaderPacks, LoaderFabric, "project_type:shader"},
-	} {
-		result, err := searchModrinth(t.Context(), Instance{Version: "1.21.1", Loader: tc.loader}, tc.kind, " test ", "updated", 2, d)
-		if err != nil || result.Total != 54 || len(result.Hits) != 1 || result.Hits[0].Description != "Pack" {
-			t.Fatalf("unexpected result: %+v / %v", result, err)
-		}
-		facets := got[len(got)-1]
-		if !strings.Contains(facets, tc.facet) || tc.kind == ShaderPacks && strings.Contains(facets, "categories:") {
-			t.Fatalf("incompatible search facets: %s", facets)
-		}
-	}
-}
-
 func TestShaderPackRequiresShadersDirectoryAndFabricInstance(t *testing.T) {
 	i := Instance{GameDir: t.TempDir(), Loader: "Vanilla"}
 	source := filepath.Join(t.TempDir(), "test.zip")
