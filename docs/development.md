@@ -21,6 +21,10 @@ go tool mygo build -platform windows/amd64
 
 「下载 → 游戏版本」从官方目录选版本，再选原版或 Fabric。「安装实例」会保存配置并下载游戏文件，不启动 Java，也不切换已有的启动目标。失败或取消后可在下载任务中重试。
 
+「下载 → 整合包」从 Modrinth 或 CurseForge 选项目和版本，也可用系统文件窗口导入 Modrinth `.mrpack` 或 CurseForge 导出的 `.zip`。确认名称后下载必需的客户端依赖并应用包内文件；选装文件和服务器专用文件默认跳过。整合包与游戏文件校验完毕后才登记新实例。取消或失败后，可返回安装页重试，已校验的下载可以复用。
+
+CurseForge 在线查询和下载依赖需要 [CurseForge API Key](https://console.curseforge.com/)。可从页面输入（只保留到本次退出），也可在启动前设置 `LXMCL_CURSEFORGE_API_KEY` 或 `CURSEFORGE_API_KEY`。如果作者未开放某个必需文件的第三方下载，安装会报告文件并停止。
+
 Modrinth 按目标实例的游戏版本搜索，模组另按 Fabric 筛选。资源下载按 SHA-512 校验，重试绑定原实例、配置修订和资源版本。模组 JAR、资源包 ZIP 和光影 ZIP 分别需要 `fabric.mod.json`、`pack.mcmeta` 和 `shaders/` 内容。使用光影需要 Iris 等兼容模组。Fabric 加载器与库来自 Fabric Meta 和 Maven。
 
 存档备份位于数据目录的 `backups/`，恢复支持包含 `世界名/level.dat` 的 ZIP，不覆盖已有世界。

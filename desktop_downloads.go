@@ -23,6 +23,7 @@ import (
 
 const (
 	downloadGame = iota
+	downloadModpacks
 	downloadMods
 	downloadResourcePacks
 	downloadShaders
@@ -31,6 +32,7 @@ const (
 
 var downloadTabs = []nav.TabItem{
 	{Label: "游戏版本", Icon: lucide.Package()},
+	{Label: "整合包", Icon: lucide.Archive()},
 	{Label: "模组", Icon: lucide.Puzzle()},
 	{Label: "资源包", Icon: lucide.Layers()},
 	{Label: "光影包", Icon: lucide.Sun()},
@@ -67,6 +69,8 @@ func (a *desktop) downloads(c *ui.Context) {
 		switch a.downloadPage {
 		case downloadGame:
 			a.installPage(c.Key("install-game"))
+		case downloadModpacks:
+			a.modpackPage(c.Key("install-modpack"))
 		case downloadTasks:
 			a.tasks(c.Key("downloads-history"))
 		default:

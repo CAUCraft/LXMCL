@@ -132,6 +132,7 @@ type desktop struct {
 	content                                contentView
 	contentRequest                         uint64
 	install                                installView
+	modpacks                               modpackView
 	packs                                  map[launcher.ContentKind]*packBrowser
 	serverName, serverAddress, serverError string
 	serverStatus                           map[string]*serverCheck

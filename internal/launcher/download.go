@@ -268,7 +268,7 @@ type fileDownload struct {
 	file artifact
 }
 
-func batch(ctx context.Context, files []fileDownload, work func(context.Context, fileDownload) error, progress func(int)) error {
+func batch[T any](ctx context.Context, files []T, work func(context.Context, T) error, progress func(int)) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	var wg sync.WaitGroup

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"archive/zip"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -8,6 +10,81 @@ import (
 	"github.com/CAUCraft/LXMCL/internal/launcher"
 	"github.com/egoist/mygo/ui"
 )
+
+func TestModpackWorkspaceShowsSourcesAndNewInstanceConfirmation(t *testing.T) {
+	a, tt := testDesktop(t)
+	tt.SetSize(820, 530)
+	tt.SetDark(true)
+	p := &a.modpacks
+	p.searched, p.keyLoaded = true, true
+	project := launcher.ModpackProject{ID: "demo", Name: "飞行测试包", Author: "Flight Lab",
+		Source: launcher.ModrinthModpacks, Summary: "Minecraft 客户端整合包"}
+	p.results = launcher.ModpackResults{Projects: []launcher.ModpackProject{project}, Total: 1}
+	p.project = project
+	p.releases = []launcher.ModpackRelease{
+		{ID: "fabric", Title: "飞行测试包 1.0", Games: []string{"1.21.1"}, Loaders: []string{"fabric"}, Channel: "release"},
+		{ID: "forge", Title: "飞行测试包 Forge", Games: []string{"1.21.1"}, Loaders: []string{"forge"}, Unavailable: "当前仅支持原版和 Fabric 整合包"},
+	}
+	for _, label := range []string{"下载", "整合包", "飞行测试包 1.0"} {
+		if err := tt.Click(label); err != nil {
+			t.Fatal(err)
+		}
+	}
+	projectRow, hasProject := tt.Find(project.Name)
+	release, hasRelease := tt.Find("飞行测试包 1.0")
+	if !hasProject || !hasRelease || projectRow.X+projectRow.W >= release.X || p.releaseID != "fabric" {
+		t.Fatalf("expected separate project and version lists: %+v %+v / %q", projectRow, release, p.releaseID)
+	}
+	tt.Advance(300 * time.Millisecond)
+	capture(t, tt, "download-modpacks-online")
+	for _, label := range []string{"CurseForge", "设置 API Key…"} {
+		if err := tt.Click(label); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !p.keyOpen {
+		t.Fatal("CurseForge is missing a path to enter the API key")
+	}
+	tt.Key(0, ui.KeyEscape)
+	if p.keyOpen {
+		t.Fatal("API key dialog did not close on Escape")
+	}
+	if err := tt.Click("本地导入"); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(t.TempDir(), "flight.mrpack")
+	f, err := os.Create(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := zip.NewWriter(f)
+	entry, err := w.Create("modrinth.index.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = entry.Write([]byte(`{"formatVersion":1,"game":"minecraft","name":"飞行测试包","versionId":"1.0","dependencies":{"minecraft":"1.21.1","fabric-loader":"0.16.14"}}`)); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	p.prepared, err = launcher.PrepareLocalModpack(t.Context(), file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.name, p.archive = p.prepared.Info().Name, filepath.Base(file)
+	tt.Frame()
+	tt.Advance(300 * time.Millisecond)
+	picker, hasPicker := tt.Find("选择整合包文件…")
+	install, hasInstall := tt.Find("安装整合包")
+	if !hasPicker || !hasInstall || picker.X+picker.W >= install.X || install.Y+install.H > 530 || a.state.Selected != 1 {
+		t.Fatalf("import controls don't fit or changed the launch selection: %+v %+v", picker, install)
+	}
+	capture(t, tt, "download-modpacks-import")
+}
 
 func TestDownloadPageSelectsVersionAndLoader(t *testing.T) {
 	a, tt := testDesktop(t)

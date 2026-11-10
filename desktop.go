@@ -86,6 +86,7 @@ const (
 func (a *desktop) view(c *ui.Context) {
 	theme.Apply(c)
 	if a.ready && !a.form.open && !a.logOpen && !a.licensesOpen &&
+		!a.modpacks.keyOpen &&
 		(a.stationLogin == nil || !a.stationLogin.open) &&
 		(a.microsoft == nil || !a.microsoft.open) {
 		if mods, key, ok := display.HotkeyBinding(searchHotkey, display.HotkeyAuto); ok && c.Shortcut(mods, key) {
@@ -150,6 +151,7 @@ func (a *desktop) view(c *ui.Context) {
 		a.licensesDialog(c.Key("third-party-licenses"))
 		a.microsoftLoginDialog(c.Key("microsoft-login"))
 		a.stationLoginDialog(c.Key("station-login"))
+		a.curseKeyDialog(c.Key("curseforge-api-key"))
 	})
 }
 
