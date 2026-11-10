@@ -20,7 +20,7 @@ LXMCL 使用 Go、MyGo 原生窗口和 Lobe MyGo 组件。主包负责界面状�
 | `internal/server` | `Address` 规范化地址；`Client.Ping` 查询 Java 服务器状态，DNS 与连接方式可注入，地址规则、连接生命周期和协议解析分文件维护。 |
 | `internal/saves` | `Backup` / `Restore` 管理世界归档；文件规划、路径规则、ZIP 读写和发布分别维护，`BackupsDir` 保留原备份布局。 |
 | `internal/transfer` | `Artifact.Check` 校验文件，`Ensure` 复用或下载替换缓存；元数据、流式校验与下载编排分开。`Batch` 管理并发与取消，`Retry` 统一有限次数的传输重试与服务端等待时间。 |
-| `internal/storage` | 文件读写、路径校验及有大小限制的完整归档 JSON 读取；`PublishNew` 在已打开目录内准备新文件并以不覆盖方式发布。 |
+| `internal/storage` | 文件读写、路径校验及有大小限制的完整归档 JSON 读取；`PublishNew` 发布新文件，`ReplaceFile` 创建或替换文件，共用临时文件准备、同步与清理。 |
 | `internal/process` | 平台进程属性；进程的业务生命周期由调用方管理。 |
 | `internal/log` | 游戏与加载器安装器的日志路径、写入文件创建及游戏日志预览。 |
 | `internal/i18n` | 从嵌入式 JSON 按键读取后端文案，保留错误链与语言回退。 |
@@ -65,9 +65,11 @@ flowchart TD
     Saves --> Storage
     Saves --> Transfer
     Tasks --> Content
+    Tasks --> Storage
     Content --> Instance
     Content --> Distribution
     Content --> Transfer[transfer]
+    Transfer --> Storage
     Content --> Storage
     Java --> Transfer
     Java --> Process[process]
@@ -148,7 +150,7 @@ flowchart TD
 
 `transfer.Artifact.Check(ctx, file, unknownLimit)` 将 SHA-1 与大小约束绑定在同一个文件描述内，调用者无需先解析摘要再传回校验函数。缺失或字节不匹配返回 `false, nil`，元数据、文件类型、I/O 和取消问题返回错误；本地校验不要求 URL 或元数据路径。只有 `Size == UnknownSize` 时才使用非负且小于 `MaxInt64` 的上限，恰好达到上限合法，已知大小按声明长度校验。`Checksum` 保留用于元数据检查和摘要缓存命名。
 
-`artifact.go` 定义元数据，`verify.go` 统一缓存读取与下载复制的有界校验，`ensure.go` 编排缓存复用、取流和替换。每次读取或重试创建独立哈希状态；下载失败、校验失败或取消保留旧缓存，摘要不符继续保留 `ErrMismatch` 身份。`Ensure` 使用原有 `.download-*` 临时文件与替换语义，来源、重定向和重试由 Minecraft / Java 下载适配器管理；调用方串行修改同一目标。
+`artifact.go` 定义元数据，`verify.go` 统一缓存读取与下载复制的有界校验，`ensure.go` 编排缓存复用、取流和替换。每次读取或重试创建独立哈希状态；下载失败、校验失败或取消保留旧缓存，摘要不符继续保留 `ErrMismatch` 身份。`Ensure` 将临时文件和替换交给 `storage.ReplaceFile`，来源、重定向和重试由 Minecraft / Java 下载适配器管理；调用方串行修改同一目标。
 
 `catalog` 中的 Modrinth / CurseForge 适配器负责查询、版本选择和下载来源；`content` 负责 JAR / ZIP 格式、文件名、实例目录访问、启停和导入校验。已有资源同时通过大小、摘要和加载器标记检查后才能复用；失败会保留原文件。添加资源只安装选中文件，必要前置由用户选择。
 
@@ -165,6 +167,10 @@ flowchart TD
 `Cache.Export` 在下载前打开选定目录，复用缓存后再次校验实际复制字节，发布成功才报告完成。`launcher` 只选择文件描述并翻译进度。实例资源的 `Install` 与 `WriteVerified` 共用私有 `publishResource`，统一归档标记、禁用冲突和发布；所有新资源与文件夹下载都通过 `storage.PublishNew` 发布：先写入同目录随机 `.lxmcl-*.part`，回调完成校验，再同步、关闭写入文件并原子创建最终名称。同名文件、目录和符号链接均保留；准备失败或取消只清理本次临时文件，不删除最终名称。
 
 发布目标始终基于已打开目录。Windows 使用原生句柄重命名并禁用覆盖，不依赖硬链接；其他平台使用同目录硬链接创建最终名称，再清理临时名称，不支持硬链接的文件系统会返回错误。进程在发布前退出可能留下 `.part`，资源列表不会将其视为 JAR / ZIP，重试使用新的临时名称；不自动删除其他操作留下的临时文件。这里保证文件可见性，不承诺突然断电时的目录持久性。Windows 接口见 [NtSetInformationFile](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ntsetinformationfile) 与 [FILE_RENAME_INFORMATION](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/ns-ntifs-_file_rename_information)。
+
+`ReplaceFile` 负责允许覆盖的缓存、配置和凭据写入：接收已打开目录、单个本机文件名、权限与准备回调，准备完成并通过同步、关闭和取消检查后才以 `Root.Rename` 提交。`transfer.Artifact.Ensure`、`distribution.Cache.Ensure` 和 `WriteFile` 共用该接口；任务历史在自身完成 JSON 大小检查及 `0700` 目录创建后复用 `WriteFile`。原有路径和 `0600` 文件权限保持不变，临时名称统一为 `.lxmcl-*.part`；`WriteFile` 保留原签名及本机文件名能力。
+
+两种提交方式共用私有文件生命周期，准备回调只写入并验证内容，不关闭或保留句柄；提交方式负责关闭与最终取消检查，以保留 Windows 新文件发布所需的句柄。失败只清理本次临时文件，已经成功提交后不因迟到取消改报失败。同一目标的修改由调用方串行。下载缓存现在也执行文件 `Sync`，大批量下载的同步开销尚未做基准测量。
 
 资源写入在复制前和归档校验后检查对应 `.disabled` 文件，保留已有禁用资源。同实例内的资源操作仍由调用方串行；启用与禁用两个名称无法作为一对原子检查，不保证与外部进程同时启停资源的事务隔离。
 

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 
 	"github.com/CAUCraft/LXMCL/internal/i18n"
+	"github.com/CAUCraft/LXMCL/internal/storage"
 )
 
 // Ensure reuses verified bytes or downloads a replacement into a temporary file.
@@ -27,22 +28,18 @@ func (a Artifact) Ensure(ctx context.Context, file string, unknownLimit int64, f
 	if err := os.MkdirAll(filepath.Dir(file), 0755); err != nil {
 		return err
 	}
+	root, err := os.OpenRoot(filepath.Dir(file))
+	if err != nil {
+		return err
+	}
+	defer root.Close()
 	return fetch(ctx, a.URL, func(ctx context.Context, body io.Reader) error {
-		f, err := os.CreateTemp(filepath.Dir(file), ".download-*")
-		if err != nil {
-			return err
-		}
-		defer os.Remove(f.Name())
-		_, err = v.copy(ctx, f, body)
-		if err = errors.Join(err, f.Close()); err != nil {
+		return storage.ReplaceFile(ctx, root, filepath.Base(file), 0600, func(f *os.File) error {
+			_, err := v.copy(ctx, f, body)
 			if errors.Is(err, ErrMismatch) {
 				return i18n.Error("common.context_error", filepath.Base(file), err)
 			}
 			return err
-		}
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		return os.Rename(f.Name(), file)
+		})
 	})
 }

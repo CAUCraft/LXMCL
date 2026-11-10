@@ -2,7 +2,6 @@ package distribution
 
 import (
 	"context"
-	"errors"
 	"io"
 	"net/http"
 	"os"
@@ -10,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/CAUCraft/LXMCL/internal/i18n"
+	"github.com/CAUCraft/LXMCL/internal/storage"
 )
 
 // Cache stores verified files by digest. Root is the application cache directory.
@@ -43,19 +43,15 @@ func (c Cache) Ensure(ctx context.Context, a Asset) (string, error) {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return "", err
 	}
-	err := a.Fetch(ctx, c.Client, func(ctx context.Context, reader io.Reader) error {
-		f, err := os.CreateTemp(dir, ".download-*")
-		if err != nil {
-			return err
-		}
-		defer os.Remove(f.Name())
-		if err := errors.Join(a.CopyVerified(ctx, f, reader), f.Close()); err != nil {
-			return err
-		}
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		return os.Rename(f.Name(), path)
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return "", err
+	}
+	defer root.Close()
+	err = a.Fetch(ctx, c.Client, func(ctx context.Context, reader io.Reader) error {
+		return storage.ReplaceFile(ctx, root, filepath.Base(path), 0600, func(f *os.File) error {
+			return a.CopyVerified(ctx, f, reader)
+		})
 	})
 	if err != nil {
 		return "", err

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 
 	"github.com/CAUCraft/LXMCL/internal/i18n"
+	"github.com/CAUCraft/LXMCL/internal/storage"
 )
 
 const maxHistorySize = 2 << 20
@@ -60,17 +61,5 @@ func Save(root string, records []Record) error {
 	if err := os.MkdirAll(root, 0700); err != nil {
 		return err
 	}
-	f, err := os.CreateTemp(root, ".lxmcl-tasks-*")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(f.Name())
-	_, err = f.Write(data)
-	if err == nil {
-		err = f.Sync()
-	}
-	if err := errors.Join(err, f.Close()); err != nil {
-		return err
-	}
-	return os.Rename(f.Name(), filepath.Join(root, "tasks.json"))
+	return storage.WriteFile(filepath.Join(root, "tasks.json"), data)
 }

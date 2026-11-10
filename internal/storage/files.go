@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -28,17 +29,14 @@ func WriteFile(path string, data []byte) error {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
-	f, err := os.CreateTemp(dir, ".lxmcl-*")
+	root, err := os.OpenRoot(dir)
 	if err != nil {
 		return err
 	}
-	defer os.Remove(f.Name())
-	_, err = f.Write(data)
-	if err == nil {
-		err = f.Sync()
-	}
-	if err = errors.Join(err, f.Close()); err != nil {
+	defer root.Close()
+	_, name := filepath.Split(path)
+	return ReplaceFile(context.Background(), root, name, 0600, func(file *os.File) error {
+		_, err := file.Write(data)
 		return err
-	}
-	return os.Rename(f.Name(), path)
+	})
 }
