@@ -97,6 +97,24 @@ func TestNeoForgeCancelStopsBeforeTryingAnotherSource(t *testing.T) {
 	}
 }
 
+func TestNeoForgeRetriesTemporaryTrustedChecksumFailure(t *testing.T) {
+	const path = "net/neoforged/neoforge/21.1.265/neoforge-21.1.265-installer.jar"
+	sha := fmt.Sprintf("%x", sha1.Sum([]byte("verified")))
+	var visited []string
+	d := &downloads{http: &http.Client{Transport: transportFunc(func(req *http.Request) (*http.Response, error) {
+		visited = append(visited, req.URL.String())
+		if req.URL.String() == neoCDN+path+".sha1" && len(visited) == 4 {
+			return fixtureResponse(http.StatusOK, []byte(sha)), nil
+		}
+		return nil, context.DeadlineExceeded
+	})}}
+	got, err := d.fetchSHA1(t.Context(), neoMaven+path)
+	want := []string{neoMaven + path + ".sha1", neoCDN + path + ".sha1", neoMaven + path + ".sha1", neoCDN + path + ".sha1"}
+	if err != nil || got != sha || !slices.Equal(visited, want) {
+		t.Fatalf("trusted checksum retry failed: %q %v (%v)", got, err, visited)
+	}
+}
+
 func TestFabricAndForgeMirrorOnlyVerifiedFiles(t *testing.T) {
 	for _, repo := range []string{fabricMaven, forgeMaven} {
 		t.Run(repo, func(t *testing.T) {

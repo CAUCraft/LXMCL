@@ -65,8 +65,9 @@ func (d *downloads) fetch(ctx context.Context, src string, consume func(context.
 		origin = ""
 		for _, base := range []string{fabricMaven, forgeMaven} {
 			name, ok := strings.CutPrefix(src, base)
+			artifactPath := strings.TrimSuffix(name, ".sha1")
 			if ok && safeModpackPath(name) && !strings.ContainsAny(name, "%?#") &&
-				(strings.HasSuffix(name, ".jar") || strings.HasSuffix(name, ".zip")) {
+				(strings.HasSuffix(artifactPath, ".jar") || strings.HasSuffix(artifactPath, ".zip")) {
 				path, origin = name, base
 				break
 			}
@@ -88,8 +89,10 @@ func (d *downloads) fetch(ctx context.Context, src string, consume func(context.
 		client.Transport = mavenTransport
 	}
 	allowed := func(u *url.URL) bool {
-		return mavenRouteURL(u, path, origin, neo) && (!checksum ||
-			(u.Hostname() == "maven.neoforged.net" || u.Hostname() == "neoforged.forgecdn.net"))
+		if !mavenRouteURL(u, path, origin, neo) {
+			return false
+		}
+		return !checksum || u.String() == origin+path || (neo && u.String() == neoCDN+path)
 	}
 	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 		if len(via) >= 5 || !allowed(req.URL) {
@@ -115,7 +118,9 @@ func (d *downloads) fetch(ctx context.Context, src string, consume func(context.
 		routes = append(slices.Clone(routes[1:]), routes[0])
 	}
 	var failures []error
-	for _, base := range routes {
+	firstPass := len(routes)
+	for index := 0; index < len(routes); index++ {
+		base := routes[index]
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -155,6 +160,13 @@ func (d *downloads) fetch(ctx context.Context, src string, consume func(context.
 			d.mu.Unlock()
 		}
 		failures = append(failures, fmt.Errorf("%s：%w", strings.TrimSuffix(base, "/"), err))
+		// Try the next trusted checksum source before retrying a temporary failure.
+		if checksum && index < firstPass && retryable(err) {
+			routes = append(routes, base)
+		}
+	}
+	if checksum {
+		return fmt.Errorf("无法从可信来源读取 Maven 校验值：%w", errors.Join(failures...))
 	}
 	return fmt.Errorf("Maven 仓库和镜像均未提供可校验的文件：%w", errors.Join(failures...))
 }
