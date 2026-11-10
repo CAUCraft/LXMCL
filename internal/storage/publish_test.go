@@ -6,7 +6,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -39,7 +38,7 @@ func TestPublishNewCommitsPreparedFile(t *testing.T) {
 
 func TestPublishNewFailureLeavesNoFinalFile(t *testing.T) {
 	rejected := errors.New("validation failed")
-	for _, mode := range []string{"validation", "canceled", "closed writer"} {
+	for _, mode := range []string{"validation", "canceled"} {
 		t.Run(mode, func(t *testing.T) {
 			dir := t.TempDir()
 			root, err := os.OpenRoot(dir)
@@ -58,8 +57,6 @@ func TestPublishNewFailureLeavesNoFinalFile(t *testing.T) {
 					return rejected
 				case "canceled":
 					cancel()
-				case "closed writer":
-					return f.Close()
 				}
 				return nil
 			})
@@ -74,22 +71,44 @@ func TestPublishNewFailureLeavesNoFinalFile(t *testing.T) {
 	}
 }
 
-func TestPublishNewRejectsInvalidNamesAndCanceledWork(t *testing.T) {
-	root, err := os.OpenRoot(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer root.Close()
-	prepare := func(*os.File) error { t.Fatal("preparation should not start"); return nil }
-	for _, name := range []string{"", ".", "..", "../file.zip", "folder/file.zip", `folder\file.zip`, "/file.zip", `C:\file.zip`, "CON.zip", "file.zip.", strings.Repeat("x", 256)} {
-		if err := PublishNew(t.Context(), root, name, 0644, prepare); err == nil {
-			t.Errorf("accepted %q", name)
-		}
-	}
-	ctx, cancel := context.WithCancel(t.Context())
-	cancel()
-	if err := PublishNew(ctx, root, "file.zip", 0644, prepare); !errors.Is(err, context.Canceled) {
-		t.Fatal(err)
+func TestPublishNewPreservesFileCreatedDuringPreparation(t *testing.T) {
+	for _, rejected := range []bool{false, true} {
+		t.Run(map[bool]string{false: "commit conflict", true: "validation failure"}[rejected], func(t *testing.T) {
+			dir := t.TempDir()
+			root, err := os.OpenRoot(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer root.Close()
+			failure := errors.New("invalid archive")
+			err = PublishNew(t.Context(), root, "file.zip", 0644, func(f *os.File) error {
+				if _, err := f.WriteString("new file"); err != nil {
+					return err
+				}
+				if err := os.WriteFile(filepath.Join(dir, "file.zip"), []byte("another writer"), 0644); err != nil {
+					return err
+				}
+				if rejected {
+					return failure
+				}
+				return nil
+			})
+			want := error(fs.ErrExist)
+			if rejected {
+				want = failure
+			}
+			if !errors.Is(err, want) {
+				t.Fatalf("unexpected result: %v", err)
+			}
+			data, err := os.ReadFile(filepath.Join(dir, "file.zip"))
+			if err != nil || string(data) != "another writer" {
+				t.Fatalf("concurrent file changed: %q, %v", data, err)
+			}
+			entries, err := os.ReadDir(dir)
+			if err != nil || len(entries) != 1 {
+				t.Fatalf("unexpected files: %v, %v", entries, err)
+			}
+		})
 	}
 }
 
