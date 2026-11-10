@@ -376,7 +376,7 @@ func TestResourceAndServerEntrypoints(t *testing.T) {
 		t.Fatal(err)
 	}
 	capture(t, tt, "fabric-mods")
-	if err := tt.Click("下载模组…"); err != nil {
+	if err := tt.Click("添加模组…"); err != nil {
 		t.Fatal(err)
 	}
 	p := a.browserFor(launcher.Mods)

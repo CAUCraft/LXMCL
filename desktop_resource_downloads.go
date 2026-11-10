@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -21,7 +20,7 @@ import (
 type packBrowser struct {
 	kind                  launcher.ContentKind
 	target                launcher.Instance
-	targetChosen          bool
+	filter                launcher.ResourceFilter
 	query, applied, order string
 	page                  int
 	result                launcher.PackSearch
@@ -52,8 +51,13 @@ func (p *packBrowser) setTarget(i launcher.Instance) {
 	if p.target == i {
 		return
 	}
+	p.target = i
+	p.resetCatalog()
+}
+
+func (p *packBrowser) resetCatalog() {
 	p.abort()
-	p.target, p.searched, p.searchBusy, p.err = i, false, false, ""
+	p.searched, p.searchBusy, p.err = false, false, ""
 	p.result, p.page = launcher.PackSearch{}, 0
 	p.clearProject()
 }
@@ -61,6 +65,7 @@ func (p *packBrowser) setTarget(i launcher.Instance) {
 func (p *packBrowser) abort() {
 	if p.cancel != nil {
 		p.cancel()
+		p.cancel = nil
 	}
 	p.request++
 }
@@ -73,13 +78,12 @@ func (a *desktop) openResourceDownloads(i launcher.Instance, kind launcher.Conte
 	p := a.browserFor(kind)
 	if kind.Supports(i) {
 		p.setTarget(i)
-		p.targetChosen = true
 	}
 	a.page, a.downloadPage = pageDownloads, downloadTab(kind)
 }
 
 func (a *desktop) searchPacks(p *packBrowser, page int) {
-	if a.ctx == nil || !p.kind.Supports(p.target) {
+	if a.ctx == nil || p.target.ID != 0 && !p.kind.Supports(p.target) {
 		return
 	}
 	p.abort()
@@ -88,10 +92,16 @@ func (a *desktop) searchPacks(p *packBrowser, page int) {
 	p.clearProject()
 	p.searched, p.searchBusy, p.err, p.page = true, true, "", page
 	p.result, p.scroll.Y = launcher.PackSearch{}, 0
-	request, target, kind, query, order := p.request, p.target, p.kind, p.applied, p.order
+	request, target, filter, kind, query, order := p.request, p.target, p.filter, p.kind, p.applied, p.order
 	go func() {
 		defer cancel()
-		result, err := launcher.SearchModrinth(ctx, target, kind, query, order, page)
+		var result launcher.PackSearch
+		var err error
+		if target.ID != 0 {
+			result, err = launcher.SearchModrinth(ctx, target, kind, query, order, page)
+		} else {
+			result, err = launcher.SearchResourceCatalog(ctx, filter, kind, query, order, page)
+		}
 		a.post(func() {
 			if p.request != request {
 				return
@@ -110,17 +120,23 @@ func (a *desktop) applyPackSearch(p *packBrowser) {
 }
 
 func (a *desktop) browsePack(p *packBrowser, project launcher.PackProject) {
-	if a.ctx == nil || !p.kind.Supports(p.target) {
+	if a.ctx == nil || p.target.ID != 0 && !p.kind.Supports(p.target) {
 		return
 	}
 	p.abort()
 	ctx, cancel := context.WithTimeout(a.ctx, 15*time.Second)
 	p.cancel = cancel
 	p.project, p.version, p.versions, p.versionErr, p.versionBusy = project, "", nil, "", true
-	request, target, kind := p.request, p.target, p.kind
+	request, target, filter, kind := p.request, p.target, p.filter, p.kind
 	go func() {
 		defer cancel()
-		versions, err := launcher.ModrinthVersions(ctx, project.ID, target, kind)
+		var versions []launcher.PackVersion
+		var err error
+		if target.ID != 0 {
+			versions, err = launcher.ModrinthVersions(ctx, project.ID, target, kind)
+		} else {
+			versions, err = launcher.ResourceCatalogVersions(ctx, project.ID, filter, kind)
+		}
 		a.post(func() {
 			if p.request != request {
 				return
@@ -140,13 +156,7 @@ func (a *desktop) browsePack(p *packBrowser, project launcher.PackProject) {
 }
 
 func (a *desktop) resourceDownloads(c *ui.Context, p *packBrowser) {
-	if !p.targetChosen {
-		if current, ok := a.state.Find(a.state.Selected); ok && p.kind.Supports(current) {
-			p.refreshTarget(current)
-		} else {
-			p.setTarget(launcher.Instance{})
-		}
-	} else if p.target.ID != 0 {
+	if p.target.ID != 0 {
 		if current, ok := a.state.Find(p.target.ID); ok && p.kind.Supports(current) {
 			p.refreshTarget(current)
 		} else {
@@ -156,16 +166,12 @@ func (a *desktop) resourceDownloads(c *ui.Context, p *packBrowser) {
 	label := contentLabel(p.kind)
 	a.resourceTargetBar(c, p)
 	layout.Divider(c, layout.DividerProps{})
-	if p.target.ID == 0 {
-		a.resourceWithoutTarget(c, p, label)
-		return
-	}
 	if !p.searched {
 		a.applyPackSearch(p)
 	}
 	a.packSearchBar(c, p, label)
 	w, _ := c.Size()
-	splitWorkspace(c, min(300, max(220, w*0.27)), func() {
+	splitWorkspace(c, catalogListWidth(w), func() {
 		a.packResults(c, p)
 	}, func() {
 		a.packDetails(c.Key(p.project.ID), p, label)
@@ -183,69 +189,55 @@ func (p *packBrowser) refreshTarget(current launcher.Instance) {
 }
 
 func (a *desktop) resourceTargetBar(c *ui.Context, p *packBrowser) {
-	options := make([]field.SelectOption, 0, len(a.state.Instances))
-	for _, i := range a.state.Instances {
-		if p.kind.Supports(i) {
-			label := i.Name + " · " + i.Version
-			if p.kind == launcher.Mods {
-				label += " · " + i.Loader
+	if p.target.ID != 0 {
+		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+			display.Text(c, "安装到 "+p.target.Name, display.TextProps{Strong: true, Rows: 1}).MinWidth(0).Ellipsis("…")
+			muted(c, p.target.Version+" · "+p.target.LoaderName()).SingleLine().Ellipsis("…")
+			ui.Spacer(c).Grow(1)
+			if button(c, "管理已安装", action.Default, false) {
+				target, kind := p.target, p.kind
+				a.inspect(target)
+				a.detailPage = detailContent
+				tab := 0
+				switch kind {
+				case launcher.Mods:
+					tab = 1
+				case launcher.ShaderPacks:
+					tab = 2
+				}
+				a.content = contentView{id: target.ID, revision: target.Revision, tab: tab}
+				a.refreshContent(target)
 			}
-			options = append(options, field.SelectOption{Value: strconv.Itoa(i.ID), Label: label})
-		}
+			if button(c, "独立下载", action.Text, false) {
+				p.setTarget(launcher.Instance{})
+			}
+		})
+		return
+	}
+	if len(a.releases) == 0 && !a.catalogBusy && a.catalogErr == "" {
+		a.refreshCatalog()
+	}
+	options := []field.SelectOption{{Value: "", Label: "全部游戏版本"}}
+	for _, release := range a.releases {
+		options = append(options, field.SelectOption{Value: release.ID, Label: release.ID})
 	}
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-		muted(c, "安装到")
-		choice := ""
-		if p.target.ID != 0 {
-			choice = strconv.Itoa(p.target.ID)
+		before := p.filter
+		catalogPicker(c.Key("game-filter"), &p.filter.Game, options, "筛选游戏版本", "", false).Width(152).Shrink(0)
+		if p.kind == launcher.Mods {
+			ui.Column(c).Width(126).Shrink(0).Children(func() {
+				field.Select(c, &p.filter.Loader, field.SelectProps{Options: []field.SelectOption{
+					{Value: "", Label: "全部加载器"}, {Value: "fabric", Label: "Fabric"}, {Value: "forge", Label: "Forge"},
+					{Value: "neoforge", Label: "NeoForge"}, {Value: "quilt", Label: "Quilt"},
+				}}).Label("筛选加载器")
+			})
 		}
-		before := choice
-		catalogPicker(c, &choice, options, "下载目标实例", "", false).Grow(1).MinWidth(0).MaxWidth(370)
-		if choice != before {
-			if id, err := strconv.Atoi(choice); err == nil {
-				if target, ok := a.state.Find(id); ok && p.kind.Supports(target) {
-					p.targetChosen = true
-					p.setTarget(target)
-				}
-			}
+		if p.filter != before {
+			p.resetCatalog()
+			c.Invalidate()
 		}
 		ui.Spacer(c).Grow(1)
-		if p.target.ID != 0 && button(c, "管理已安装", action.Default, false) {
-			a.inspect(p.target)
-			a.detailPage = detailContent
-			tab := 0
-			switch p.kind {
-			case launcher.Mods:
-				tab = 1
-			case launcher.ShaderPacks:
-				tab = 2
-			}
-			a.content = contentView{id: p.target.ID, revision: p.target.Revision, tab: tab}
-			a.refreshContent(p.target)
-		}
 		muted(c, "Modrinth").FontSize(12)
-	})
-}
-
-func (a *desktop) resourceWithoutTarget(c *ui.Context, p *packBrowser, label string) {
-	fabric := p.kind == launcher.ShaderPacks
-	compatible := slices.ContainsFunc(a.state.Instances, p.kind.Supports)
-	title, description, install := "选择下载目标", "在上方选择要安装"+label+"的实例。", "安装实例…"
-	if !compatible {
-		title, description = "没有可用实例", "安装实例后才能下载"+label+"。"
-		if fabric {
-			title, description, install = "没有 Fabric 实例", label+"需要 Fabric 实例。", "安装 Fabric 实例…"
-		} else if p.kind == launcher.Mods {
-			title, description = "没有可安装模组的实例", "先安装带 Fabric、Forge、NeoForge 或 Quilt 的实例。"
-		}
-	}
-	ui.Column(c).Grow(1).Center().Children(func() {
-		display.Empty(c, display.EmptyProps{Icon: lucide.PackageSearch(), Title: title, Description: description, Action: func() {
-			if !compatible && button(c, install, action.Primary, false) {
-				i, _ := a.state.Find(a.state.Selected)
-				a.openInstall(i.Version, fabric)
-			}
-		}})
 	})
 }
 
@@ -288,7 +280,7 @@ func (a *desktop) packResults(c *ui.Context, p *packBrowser) {
 		items := make([]display.ListItem, 0, len(p.result.Hits))
 		for _, hit := range p.result.Hits {
 			items = append(items, display.ListItem{Key: hit.ID, Label: hit.Title,
-				Description: hit.Author, Icon: lucide.Package()})
+				Description: hit.Author, Avatar: func() { a.projectIcon(c, "resource-"+hit.ID, hit.IconURL, downloadTabs[downloadTab(p.kind)].Icon, 28) }})
 		}
 		layout.ScrollArea(c, layout.ScrollAreaProps{State: &p.scroll}, func() {
 			if id := display.List(c, display.ListProps{Items: items, Active: p.project.ID, Compact: true}); id != "" && id != p.project.ID {
@@ -303,7 +295,7 @@ func (a *desktop) packResults(c *ui.Context, p *packBrowser) {
 			if icon(c, lucide.ChevronLeft(), "上一页", p.page == 0) {
 				a.searchPacks(p, p.page-1)
 			}
-			muted(c, fmt.Sprintf("第 %d 页 · %d 个项目", p.page+1, p.result.Total)).FontSize(12).Grow(1).MinWidth(0)
+			muted(c, fmt.Sprintf("%d 页 · %d 项", p.page+1, p.result.Total)).FontSize(12).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 			if icon(c, lucide.ChevronRight(), "下一页", (p.page+1)*launcher.PackPageSize >= p.result.Total || p.page >= 500) {
 				a.searchPacks(p, p.page+1)
 			}
@@ -318,7 +310,7 @@ func (a *desktop) packDetails(c *ui.Context, p *packBrowser, label string) {
 		})
 		return
 	}
-	heading(c, p.project.Title, func() {
+	a.projectHeading(c, "resource-heading", p.project.Title, p.project.IconURL, downloadTabs[downloadTab(p.kind)].Icon, func() {
 		if site := p.project.PageURL(p.kind); site != "" && icon(c, lucide.ExternalLink(), "在 Modrinth 查看项目", false) {
 			c.OpenURL(site)
 		}
@@ -347,7 +339,7 @@ func (a *desktop) packDetails(c *ui.Context, p *packBrowser, label string) {
 			a.browsePack(p, p.project)
 		}
 	case len(p.versions) == 0:
-		muted(c, "此实例没有兼容的文件版本")
+		muted(c, "没有符合当前筛选条件的文件")
 	default:
 		a.packVersions(c, p, label)
 	}
@@ -363,6 +355,14 @@ func (a *desktop) packVersions(c *ui.Context, p *packBrowser, label string) {
 			description = append(description, v.Published.Local().Format("2006-01-02"))
 		}
 		description = append(description, fmt.Sprintf("%.1f MiB", float64(file.Size)/(1<<20)), file.Filename)
+		if p.target.ID == 0 {
+			if len(v.GameVersions) > 0 {
+				description = append([]string{strings.Join(v.GameVersions[:min(3, len(v.GameVersions))], " / ")}, description...)
+			}
+			if p.kind == launcher.Mods && len(v.Loaders) > 0 {
+				description = append([]string{strings.Join(v.Loaders, " / ")}, description...)
+			}
+		}
 		channel := "正式版"
 		switch v.Type {
 		case "beta":
@@ -370,7 +370,7 @@ func (a *desktop) packVersions(c *ui.Context, p *packBrowser, label string) {
 		case "alpha":
 			channel = "Alpha"
 		}
-		items = append(items, display.ListItem{Key: v.ID, Label: v.Number, Description: strings.Join(description, " · "), Extra: channel})
+		items = append(items, display.ListItem{Key: v.ID, Label: v.Number, Description: strings.Join(description, " · "), Icon: lucide.FileArchive(), Extra: channel})
 	}
 	layout.ScrollArea(c.Key("files"), layout.ScrollAreaProps{}, func() {
 		if key := display.List(c, display.ListProps{Items: items, Active: p.version, Compact: true}); key != "" {
@@ -380,15 +380,24 @@ func (a *desktop) packVersions(c *ui.Context, p *packBrowser, label string) {
 	}).Grow(1).MinHeight(0)
 	layout.Divider(c, layout.DividerProps{})
 	ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-		note := "下载到 " + p.target.Name
-		if p.kind == launcher.Mods {
-			note += " · 自动下载必要依赖"
+		note, labelAction := "保存所选文件", "保存到文件夹…"
+		locked := a.busy || a.running != nil || a.pickerBusy || p.version == ""
+		if p.target.ID != 0 {
+			note, labelAction = "安装到 "+p.target.Name, "安装"+label
+			if p.kind == launcher.Mods {
+				note += " · 包含必要依赖"
+			}
 		}
 		muted(c, note).FontSize(12).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-		if button(c, "下载"+label, action.Primary, p.version == "" || a.busy || a.running != nil) {
+		if button(c, labelAction, action.Primary, locked) {
 			for _, version := range p.versions {
 				if version.ID == p.version {
-					a.downloadResource(p.target, resourceTask{Kind: p.kind, Project: p.project.ID, Version: version.ID, Title: p.project.Title}, version)
+					r := resourceTask{Kind: p.kind, Project: p.project.ID, Version: version.ID, Title: p.project.Title}
+					if p.target.ID != 0 {
+						a.downloadResource(p.target, r, version)
+					} else {
+						a.pickDownloadFolder(func(folder string) { a.saveResourceFile(folder, r, version) })
+					}
 					break
 				}
 			}
@@ -397,6 +406,20 @@ func (a *desktop) packVersions(c *ui.Context, p *packBrowser, label string) {
 	if p.kind == launcher.ShaderPacks {
 		muted(c, "在游戏中使用光影需要安装 Iris 等兼容模组。").FontSize(12)
 	}
+}
+
+func (a *desktop) saveResourceFile(folder string, r resourceTask, version launcher.PackVersion) {
+	game := a.game
+	a.runFolderDownload(folder, "保存"+contentLabel(r.Kind), r.Title, &r, func(ctx context.Context, report func(launcher.Progress)) error {
+		if version.ID == "" {
+			var err error
+			version, err = launcher.ModrinthVersion(ctx, r.Project, r.Version)
+			if err != nil {
+				return err
+			}
+		}
+		return game.DownloadResourceFile(ctx, r.Kind, version, folder, report)
+	})
 }
 
 func (a *desktop) downloadResource(i launcher.Instance, r resourceTask, version launcher.PackVersion) {

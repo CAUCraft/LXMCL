@@ -2,9 +2,13 @@ package launcher
 
 import (
 	"bufio"
+	"bytes"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/png"
 	"io"
 	"net"
 	"slices"
@@ -13,6 +17,10 @@ import (
 )
 
 func TestPingJavaServerAndBuildQuickPlayArguments(t *testing.T) {
+	var favicon bytes.Buffer
+	if err := png.Encode(&favicon, image.NewRGBA(image.Rect(0, 0, 64, 64))); err != nil {
+		t.Fatal(err)
+	}
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -43,13 +51,13 @@ func TestPingJavaServerAndBuildQuickPlayArguments(t *testing.T) {
 			reply <- fmt.Errorf("invalid status request: %v, %v", request, err)
 			return
 		}
-		data := []byte(`{"version":{"name":"1.21.1"},"players":{"online":3,"max":12}}`)
+		data := fmt.Appendf(nil, `{"version":{"name":"1.21.1"},"players":{"online":3,"max":12},"favicon":"data:image/png;base64,%s"}`, base64.StdEncoding.EncodeToString(favicon.Bytes()))
 		packet := append(binary.AppendUvarint([]byte{0}, uint64(len(data))), data...)
 		_, err = c.Write(append(binary.AppendUvarint(nil, uint64(len(packet))), packet...))
 		reply <- err
 	}()
 	status, err := PingServer(t.Context(), address)
-	if err != nil || status.Version != "1.21.1" || status.Online != 3 || status.Max != 12 {
+	if err != nil || status.Version != "1.21.1" || status.Online != 3 || status.Max != 12 || status.Icon == nil {
 		t.Fatalf("status = %+v, %v", status, err)
 	}
 	if err := <-reply; err != nil {

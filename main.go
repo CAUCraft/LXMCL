@@ -134,6 +134,9 @@ type desktop struct {
 	install                                installView
 	modpacks                               modpackView
 	packs                                  map[launcher.ContentKind]*packBrowser
+	catalogIcons                           map[string]catalogIcon
+	catalogIconSlots                       chan struct{}
+	downloadFolder                         string
 	serverName, serverAddress, serverError string
 	serverStatus                           map[string]*serverCheck
 	query                                  string

@@ -65,20 +65,43 @@ func contentLabel(kind launcher.ContentKind) string { return downloadTabs[downlo
 
 func (a *desktop) downloads(c *ui.Context) {
 	workspace(c, func() {
-		contextTabs(c, &a.downloadPage, downloadTabs)
-		switch a.downloadPage {
-		case downloadGame:
-			a.installPage(c.Key("install-game"))
-		case downloadModpacks:
-			a.modpackPage(c.Key("install-modpack"))
-		case downloadTasks:
-			a.tasks(c.Key("downloads-history"))
-		default:
-			kind := downloadKind(a.downloadPage)
-			a.resourceDownloads(c.Key(kind), a.browserFor(kind))
-		}
+		splitWorkspace(c, 122, func() {
+			muted(c, "下载分类").Padding(3, 6)
+			sidebarNavigation(c.Key("download-nav"), &a.downloadPage, downloadTabs)
+		}, func() {
+			a.clearResourceBindings(a.downloadPage)
+			switch a.downloadPage {
+			case downloadGame:
+				a.installPage(c.Key("install-game"))
+			case downloadModpacks:
+				a.modpackPage(c.Key("install-modpack"))
+			case downloadTasks:
+				a.tasks(c.Key("downloads-history"))
+			default:
+				kind := downloadKind(a.downloadPage)
+				a.resourceDownloads(c.Key(kind), a.browserFor(kind))
+			}
+		})
 	})
 }
+
+func (a *desktop) clearResourceBindings(keep int) {
+	for kind, p := range a.packs {
+		if p.target.ID != 0 && downloadTab(kind) != keep {
+			p.setTarget(launcher.Instance{})
+		}
+	}
+}
+
+func (a *desktop) boundDownload() bool {
+	if a.page != pageDownloads || a.downloadPage < downloadMods || a.downloadPage > downloadShaders {
+		return false
+	}
+	p := a.packs[downloadKind(a.downloadPage)]
+	return p != nil && p.target.ID != 0
+}
+
+func catalogListWidth(w float32) float32 { return min(256, max(158, (w-150)*0.24)) }
 
 type installView struct {
 	query, version, name                  string
@@ -155,7 +178,7 @@ func (a *desktop) installPage(c *ui.Context) {
 		p.version = a.releases[0].ID
 	}
 	w, _ := c.Size()
-	splitWorkspace(c, min(282, max(210, w*0.25)), func() {
+	splitWorkspace(c, catalogListWidth(w), func() {
 		ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
 			field.SearchBar(c, &p.query, field.SearchBarProps{Placeholder: "搜索游戏版本"}).Label("搜索游戏版本").Grow(1).MinWidth(0)
 			if icon(c, lucide.RefreshCw(), "刷新游戏版本", a.catalogBusy) {

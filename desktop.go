@@ -115,6 +115,9 @@ func (a *desktop) view(c *ui.Context) {
 	}
 	ui.Column(c).Fill().Background(theme.TokensOf(c).BgContainer).Children(func() {
 		a.topBar(c)
+		if a.page != pageDownloads {
+			a.clearResourceBindings(-1)
+		}
 		switch {
 		case a.loadErr != "":
 			ui.Column(c).Grow(1).Padding(28).Gap(12).Children(func() {
@@ -251,12 +254,12 @@ func (a *desktop) topBar(c *ui.Context) {
 }
 
 func (a *desktop) mainNavigation(c *ui.Context) {
-	if a.page != pageAccount {
+	if a.page != pageAccount && !a.boundDownload() {
 		nav.Tabs(c, &a.page, nav.TabsProps{Items: mainTabs, Variant: nav.TabsRounded, Size: theme.Small}, nil).
 			Label("主导航").AlignSelf(ui.Center).Shrink(0)
 		return
 	}
-	// Account is reached from the avatar, so none of the main tabs is active here.
+	// Account and instance-scoped downloads are entered from their own controls.
 	tk := theme.TokensOf(c)
 	ui.Row(c).Gap(4).Padding(3).Radius(tk.BorderRadiusLG).Background(tk.BgLayout).
 		Label("主导航").AlignSelf(ui.Center).Shrink(0).Children(func() {
@@ -268,6 +271,7 @@ func (a *desktop) mainNavigation(c *ui.Context) {
 				ui.Text(c, item.Label).FontSize(12).SingleLine()
 			})
 			if b.Clicked() {
+				a.clearResourceBindings(-1)
 				a.page = page
 			}
 		}
@@ -352,9 +356,15 @@ func launchButton(c *ui.Context, label string, glyph *ui.SVG, disabled bool) boo
 	return b.Clicked()
 }
 
-func contextTabs(c *ui.Context, selected *int, items []nav.TabItem) {
-	nav.Tabs(c, selected, nav.TabsProps{Items: items, Variant: nav.TabsSquare, Size: theme.Small}, nil)
-	layout.Divider(c, layout.DividerProps{})
+func sidebarNavigation(c *ui.Context, selected *int, items []nav.TabItem) {
+	rows := make([]display.ListItem, 0, len(items))
+	for id, item := range items {
+		rows = append(rows, display.ListItem{Key: strconv.Itoa(id), Label: item.Label, Icon: item.Icon})
+	}
+	if key := display.List(c, display.ListProps{Items: rows, Active: strconv.Itoa(*selected), Compact: true}); key != "" {
+		*selected, _ = strconv.Atoi(key)
+		c.Invalidate()
+	}
 }
 
 func workspace(c *ui.Context, content func()) {
@@ -399,9 +409,16 @@ func (a *desktop) library(c *ui.Context) {
 		w, _ := c.Size()
 		splitWorkspace(c, listWidth(w), func() {
 			muted(c, "实例列表").Padding(3, 5)
-			layout.ScrollArea(c, layout.ScrollAreaProps{State: &a.scroll}, func() {
+			list := layout.ScrollArea(c, layout.ScrollAreaProps{State: &a.scroll}, func() {
 				a.instanceList(c)
-			}).Grow(1).MinHeight(0)
+			}).MinHeight(0)
+			if _, ok := a.state.Find(a.inspected); ok {
+				list.Height(min(188, float32(len(a.state.Instances))*48+4)).Shrink(1)
+				layout.Divider(c, layout.DividerProps{})
+				sidebarNavigation(c.Key("instance-nav"), &a.detailPage, instanceDetailTabs)
+			} else {
+				list.Grow(1)
+			}
 		}, func() {
 			i, ok := a.state.Find(a.inspected)
 			detailPane(c.Key(a.inspected), func() {
@@ -438,7 +455,7 @@ func (a *desktop) instanceList(c *ui.Context) {
 		}
 		items = append(items, display.ListItem{
 			Key: strconv.Itoa(i.ID), Label: i.Name,
-			Description: detail, Icon: lucide.Package(),
+			Description: detail, Icon: loaderIcon(i),
 			Actions:    func() { a.instanceMenu(c.Key("list-"+strconv.Itoa(i.ID)), i, true) },
 			ShowAction: i.ID == a.listMenuID,
 		})
@@ -459,6 +476,21 @@ func (a *desktop) instanceList(c *ui.Context) {
 			a.inspect(i)
 			c.Invalidate()
 		}
+	}
+}
+
+func loaderIcon(i launcher.Instance) *ui.SVG {
+	switch {
+	case i.Fabric():
+		return lucide.Layers()
+	case i.Forge():
+		return lucide.Anvil()
+	case i.NeoForge():
+		return lucide.Hammer()
+	case i.Quilt():
+		return lucide.Grid2X2()
+	default:
+		return lucide.Box()
 	}
 }
 

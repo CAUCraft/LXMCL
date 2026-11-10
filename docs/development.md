@@ -31,7 +31,9 @@ CurseForge 在线查询和下载依赖需要 [CurseForge API Key](https://consol
 
 本地 API 密钥放在 `.env`，仓库模板只保留空变量。CI 所需凭据通过 GitHub Secrets 或运行时令牌提供。Microsoft 和皮肤站会话由启动器管理，在 Windows 上使用系统加密存储；公开的 Microsoft OAuth 客户端 ID 不属于密钥。CI 在构建前检查本地配置和凭据文件是否被 Git 跟踪。
 
-Modrinth 按目标实例的游戏版本搜索，模组同时按 Fabric、Forge、NeoForge 或 Quilt 筛选。选择文件和解析必要依赖时，都会再次核对 Minecraft 版本与加载器。Quilt 模组声明的 Fabric API 依赖可用同游戏版本的 Quilted Fabric API 或上游 Fabric API。资源下载按 SHA-512 校验，重试绑定原实例、配置修订和资源版本。模组 JAR 要有对应的加载器描述文件，资源包 ZIP 要有 `pack.mcmeta`，光影 ZIP 要有 `shaders/` 内容。使用光影需要 Iris 等兼容模组。
+「下载」里的模组、资源包、光影包和整合包可以直接保存到自选文件夹，不需要创建实例。独立下载只保存选中文件并校验摘要，同名文件不会被覆盖。模组、资源包和光影包任务重试时保留原文件夹和版本。
+
+从实例的「资源」页点「添加」会绑定该实例。Modrinth 按实例的游戏版本及 Fabric、Forge、NeoForge 或 Quilt 筛选模组，并安装必要依赖。Quilt 模组声明的 Fabric API 依赖可使用同游戏版本的 Quilted Fabric API 或上游 Fabric API。安装时仍检查文件 SHA-512 和对应的 JAR 或 ZIP 内容。任务重试绑定原实例、配置修订和资源版本。使用光影需要 Iris 等兼容模组。
 
 存档备份位于数据目录的 `backups/`，恢复支持包含 `世界名/level.dat` 的 ZIP，不覆盖已有世界。
 

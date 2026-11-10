@@ -52,7 +52,7 @@ func (a *desktop) details(c *ui.Context, i launcher.Instance) {
 			}
 		})
 	})
-	contextTabs(c, &a.detailPage, instanceDetailTabs)
+	layout.Divider(c, layout.DividerProps{})
 	switch a.detailPage {
 	case detailLaunch:
 		a.instanceLaunchSettings(c.Key(i.ID), i)
@@ -235,14 +235,7 @@ func (a *desktop) settings(c *ui.Context) {
 	workspace(c, func() {
 		splitWorkspace(c, 168, func() {
 			muted(c, "设置").Padding(3, 5)
-			items := make([]display.ListItem, 0, len(settingsTabs))
-			for id, item := range settingsTabs {
-				items = append(items, display.ListItem{Key: strconv.Itoa(id), Label: item.Label, Icon: item.Icon})
-			}
-			if key := display.List(c, display.ListProps{Items: items, Active: strconv.Itoa(a.settingsPage), Compact: true}); key != "" {
-				a.settingsPage, _ = strconv.Atoi(key)
-				c.Invalidate()
-			}
+			sidebarNavigation(c.Key("settings-nav"), &a.settingsPage, settingsTabs)
 		}, func() {
 			key := a.settingsPage
 			detailPane(c.Key(key), func() {
@@ -390,7 +383,7 @@ func (a *desktop) taskHistoryPane(c *ui.Context, rows []taskRecord) {
 	for _, row := range rows {
 		key := taskKey(row)
 		items = append(items, display.ListItem{Key: key, Label: row.Name,
-			Description: row.Status + " · " + row.Action, Icon: lucide.Activity()})
+			Description: row.Status + " · " + row.Action, Icon: taskIcon(row)})
 		if key == a.browsedTask {
 			selected = row
 		}
@@ -422,6 +415,21 @@ func taskKey(row taskRecord) string {
 	return strconv.FormatInt(row.At.UnixNano(), 10)
 }
 
+func taskIcon(row taskRecord) *ui.SVG {
+	switch row.Status {
+	case taskFailed:
+		return lucide.CircleAlert()
+	case taskCanceled:
+		return lucide.CircleX()
+	case taskCompleted, taskExited:
+		return lucide.CircleCheck()
+	case taskStarted:
+		return lucide.Gamepad2()
+	default:
+		return lucide.Activity()
+	}
+}
+
 func (a *desktop) taskRow(c *ui.Context, row taskRecord) {
 	tone := display.TagGray
 	switch row.Status {
@@ -434,11 +442,14 @@ func (a *desktop) taskRow(c *ui.Context, row taskRecord) {
 	}
 	ui.Column(c).Padding(5, 0).Gap(4).Children(func() {
 		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-			leadIcon(c, lucide.Activity(), 26)
+			leadIcon(c, taskIcon(row), 26)
 			ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
 				display.Text(c, row.Name, display.TextProps{Strong: true, Rows: 1}).Ellipsis("…")
-				detail := row.Action + " · " + row.Version + " · " + row.At.Local().Format("01-02 15:04")
-				if row.Resource != nil {
+				detail := row.Action + " · " + row.At.Local().Format("01-02 15:04")
+				if row.Version != "" {
+					detail = row.Version + " · " + detail
+				}
+				if row.Resource != nil && row.Folder == "" {
 					detail = row.Resource.Title + " · " + detail
 				}
 				if row.Server != "" {
@@ -450,6 +461,13 @@ func (a *desktop) taskRow(c *ui.Context, row taskRecord) {
 			if row.Log != "" && button(c, "查看日志", action.Text, false) {
 				a.showLog(row.Log)
 			}
+			if row.Folder != "" && button(c, "打开文件夹", action.Text, false) {
+				a.openPath(row.Folder, false)
+			}
+			if row.Folder != "" && row.Resource != nil && (row.Status == taskFailed || row.Status == taskCanceled) &&
+				button(c, "重试", action.Default, a.busy || a.running != nil) {
+				a.saveResourceFile(row.Folder, *row.Resource, launcher.PackVersion{})
+			}
 			if i, ok := row.retryTarget(a.state); ok {
 				if button(c, "重试", action.Default, a.busy || a.running != nil) {
 					if row.Resource != nil {
@@ -460,6 +478,9 @@ func (a *desktop) taskRow(c *ui.Context, row taskRecord) {
 				}
 			}
 		})
+		if row.Folder != "" {
+			muted(c, row.Folder).FontSize(13).SingleLine().Ellipsis("…").Selectable()
+		}
 		if row.Status == taskFailed && row.Detail != "" {
 			muted(c, row.Detail).FontSize(13).Selectable()
 		}

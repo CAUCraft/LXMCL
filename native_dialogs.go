@@ -33,6 +33,16 @@ func (a *desktop) pickGameRoot() {
 	}, func(path string) { a.draft.GameRoot = path })
 }
 
+func (a *desktop) pickDownloadFolder(accept func(string)) {
+	a.pickPath(mygo.OpenDialogOptions{
+		Title: "保存到文件夹", DefaultPath: a.downloadFolder, Directory: true,
+		CreateDirectories: true, ButtonLabel: "保存到此处",
+	}, func(path string) {
+		a.downloadFolder = path
+		accept(path)
+	})
+}
+
 func (a *desktop) pickJava() {
 	a.pickJavaPath(a.draft.JavaPath, func(path string) {
 		a.draft.JavaPath = path

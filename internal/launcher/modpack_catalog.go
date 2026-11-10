@@ -19,9 +19,9 @@ const (
 )
 
 type ModpackProject struct {
-	ID, Name, Author, Summary, URL string
-	Source                         ModpackSource
-	distributionRestricted         bool
+	ID, Name, Author, Summary, URL, IconURL string
+	Source                                  ModpackSource
+	distributionRestricted                  bool
 }
 
 type ModpackRelease struct {
@@ -32,6 +32,7 @@ type ModpackRelease struct {
 	Unavailable                  string
 	source                       ModpackSource
 	asset                        modpackAsset
+	downloadBlocked              bool
 }
 
 type ModpackResults struct {
@@ -67,7 +68,7 @@ func SearchModpacks(ctx context.Context, source ModpackSource, key, query, game 
 	for _, h := range hits.Hits {
 		if modrinthID.MatchString(h.ID) && h.Title != "" {
 			result.Projects = append(result.Projects, ModpackProject{ID: h.ID, Name: h.Title, Author: h.Author,
-				Summary: h.Description, URL: "https://modrinth.com/modpack/" + h.ID, Source: source})
+				Summary: h.Description, URL: "https://modrinth.com/modpack/" + h.ID, IconURL: h.IconURL, Source: source})
 		}
 	}
 	return result, nil
@@ -82,6 +83,7 @@ func ListModpackReleases(ctx context.Context, project ModpackProject, key, game 
 		if project.distributionRestricted {
 			for n := range releases {
 				releases[n].Unavailable = "此整合包未开放给第三方启动器下载"
+				releases[n].downloadBlocked = true
 			}
 		}
 		return releases, more, err

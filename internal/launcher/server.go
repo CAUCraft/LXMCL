@@ -4,9 +4,12 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"image"
+	"image/png"
 	"io"
 	"net"
 	"net/netip"
@@ -72,6 +75,7 @@ type ServerStatus struct {
 	Version     string
 	Online, Max int
 	Latency     time.Duration
+	Icon        image.Image
 }
 
 // PingServer requests Java server status without logging in.
@@ -128,9 +132,28 @@ func PingServer(ctx context.Context, address string) (ServerStatus, error) {
 	var status struct {
 		Version struct{ Name string }
 		Players struct{ Online, Max int }
+		Favicon string
 	}
 	if err := json.NewDecoder(b).Decode(&status); err != nil {
 		return ServerStatus{}, err
 	}
-	return ServerStatus{status.Version.Name, status.Players.Online, status.Players.Max, time.Since(start)}, nil
+	return ServerStatus{Version: status.Version.Name, Online: status.Players.Online, Max: status.Players.Max,
+		Latency: time.Since(start), Icon: serverIcon(status.Favicon)}, nil
+}
+
+func serverIcon(raw string) image.Image {
+	encoded, ok := strings.CutPrefix(raw, "data:image/png;base64,")
+	if !ok || len(encoded) > 64<<10 {
+		return nil
+	}
+	data, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		return nil
+	}
+	config, err := png.DecodeConfig(bytes.NewReader(data))
+	if err != nil || config.Width != 64 || config.Height != 64 {
+		return nil
+	}
+	img, _ := png.Decode(bytes.NewReader(data))
+	return img
 }

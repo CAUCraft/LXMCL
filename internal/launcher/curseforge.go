@@ -38,6 +38,7 @@ type curseProject struct {
 	Name, Summary, Slug  string
 	IsAvailable          bool
 	AllowModDistribution *bool
+	Logo                 struct{ ThumbnailURL, URL string }
 	Authors              []struct{ Name string }
 }
 
@@ -132,7 +133,10 @@ func (cf curseForge) search(ctx context.Context, query, game string, page int) (
 		if m.ID <= 0 || m.GameID != curseGameID || m.ClassID != curseModpacksClass || !m.IsAvailable {
 			continue
 		}
-		p := ModpackProject{ID: strconv.Itoa(m.ID), Name: m.Name, Summary: m.Summary, Source: CurseForgeModpacks}
+		p := ModpackProject{ID: strconv.Itoa(m.ID), Name: m.Name, Summary: m.Summary, Source: CurseForgeModpacks, IconURL: m.Logo.ThumbnailURL}
+		if p.IconURL == "" {
+			p.IconURL = m.Logo.URL
+		}
 		p.distributionRestricted = m.AllowModDistribution != nil && !*m.AllowModDistribution
 		if len(m.Authors) > 0 {
 			p.Author = m.Authors[0].Name
@@ -183,7 +187,8 @@ func (cf curseForge) releases(ctx context.Context, id, game string, page int) ([
 			continue
 		}
 		r := ModpackRelease{ID: strconv.Itoa(f.ID), Title: f.DisplayName, Filename: f.FileName,
-			Published: f.FileDate, Size: f.FileLength, source: CurseForgeModpacks, asset: f.asset()}
+			Published: f.FileDate, Size: f.FileLength, source: CurseForgeModpacks, asset: f.asset(),
+			downloadBlocked: !f.IsAvailable || f.IsEarlyAccessContent || f.DownloadURL == ""}
 		r.Channel = map[int]string{1: "release", 2: "beta", 3: "alpha"}[f.ReleaseType]
 		for _, tag := range f.GameVersions {
 			if versionID.MatchString(tag) {
@@ -196,7 +201,7 @@ func (cf curseForge) releases(ctx context.Context, id, game string, page int) ([
 		r.Unavailable = unsupportedPackTags(r.Games, r.Loaders)
 		if r.Unavailable == "" {
 			switch {
-			case !f.IsAvailable || f.IsEarlyAccessContent || f.DownloadURL == "":
+			case r.downloadBlocked:
 				r.Unavailable = "此文件未开放给第三方启动器下载"
 			case !r.asset.valid(maxModpackArchive):
 				r.Unavailable = "缺少有效的整合包下载地址或校验值"

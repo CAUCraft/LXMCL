@@ -231,7 +231,7 @@ func (a *desktop) modpackPage(c *ui.Context) {
 		a.modpackSearchBar(c, p)
 	}
 	w, _ := c.Size()
-	splitWorkspace(c, min(290, max(216, w*0.27)), func() {
+	splitWorkspace(c, catalogListWidth(w), func() {
 		switch {
 		case p.mode == modpackLocal:
 			if button(c, "选择整合包文件…", action.Default, a.busy || a.pickerBusy || p.preparing) {
@@ -310,7 +310,8 @@ func (a *desktop) modpackResults(c *ui.Context, p *modpackView) {
 	}
 	items := make([]display.ListItem, 0, len(p.results.Projects))
 	for _, m := range p.results.Projects {
-		items = append(items, display.ListItem{Key: m.ID, Label: m.Name, Description: m.Author, Icon: lucide.Package()})
+		items = append(items, display.ListItem{Key: m.ID, Label: m.Name, Description: m.Author,
+			Avatar: func() { a.projectIcon(c, "modpack-"+m.ID, m.IconURL, lucide.Archive(), 28) }})
 	}
 	layout.ScrollArea(c.Key("modpack-projects"), layout.ScrollAreaProps{State: &p.projectsScroll}, func() {
 		if len(items) == 0 {
@@ -344,7 +345,7 @@ func (a *desktop) modpackVersions(c *ui.Context, p *modpackView) {
 		ui.Column(c).Grow(1).Center().Children(func() { muted(c, "选择一个整合包查看版本") })
 		return
 	}
-	heading(c, p.project.Name, func() {
+	a.projectHeading(c, "modpack-heading", p.project.Name, p.project.IconURL, lucide.Archive(), func() {
 		if p.project.URL != "" && icon(c, lucide.ExternalLink(), "打开整合包项目页面", false) {
 			c.OpenURL(p.project.URL)
 		}
@@ -382,7 +383,7 @@ func (a *desktop) modpackVersions(c *ui.Context, p *modpackView) {
 			detail = r.Unavailable
 		}
 		channel := map[string]string{"release": "正式版", "beta": "Beta", "alpha": "Alpha"}[r.Channel]
-		items = append(items, display.ListItem{Key: r.ID, Label: title, Description: detail, Extra: channel})
+		items = append(items, display.ListItem{Key: r.ID, Label: title, Description: detail, Icon: lucide.FileArchive(), Extra: channel})
 	}
 	layout.ScrollArea(c.Key("modpack-versions"), layout.ScrollAreaProps{State: &p.releasesScroll}, func() {
 		if id := display.List(c, display.ListProps{Items: items, Active: p.releaseID, Compact: true}); id != "" && id != p.releaseID {
@@ -407,7 +408,15 @@ func (a *desktop) modpackVersions(c *ui.Context, p *modpackView) {
 			})
 		}
 		ui.Spacer(c).Grow(1)
-		if button(c, "选用此版本…", action.Primary, a.busy || selected.ID == "" || selected.Unavailable != "") {
+		if button(c, "保存到文件夹…", action.Default, a.busy || a.running != nil || a.pickerBusy || !selected.Downloadable()) {
+			release, title, game := selected, p.project.Name, a.game
+			a.pickDownloadFolder(func(folder string) {
+				a.runFolderDownload(folder, "保存整合包", title, nil, func(ctx context.Context, report func(launcher.Progress)) error {
+					return game.DownloadModpackFile(ctx, release, folder, report)
+				})
+			})
+		}
+		if button(c, "安装为实例…", action.Primary, a.busy || selected.ID == "" || selected.Unavailable != "") {
 			a.readModpack("", selected)
 		}
 	})

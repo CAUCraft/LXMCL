@@ -32,6 +32,28 @@ type PackProject struct {
 	Author      string `json:"author"`
 	Description string `json:"description"`
 	Downloads   int    `json:"downloads"`
+	IconURL     string `json:"icon_url"`
+}
+
+// ResourceFilter describes a catalog query independently of an installation.
+type ResourceFilter struct{ Game, Loader string }
+
+func (f ResourceFilter) valid(kind ContentKind) bool {
+	return (f.Game == "" || releaseID.MatchString(f.Game)) && kind.modrinthType() != "" &&
+		(f.Loader == "" || kind == Mods && slices.Contains([]string{"fabric", "forge", "neoforge", "quilt"}, f.Loader))
+}
+
+func (f ResourceFilter) matches(v PackVersion) bool {
+	return (f.Game == "" || slices.Contains(v.GameVersions, f.Game)) &&
+		(f.Loader == "" || slices.Contains(v.Loaders, f.Loader))
+}
+
+func instanceResourceFilter(i Instance, kind ContentKind) ResourceFilter {
+	f := ResourceFilter{Game: i.Version}
+	if kind == Mods {
+		f.Loader = i.modrinthModLoader()
+	}
+	return f
 }
 
 func (p PackProject) PageURL(kind ContentKind) string {
@@ -106,16 +128,27 @@ func searchModrinth(ctx context.Context, i Instance, kind ContentKind, query, or
 	if _, _, err := kind.format(i); err != nil {
 		return PackSearch{}, err
 	}
+	return searchResourceCatalog(ctx, instanceResourceFilter(i, kind), kind, query, order, page, d)
+}
+
+func SearchResourceCatalog(ctx context.Context, filter ResourceFilter, kind ContentKind, query, order string, page int) (PackSearch, error) {
+	return searchResourceCatalog(ctx, filter, kind, query, order, page, &downloads{http: officialHTTP})
+}
+
+func searchResourceCatalog(ctx context.Context, f ResourceFilter, kind ContentKind, query, order string, page int, d *downloads) (PackSearch, error) {
 	projectType := kind.modrinthType()
-	if projectType == "" || page < 0 || page > 500 || len(query) > 512 {
+	if !f.valid(kind) || page < 0 || page > 500 || len(query) > 512 {
 		return PackSearch{}, errors.New("资源搜索条件无效")
 	}
 	if order != "downloads" && order != "updated" {
 		order = "relevance"
 	}
-	filter := [][]string{{"project_type:" + projectType}, {"versions:" + i.Version}}
-	if kind == Mods {
-		filter = append(filter, []string{"categories:" + i.modrinthModLoader()})
+	filter := [][]string{{"project_type:" + projectType}}
+	if f.Game != "" {
+		filter = append(filter, []string{"versions:" + f.Game})
+	}
+	if f.Loader != "" {
+		filter = append(filter, []string{"categories:" + f.Loader})
 	}
 	facets, _ := json.Marshal(filter)
 	params := url.Values{"query": {strings.TrimSpace(query)}, "facets": {string(facets)}, "index": {order},
@@ -139,17 +172,31 @@ func modrinthVersions(ctx context.Context, project string, i Instance, kind Cont
 	if _, _, err := kind.format(i); err != nil {
 		return nil, err
 	}
-	versions, _ := json.Marshal([]string{i.Version})
-	params := url.Values{"game_versions": {string(versions)}, "include_changelog": {"false"}}
-	if kind == Mods {
-		loaders, _ := json.Marshal([]string{i.modrinthModLoader()})
+	return resourceCatalogVersions(ctx, project, instanceResourceFilter(i, kind), kind, d)
+}
+
+func ResourceCatalogVersions(ctx context.Context, project string, filter ResourceFilter, kind ContentKind) ([]PackVersion, error) {
+	return resourceCatalogVersions(ctx, project, filter, kind, &downloads{http: officialHTTP})
+}
+
+func resourceCatalogVersions(ctx context.Context, project string, f ResourceFilter, kind ContentKind, d *downloads) ([]PackVersion, error) {
+	if !modrinthID.MatchString(project) || !f.valid(kind) {
+		return nil, errors.New("资源项目或筛选条件无效")
+	}
+	params := url.Values{"include_changelog": {"false"}}
+	if f.Game != "" {
+		versions, _ := json.Marshal([]string{f.Game})
+		params.Set("game_versions", string(versions))
+	}
+	if f.Loader != "" {
+		loaders, _ := json.Marshal([]string{f.Loader})
 		params.Set("loaders", string(loaders))
 	}
 	var result []PackVersion
 	err := downloadJSON(ctx, d, modrinthAPI+"project/"+project+"/version?"+params.Encode(), &result)
 	return slices.DeleteFunc(result, func(v PackVersion) bool {
 		_, ok := v.DownloadFile(kind)
-		return v.ProjectID != project || !modrinthID.MatchString(v.ID) || !v.compatible(i, kind) || !ok
+		return v.ProjectID != project || !modrinthID.MatchString(v.ID) || !f.matches(v) || !ok
 	}), err
 }
 

@@ -80,7 +80,7 @@ func (a *desktop) instanceContent(c *ui.Context, i launcher.Instance) {
 		}
 		ui.Spacer(c).Grow(1)
 		kind := v.kind()
-		if button(c, "下载"+contentLabel(kind)+"…", action.Primary, false) {
+		if button(c, "添加"+contentLabel(kind)+"…", action.Primary, false) {
 			a.openResourceDownloads(i, kind)
 		}
 		if button(c, "导入…", action.Default, disabled) {
@@ -116,6 +116,7 @@ func (a *desktop) instanceContent(c *ui.Context, i launcher.Instance) {
 						layout.Divider(c, layout.DividerProps{})
 					}
 					ui.Row(c.Key(file.Name + fmt.Sprint(file.Enabled))).MinHeight(42).Gap(8).AlignItems(ui.Center).Children(func() {
+						leadIcon(c, downloadTabs[downloadTab(v.kind())].Icon, 26)
 						display.Text(c, file.Name, display.TextProps{Strong: true, Rows: 1}).Grow(1).MinWidth(0).Ellipsis("…")
 						muted(c, fmt.Sprintf("%.1f MiB", float64(file.Size)/(1<<20))).FontSize(12)
 						label := "停用"
@@ -145,11 +146,27 @@ func (a *desktop) runContentTask(i launcher.Instance, label string, resource *re
 	if !ok || current.Revision != i.Revision || a.busy || a.running != nil || a.ctx == nil {
 		return
 	}
-	ctx, cancel := context.WithCancel(a.ctx)
-	a.busy, a.taskName, a.cancelTask = true, i.Name, cancel
-	a.task, a.notice = launcher.Progress{Stage: label}, ""
-	history := a.taskSnapshot()
 	row := taskRecord{InstanceID: i.ID, Revision: i.Revision, Name: i.Name, Version: i.Version, Action: label, At: time.Now(), Resource: resource}
+	a.runFileTask(row, work, func() {
+		if a.content.id == i.ID && a.content.revision == i.Revision {
+			a.refreshContent(i)
+		}
+	})
+}
+
+func (a *desktop) runFolderDownload(folder, action, name string, resource *resourceTask, work func(context.Context, func(launcher.Progress)) error) {
+	if a.busy || a.running != nil || a.ctx == nil || !filepath.IsAbs(folder) {
+		return
+	}
+	row := taskRecord{Name: name, Action: action, Folder: folder, At: time.Now(), Resource: resource}
+	a.runFileTask(row, work, nil)
+}
+
+func (a *desktop) runFileTask(row taskRecord, work func(context.Context, func(launcher.Progress)) error, refresh func()) {
+	ctx, cancel := context.WithCancel(a.ctx)
+	a.busy, a.taskName, a.cancelTask = true, row.Name, cancel
+	a.task, a.notice = launcher.Progress{Stage: row.Action}, ""
+	history := a.taskSnapshot()
 	a.writes.Go(func() {
 		defer cancel()
 		err := work(ctx, func(p launcher.Progress) { a.post(func() { a.task = p }) })
@@ -161,10 +178,10 @@ func (a *desktop) runContentTask(i launcher.Instance, label string, resource *re
 		}
 		a.saveTask(history, row, func() {
 			a.busy, a.cancelTask, a.task = false, nil, launcher.Progress{}
-			a.message(label+" · "+row.Status, err)
+			a.message(row.Action+" · "+row.Status, err)
 			a.noticeTask = err != nil
-			if a.content.id == i.ID && a.content.revision == i.Revision {
-				a.refreshContent(i)
+			if refresh != nil {
+				refresh()
 			}
 		})
 	})

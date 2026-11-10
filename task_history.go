@@ -44,6 +44,7 @@ type taskRecord struct {
 	Action     string        `json:"action"`
 	Status     string        `json:"status"`
 	Detail     string        `json:"detail,omitempty"`
+	Folder     string        `json:"folder,omitempty"`
 	Log        string        `json:"log,omitempty"`
 	PID        int           `json:"pid,omitempty"`
 	At         time.Time     `json:"at"`

@@ -140,6 +140,7 @@ func TestDownloadPageSelectsVersionAndLoader(t *testing.T) {
 
 func TestResourceDownloadsKeepInstallTargetSeparate(t *testing.T) {
 	a, tt := testDesktop(t)
+	a.state.Instances[0].Loader, a.state.Instances[0].LoaderVersion = launcher.LoaderForge, "52.1.21"
 	a.state.Instances[1].Loader, a.state.Instances[1].LoaderVersion = launcher.LoaderNeoForge, "21.4.120"
 	tt.SetSize(820, 530)
 	for _, label := range []string{"下载", "模组"} {
@@ -151,17 +152,8 @@ func TestResourceDownloadsKeepInstallTargetSeparate(t *testing.T) {
 	if p.target.ID != 0 {
 		t.Fatal("the browser silently selected a different instance")
 	}
-	if err := tt.Click("下载目标实例"); err != nil {
-		t.Fatal(err)
-	}
-	if _, ok := tt.Find("生存世界 · 1.21.1"); ok {
-		t.Fatal("a vanilla instance was offered as a mod target")
-	}
-	if err := tt.Click("建筑测试 · 1.21.4 · NeoForge"); err != nil {
-		t.Fatal(err)
-	}
-	if p.target.ID != 2 || a.state.Selected != 1 {
-		t.Fatal("selecting a mod download target changed the launch target")
+	if _, ok := tt.Find("筛选加载器"); !ok {
+		t.Fatal("standalone downloads did not expose an independent filter")
 	}
 	project := launcher.PackProject{ID: "sodium", Title: "Sodium", Author: "CaffeineMC",
 		Description: "Minecraft 客户端渲染优化。"}
@@ -179,14 +171,28 @@ func TestResourceDownloadsKeepInstallTargetSeparate(t *testing.T) {
 		t.Fatalf("file version did not change: %v", err)
 	}
 	tt.Advance(300 * time.Millisecond)
+	if _, ok := tt.Find("保存到文件夹…"); !ok {
+		t.Fatal("standalone downloads require an instance")
+	}
 	capture(t, tt, "download-mods")
+	if err := tt.Click("实例"); err != nil {
+		t.Fatal(err)
+	}
+	for _, label := range []string{"建筑测试", "资源", "模组", "添加模组…"} {
+		if err := tt.Click(label); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if p.target.ID != 2 || a.state.Selected != 1 || p.project.ID != "" {
+		t.Fatal("instance download did not reset the standalone catalog and capture the instance")
+	}
 	if err := tt.Click("管理已安装"); err != nil {
 		t.Fatal(err)
 	}
 	if a.page != pageLibrary || a.inspected != 2 || a.content.kind() != launcher.Mods || a.state.Selected != 1 {
 		t.Fatal("returning to installed mods navigated to the wrong instance")
 	}
-	if err := tt.Click("下载模组…"); err != nil {
+	if err := tt.Click("添加模组…"); err != nil {
 		t.Fatal(err)
 	}
 	i := &a.state.Instances[1]
@@ -194,6 +200,9 @@ func TestResourceDownloadsKeepInstallTargetSeparate(t *testing.T) {
 	tt.Frame()
 	if p.target.ID != i.ID || p.target.Loader != launcher.LoaderQuilt || p.project.ID != "" || len(p.versions) != 0 || a.state.Selected != 1 {
 		t.Fatal("changing the target loader retained incompatible results or changed the launch target")
+	}
+	if err := tt.Click("下载"); err != nil || p.target.ID != 0 {
+		t.Fatalf("the top navigation did not reopen standalone downloads: %v", err)
 	}
 }
 
