@@ -49,6 +49,8 @@ CurseForge 在线查询和下载依赖需要 [CurseForge API Key](https://consol
 
 存档备份位于数据目录的 `backups/`，恢复支持包含 `世界名/level.dat` 的 ZIP，不覆盖已有世界。
 
+服务器状态查询使用 `server.Client.Ping`，零值和原有 `launcher.PingServer` 使用系统网络。需要自定义 DNS 或连接方式时传入 `LookupSRV` / `DialContext`，无需修改全局网络对象；自定义函数须响应 context，返回的连接交由查询关闭。地址规范化、连接生命周期和状态协议分别维护，继续保留 5 秒总超时及原服务器握手地址。
+
 Microsoft 登录在系统浏览器授权，随后检查 Xbox、Java 版权益和档案。账号协议和外观操作由 `internal/account` 管理，可通过 `account.Client.Transport` 注入测试传输，不需要改全局 HTTP 客户端。`account.Vault` 在 Windows 使用 DPAPI 加密凭据，保留已有文件名和格式；其他平台仅保留当前会话。更换构建的公开应用 ID 时，旧账号需要重新登录。
 
 点击顶栏头像进入独立账号中心。拖动 3D 角色可旋转，也可用视口下方的按钮转向背面或重置。选择 64 × 64 或 64 × 32 的 PNG 可在上传前预览；已拥有的披风可直接试穿在同一角色上。点击应用后才会更新 Minecraft Java 版档案。离线账号的孪枭头像和模型仅在启动器内显示。

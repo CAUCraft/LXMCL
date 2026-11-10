@@ -17,7 +17,7 @@ LXMCL 使用 Go、MyGo 原生窗口和 Lobe MyGo 组件。主包负责界面状�
 | `internal/distribution` | `Asset` 描述来源、大小和摘要；`Asset.Fetch` 管理流式下载的来源、重定向和重试；`Cache.Ensure` 校验可复用缓存，`Cache.Export` 向选定文件夹发布已校验副本。 |
 | `internal/modpack` | `Prepare` / `PrepareLocal` 生成不可修改的预览；`Install` 解析清单、安装到临时目录、发布文件并提交实例，失败时回滚。 |
 | `internal/tasks` | `Run` 管理一次执行的进度生命周期；`Record` 保存任务目标与结果；`Journal` 串行更新历史。 |
-| `internal/server` | 服务器地址校验和状态探测。 |
+| `internal/server` | `Address` 规范化地址；`Client.Ping` 查询 Java 服务器状态，DNS 与连接方式可注入，地址规则、连接生命周期和协议解析分文件维护。 |
 | `internal/saves` | 世界备份与恢复，保留已有世界。 |
 | `internal/transfer` | 下载字节、摘要和大小校验、文件发布、并发批次与取消；`Retry` 统一有限次数的传输重试与服务端等待时间，业务重试由调用方决定。 |
 | `internal/storage` | 文件读写、路径校验及有大小限制的完整归档 JSON 读取；`PublishNew` 在已打开目录内准备新文件并以不覆盖方式发布。 |
@@ -60,6 +60,7 @@ flowchart TD
     Distribution --> Transfer
     Distribution --> Storage
     Launcher --> Instance[instance]
+    Launcher --> Server
     Tasks --> Content
     Content --> Instance
     Content --> Distribution
@@ -123,6 +124,12 @@ flowchart TD
 首次读取历史失败时不会标记为已加载，后续写入继续报告读取错误并保留原文件；修复文件后可以重试加载。读写限制均为 2 MiB，完整 JSON 文档必须有效，合法数组后的垃圾数据也会拒绝。超大结果不会覆盖已保存的历史。
 
 `tasks.json` 保持原 JSON 数组和最近 24 条上限；旧记录通过时间戳匹配，原有中文状态与动作值保留为存储标识，不能随界面语言改变。重试目标由 `launcher.RetryTarget` 检查实例 ID、修订、版本及账号；资源重试还保留资源版本或独立文件夹。旧配置变化后不猜测新的目标。
+
+## 服务器状态
+
+`server.Client.Ping` 管理一次状态查询的连接生命周期，`LookupSRV` 与 `DialContext` 可注入 DNS 和 TCP 连接方式；零值使用系统实现。`Address` 保留原有地址规范化和校验规则，私有协议实现只接收读写连接与握手地址，处理报文和图标，不读取配置或选择实例。包级 `server.Ping` 及 `launcher.PingServer` 保留兼容入口。
+
+域名使用默认端口时查询 SRV，失败或无记录时回退原地址；TCP 使用解析结果，握手始终使用原规范化主机和端口。固定 5 秒总超时覆盖 DNS、连接和收包，连接在退出或取消时关闭，取消导致的读写错误返回 context 原因。`Latency` 延续连接及响应耗时的含义，不包含 SRV 查询。状态报文保持 1 MiB 上限，图标仅解析受限大小的 64×64 PNG，图标解析失败不影响状态结果。
 
 ## 文件、资源和安装
 
