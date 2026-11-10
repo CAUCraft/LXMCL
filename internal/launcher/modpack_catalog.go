@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/CAUCraft/LXMCL/internal/content"
 	"github.com/CAUCraft/LXMCL/internal/i18n"
 	"github.com/CAUCraft/LXMCL/internal/instance"
 )
@@ -107,7 +108,7 @@ func ListModpackReleases(ctx context.Context, project ModpackProject, key, game 
 		if v.ProjectID != project.ID || !modrinthID.MatchString(v.ID) {
 			continue
 		}
-		find := func(f PackFile) bool { return contentName(f.Filename, ".mrpack") }
+		find := func(f PackFile) bool { return content.ValidName(f.Filename, ".mrpack") }
 		n := slices.IndexFunc(v.Files, func(f PackFile) bool { return f.Primary && find(f) })
 		if n < 0 {
 			n = slices.IndexFunc(v.Files, find)

@@ -42,7 +42,7 @@ type modrinthProjectDetails struct {
 
 func (p modrinthProjectDetails) kind() ContentKind {
 	for _, kind := range []ContentKind{Mods, ResourcePacks, ShaderPacks} {
-		if p.Type == kind.modrinthType() {
+		if p.Type == modrinthType(kind) {
 			return kind
 		}
 	}

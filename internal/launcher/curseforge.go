@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/CAUCraft/LXMCL/internal/content"
 	"github.com/CAUCraft/LXMCL/internal/i18n"
 	"github.com/CAUCraft/LXMCL/internal/storage"
 )
@@ -184,7 +185,7 @@ func (cf curseForge) releases(ctx context.Context, id, game string, page int) ([
 	}
 	var releases []ModpackRelease
 	for _, f := range data.Data {
-		if f.ModID != projectID || f.GameID != curseGameID || f.ID <= 0 || f.IsServerPack || !contentName(f.FileName, ".zip") {
+		if f.ModID != projectID || f.GameID != curseGameID || f.ID <= 0 || f.IsServerPack || !content.ValidName(f.FileName, ".zip") {
 			continue
 		}
 		r := ModpackRelease{ID: strconv.Itoa(f.ID), Title: f.DisplayName, Filename: f.FileName,

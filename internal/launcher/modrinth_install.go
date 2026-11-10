@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/CAUCraft/LXMCL/internal/content"
 	"github.com/CAUCraft/LXMCL/internal/i18n"
 	"github.com/CAUCraft/LXMCL/internal/transfer"
 )
@@ -21,7 +22,7 @@ func DownloadModrinth(ctx context.Context, i Instance, kind ContentKind, version
 }
 
 func downloadModrinth(ctx context.Context, i Instance, kind ContentKind, version PackVersion, d *downloads, report func(Progress)) error {
-	if _, _, err := kind.format(i); err != nil {
+	if _, _, err := kind.Format(i); err != nil {
 		return err
 	}
 	if kind == Mods && (!modrinthID.MatchString(version.ProjectID) || !modrinthID.MatchString(version.ID)) {
@@ -52,7 +53,7 @@ func (v PackVersion) DownloadFile(kind ContentKind) (PackFile, bool) {
 	if kind == Mods {
 		ext = ".jar"
 	}
-	valid := func(f PackFile) bool { return contentName(f.Filename, ext) }
+	valid := func(f PackFile) bool { return content.ValidName(f.Filename, ext) }
 	n := slices.IndexFunc(v.Files, func(f PackFile) bool { return f.Primary && valid(f) })
 	if n == -1 {
 		n = slices.IndexFunc(v.Files, valid)
@@ -78,7 +79,7 @@ func downloadModrinthFile(ctx context.Context, i Instance, kind ContentKind, v P
 	if digest, err := hex.DecodeString(file.Hashes.SHA512); err != nil || len(digest) != sha512.Size {
 		return i18n.Error("modrinth.sha512_invalid")
 	}
-	if file.Size <= 0 || file.Size > maxContentSize {
+	if file.Size <= 0 || file.Size > content.MaxSize {
 		return i18n.Error("modrinth.file_size_invalid")
 	}
 	existing, err := alreadyDownloaded(ctx, i, kind, file)
@@ -91,12 +92,12 @@ func downloadModrinthFile(ctx context.Context, i Instance, kind ContentKind, v P
 			return err
 		}
 		defer res.Body.Close()
-		return writeContent(ctx, i, kind, file.Filename, res.Body, file.Size, sha512.New(), file.Hashes.SHA512)
+		return content.WriteVerified(ctx, i, kind, file.Filename, res.Body, file.Size, sha512.New(), file.Hashes.SHA512)
 	})
 }
 
 func alreadyDownloaded(ctx context.Context, i Instance, kind ContentKind, file PackFile) (bool, error) {
-	root, err := contentDirectory(i, kind, false)
+	root, err := content.OpenDirectory(i, kind, false)
 	if errors.Is(err, fs.ErrNotExist) {
 		return false, nil
 	}

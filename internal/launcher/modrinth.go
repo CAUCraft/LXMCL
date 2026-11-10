@@ -36,7 +36,7 @@ type PackProject struct {
 type ResourceFilter struct{ Game, Loader string }
 
 func (f ResourceFilter) valid(kind ContentKind) bool {
-	return (f.Game == "" || instance.IsReleaseID(f.Game)) && kind.modrinthType() != "" &&
+	return (f.Game == "" || instance.IsReleaseID(f.Game)) && modrinthType(kind) != "" &&
 		(f.Loader == "" || kind == Mods && slices.Contains([]string{"fabric", "forge", "neoforge", "quilt"}, f.Loader))
 }
 
@@ -57,7 +57,7 @@ func (p PackProject) PageURL(kind ContentKind) string {
 	if !modrinthID.MatchString(p.ID) {
 		return ""
 	}
-	if projectType := kind.modrinthType(); projectType != "" {
+	if projectType := modrinthType(kind); projectType != "" {
 		return "https://modrinth.com/" + projectType + "/" + p.ID
 	}
 	return ""
@@ -96,7 +96,7 @@ type PackSearch struct {
 	Total int `json:"total_hits"`
 }
 
-func (k ContentKind) modrinthType() string {
+func modrinthType(k ContentKind) string {
 	switch k {
 	case Mods:
 		return "mod"
@@ -123,7 +123,7 @@ func searchModrinth(ctx context.Context, i Instance, kind ContentKind, query, or
 	if !instance.SupportedRelease(i.Version) {
 		return PackSearch{}, i18n.Error("version.select_supported")
 	}
-	if _, _, err := kind.format(i); err != nil {
+	if _, _, err := kind.Format(i); err != nil {
 		return PackSearch{}, err
 	}
 	return searchResourceCatalog(ctx, instanceResourceFilter(i, kind), kind, query, order, page, d)
@@ -134,7 +134,7 @@ func SearchResourceCatalog(ctx context.Context, filter ResourceFilter, kind Cont
 }
 
 func searchResourceCatalog(ctx context.Context, f ResourceFilter, kind ContentKind, query, order string, page int, d *downloads) (PackSearch, error) {
-	projectType := kind.modrinthType()
+	projectType := modrinthType(kind)
 	if !f.valid(kind) || page < 0 || page > 500 || len(query) > 512 {
 		return PackSearch{}, i18n.Error("modrinth.search_invalid")
 	}
@@ -167,7 +167,7 @@ func modrinthVersions(ctx context.Context, project string, i Instance, kind Cont
 	if !modrinthID.MatchString(project) || !instance.SupportedRelease(i.Version) {
 		return nil, i18n.Error("modrinth.project_or_game_invalid")
 	}
-	if _, _, err := kind.format(i); err != nil {
+	if _, _, err := kind.Format(i); err != nil {
 		return nil, err
 	}
 	return resourceCatalogVersions(ctx, project, instanceResourceFilter(i, kind), kind, d)
