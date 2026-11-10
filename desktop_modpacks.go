@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -31,7 +30,7 @@ const (
 type modpackView struct {
 	mode                                  int
 	key, keyDraft                         string
-	keyOpen, keyLoaded                    bool
+	keyOpen                               bool
 	query, applied, game                  string
 	searched, searching                   bool
 	results                               launcher.ModpackResults
@@ -55,17 +54,6 @@ func (p *modpackView) source() launcher.ModpackSource {
 		return launcher.CurseForgeModpacks
 	}
 	return launcher.ModrinthModpacks
-}
-
-func (p *modpackView) loadKey() {
-	if p.keyLoaded {
-		return
-	}
-	p.keyLoaded = true
-	p.key = strings.TrimSpace(os.Getenv("LXMCL_CURSEFORGE_API_KEY"))
-	if p.key == "" {
-		p.key = strings.TrimSpace(os.Getenv("CURSEFORGE_API_KEY"))
-	}
 }
 
 func (p *modpackView) stop() {
@@ -217,7 +205,6 @@ func (a *desktop) pickModpack() {
 
 func (a *desktop) modpackPage(c *ui.Context) {
 	p := &a.modpacks
-	p.loadKey()
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 		before := p.mode
 		action.Segmented(c, &p.mode, []string{"Modrinth", "CurseForge", "本地导入"},

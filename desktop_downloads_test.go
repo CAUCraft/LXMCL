@@ -16,7 +16,7 @@ func TestModpackWorkspaceShowsSourcesAndNewInstanceConfirmation(t *testing.T) {
 	tt.SetSize(820, 530)
 	tt.SetDark(true)
 	p := &a.modpacks
-	p.searched, p.keyLoaded = true, true
+	p.searched = true
 	project := launcher.ModpackProject{ID: "demo", Name: "飞行测试包", Author: "Flight Lab",
 		Source: launcher.ModrinthModpacks, Summary: "Minecraft 客户端整合包"}
 	p.results = launcher.ModpackResults{Projects: []launcher.ModpackProject{project}, Total: 1}

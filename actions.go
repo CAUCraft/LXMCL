@@ -33,6 +33,7 @@ func (a *desktop) load() {
 		s, err := a.store.Load()
 		account, accountErr := a.store.LoadMicrosoftAccount()
 		history, historyErr := loadTaskHistory(a.store.Root)
+		curseForgeKey := launcher.LoadCurseForgeAPIKey(a.store.Root)
 		installed := make(map[int]bool, len(s.Instances))
 		for _, i := range s.Instances {
 			installed[i.ID] = a.game.Installed(i)
@@ -43,6 +44,7 @@ func (a *desktop) load() {
 				return
 			}
 			a.state, a.draft, a.installed, a.ready = s, s.Settings, installed, true
+			a.modpacks.key = curseForgeKey
 			a.memory = strconv.Itoa(s.Settings.Memory)
 			a.restoreTaskHistory(history)
 			a.microsoftAccount = account
