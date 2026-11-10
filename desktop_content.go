@@ -2,12 +2,12 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"path/filepath"
 	"time"
 
 	"github.com/CAUCraft/LXMCL/internal/launcher"
+	"github.com/CAUCraft/LXMCL/internal/tasks"
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"github.com/lobehub/lobe-mygo/pkg/action"
@@ -163,20 +163,18 @@ func (a *desktop) runFolderDownload(folder, action, name string, resource *resou
 }
 
 func (a *desktop) runFileTask(row taskRecord, work func(context.Context, func(launcher.Progress)) error, refresh func()) {
+	row = row.Submitted()
 	ctx, cancel := context.WithCancel(a.ctx)
 	a.busy, a.taskName, a.cancelTask = true, row.Name, cancel
 	a.task, a.notice = launcher.Progress{Stage: row.Action}, ""
-	history := a.taskSnapshot()
 	a.writes.Go(func() {
 		defer cancel()
-		err := work(ctx, func(p launcher.Progress) { a.post(func() { a.task = p }) })
-		row.Status = taskCompleted
-		if errors.Is(err, context.Canceled) {
-			row.Status = taskCanceled
-		} else if err != nil {
-			row.Status, row.Detail = taskFailed, err.Error()
+		err := tasks.Run(ctx, work, func(p launcher.Progress) { a.post(func() { a.task = p }) })
+		row.Status = tasks.Outcome(err)
+		if err != nil {
+			row.Detail = err.Error()
 		}
-		a.saveTask(history, row, func() {
+		a.saveTask(row, func() {
 			a.busy, a.cancelTask, a.task = false, nil, launcher.Progress{}
 			a.message(row.Action+" · "+row.Status, err)
 			a.noticeTask = err != nil

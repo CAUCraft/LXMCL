@@ -1,15 +1,76 @@
 # 架构
 
-- 主包负责 MyGo 窗口、Lobe 组件和界面状态。文件、网络与进程操作在后台执行，结果送回 UI 线程。
-- `internal/launcher` 编排设置、账号、Java 探测、游戏安装与启动、整合包及资源下载，不依赖 UI。操作使用提交时捕获的实例、账号、设置和服务器。第三方认证只在使用皮肤站账号启动时启用。
-- `internal/instance` 管理实例配置、加载器和启动参数的校验；`internal/server` 负责服务器地址和状态探测；`internal/saves` 负责世界备份与恢复。三个包均可独立于启动器流程使用。
-- `internal/storage` 负责文件读写与路径校验；`internal/transfer` 负责下载文件的校验和发布、并发批次与取消。官方来源、重试和 Maven 镜像规则由 `internal/launcher` 决定。
-- `internal/log` 统一游戏和加载器安装器的日志路径、写入文件的创建及游戏日志预览。Java 进程由启动器管理，任务历史仍单独保存。
-- `internal/i18n` 从嵌入式 JSON 目录按键取出后端文案。后端错误保留错误链，进度文字与下载、验证逻辑分开维护。
-- Minecraft 版本目录、元数据、安装验证、参数和进程启动分别维护。Forge 安装器、运行库和配置各自成文件；整合包清单与实例安装流程分别维护。
-- 实例使用独立游戏目录，共享按官方哈希和大小校验的下载缓存。启动前可修复缺损文件，游戏进程独立于启动器窗口。
-- 整合包先解析清单、校验归档及依赖，再写入同级临时目录。游戏校验通过后才移动到实例目录并保存配置。CurseForge API Key 只用于官方 API 请求，不随文件下载发送。
-- Forge 和 NeoForge 通过官方客户端安装器生成运行库。安装器在独立的缓存临时目录运行，不使用整合包的脚本或已有 Minecraft 配置。运行库按加载器、Minecraft 版本和平台隔离，启动时与原版元数据合并并重新校验。
-- Fabric 和 Quilt 使用各自的官方启动配置与独立运行库缓存，保留已有的 Fabric 缓存布局。
-- 加载器 Maven 下载只在预设的 HTTPS 来源之间切换同一文件路径；通用镜像只提供文件，不提供校验值。镜像字节沿用原校验规则，校验后才进入共享缓存。
-- 当前没有插件 SDK。
+LXMCL 使用 Go、MyGo 原生窗口和 Lobe MyGo 组件。主包负责界面状态和事件分发，后端包不依赖 UI。文件、网络和进程操作由后台任务执行，结果通过 UI 线程展示。
+
+## 模块与接口
+
+| 模块 | 边界与主要接口 |
+| --- | --- |
+| `internal/launcher` | 应用编排与外部服务适配。`Game.Execute` 接收 `LaunchRequest`，返回 `LaunchResult`；现有游戏、账号与资源 API 保持兼容。 |
+| `internal/instance` | 实例配置、加载器和启动参数校验，不执行网络或 UI 操作。 |
+| `internal/javaruntime` | `Probe` / `Find` 探测 Java；`Manager.Local` 只检查本地；`Resolve` 按需求选取或安装；`Ensure` 校验并安装受管运行时。 |
+| `internal/content` | `Kind` 定义资源格式；`List` / `Import` / `SetEnabled` / `WriteVerified` 管理实例资源文件，不依赖下载平台。 |
+| `internal/tasks` | `Run` 管理一次执行的进度生命周期；`Record` 保存任务目标与结果；`Journal` 串行更新历史。 |
+| `internal/server` | 服务器地址校验和状态探测。 |
+| `internal/saves` | 世界备份与恢复，保留已有世界。 |
+| `internal/transfer` | 下载字节、摘要和大小校验、文件发布、并发批次与取消；来源和业务重试由调用方决定。 |
+| `internal/storage` | 文件读写和路径校验。 |
+| `internal/process` | 平台进程属性；进程的业务生命周期由调用方管理。 |
+| `internal/log` | 游戏与加载器安装器的日志路径、写入文件创建及游戏日志预览。 |
+| `internal/i18n` | 从嵌入式 JSON 按键读取后端文案，保留错误链与语言回退。 |
+
+依赖向下流动：桌面调用应用编排，编排组合领域模块和基础设施。`content`、`javaruntime`、`tasks`、`instance` 等包不反向导入 `launcher`。任务记录可引用资源类型，不能引用桌面组件或启动器实例状态。`launcher` 的类型别名和薄包装保留现有调用接口，具体文件操作交给对应模块。
+
+```mermaid
+flowchart TD
+    UI[MyGo 桌面] --> Launcher[launcher 应用编排]
+    UI --> Tasks[tasks 执行与历史]
+    Launcher --> Tasks
+    Launcher --> Java[javaruntime]
+    Launcher --> Content[content]
+    Launcher --> Instance[instance]
+    Tasks --> Content
+    Content --> Instance
+    Content --> Transfer[transfer / storage]
+    Java --> Transfer
+    Java --> Process[process]
+    Launcher --> Logs[log]
+```
+
+## 启动与账号
+
+提交时调用 `LaunchRequest.Snapshot`，捕获实例 ID、修订、游戏目录、账号、设置和服务器。`Game.Execute` 检查请求内实例与状态一致，依次完成认证、安装和启动；已安装游戏遇到 `ErrRepairRequired` 时仅修复并重试一次。只安装模式跳过认证和游戏启动。浏览其他实例不改变该请求的目标。
+
+`launch_request.go` 定义契约，`launch_auth.go` 管理启动前的账号会话验证和持久化，`launch_operation.go` 编排步骤。Microsoft 和皮肤站协议仍由各自的适配文件负责。认证失败会终止本次启动；已提交的凭据或状态变化通过 `LaunchResult` 返回，即使后续下载失败也不会丢失这些变化。第三方认证仅用于选择皮肤站账号的启动请求。
+
+调用方负责串行执行会修改配置的操作。`Execute` 在调用线程运行，应放入后台任务；进度回调也在工作线程触发。取消影响认证、下载和启动前的准备，成功创建的游戏进程独立于启动器窗口。`Running` 只表示 Java 进程已启动，`Running.Done` 表示进程退出，均不等同于游戏可玩。
+
+## Java 运行时
+
+需求来自已校验 Minecraft 元数据的 `javaVersion.component` 和 `majorVersion`。显式 Java 路径优先且失败时不回退；自动模式依次检查系统和受管缓存，再下载官方运行时。诊断调用 `Local`，不会触发下载。
+
+自动安装当前支持 Windows x64，使用 Mojang 官方目录和 HTTPS 下载来源。清单路径、类型、大小、大小写冲突及文件摘要均先校验；下载到同级临时目录，全部文件校验并实际探测版本后，以唯一目录名发布。失败或取消会清理本次临时目录，旧安装保持可用。再次使用时校验清单与全部文件。并发安装在进程内串行化，任务可在等待时取消。
+
+运行时按 `cache/java/windows-x64/<component>/runtime-<manifest-sha1>-<id>/` 保存。原版启动和 Forge / NeoForge 安装共用这一模块；未来增加平台适配时需实现该平台清单类型、可执行位及真实探测，不能直接复用 Windows 路径假设。
+
+## 任务与重试
+
+`tasks.Run(ctx, work, report)` 是一次执行，负责开始前取消检查、串行进度和结束后屏蔽迟到回调。工作函数须响应 context 并等待自己的子任务结束。调度、业务重试和 UI 节流由调用方负责。
+
+新记录在提交时生成稳定 ID，进程启动和退出更新同一条记录。每个数据目录使用一个 `Journal`，每次更新当前历史后写临时文件并发布，避免旧任务用旧快照覆盖后来记录。UI 应读取最新快照，历史写入失败单独报告，不改写实际任务结果。
+
+`tasks.json` 保持原 JSON 数组和最近 24 条上限；旧记录通过时间戳匹配，原有中文状态与动作值保留为存储标识，不能随界面语言改变。重试目标由 `launcher.RetryTarget` 检查实例 ID、修订、版本及账号；资源重试还保留资源版本或独立文件夹。旧配置变化后不猜测新的目标。
+
+## 文件、资源和安装
+
+实例使用独立游戏目录，共享经过官方哈希和大小校验的下载缓存。Minecraft 目录、元数据、安装校验、参数和进程启动分文件维护；Forge 安装器、运行库与配置，以及整合包清单和实例安装流程分别维护。
+
+Modrinth / CurseForge 适配器负责查询、版本选择和下载来源；`content` 负责 JAR / ZIP 格式、文件名、实例目录访问、启停和导入校验。添加资源只安装选中文件，必要前置由用户选择。整合包按显式清单安装依赖，在同级临时目录完成归档、依赖和游戏校验后才发布实例并保存配置。
+
+Forge / NeoForge 官方客户端安装器在独立缓存临时目录运行，不执行整合包脚本或沿用已有 Minecraft 配置。运行库按加载器、游戏版本和平台隔离；Fabric / Quilt 使用各自官方启动配置。Maven 回退仅切换预设 HTTPS 来源下的同一路径，校验值仍来自官方元数据。CurseForge 密钥只用于官方 API，不发送给下载来源或 Java 子进程。
+
+## 扩展约定与参考
+
+增加下载平台时实现查询与文件描述适配，复用 `content` 和 `transfer`；增加后台操作时提交独立目标快照，复用 `tasks`，在所属业务模块决定重试条件；新增日志格式或输出去向进入 `log`；新增文案同时维护中英文 JSON 的键和格式参数。接口由实际调用需求决定，目前没有插件 SDK、任务恢复调度器或账号提供者注册框架。
+
+设计参考了 [HMCL 的 Mojang Java 安装任务](https://github.com/HMCL-dev/HMCL/blob/main/HMCLCore/src/main/java/org/jackhuang/hmcl/download/java/mojang/MojangJavaDownloadTask.java)中运行时安装的独立职责，以及 [Prism Launcher 的任务接口](https://github.com/PrismLauncher/PrismLauncher/blob/develop/launcher/tasks/Task.h)中进度、取消与结束状态的区分。这里使用 Go context、明确的请求/结果和组合实现，未引入它们的任务类继承结构或复制实现源码。

@@ -2,6 +2,8 @@ package launcher
 
 import (
 	"regexp"
+
+	"github.com/CAUCraft/LXMCL/internal/tasks"
 )
 
 var (
@@ -12,7 +14,4 @@ type Game struct {
 	Cache string
 }
 
-type Progress struct {
-	Stage       string
-	Done, Total int
-}
+type Progress = tasks.Progress

@@ -53,27 +53,27 @@ func TestTaskRetryStaysWithCapturedAccount(t *testing.T) {
 	i := a.state.Instances[0]
 	row := taskRecord{InstanceID: i.ID, Revision: i.Revision, Version: i.Version,
 		Action: taskLaunch, Status: taskFailed, Account: a.state.AccountKey()}
-	if _, ok := row.retryTarget(a.state); !ok {
+	if _, ok := launcher.RetryTarget(row, a.state); !ok {
 		t.Fatal("same-account launch could not be retried")
 	}
 	a.state.MicrosoftProfile = "0123456789abcdef0123456789abcdef"
-	if _, ok := row.retryTarget(a.state); ok {
+	if _, ok := launcher.RetryTarget(row, a.state); ok {
 		t.Fatal("the previous offline task can be retried with Microsoft credentials")
 	}
 	row.Account = a.state.AccountKey()
 	if err := a.state.UseOfflinePlayer("OtherPlayer"); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := row.retryTarget(a.state); ok {
+	if _, ok := launcher.RetryTarget(row, a.state); ok {
 		t.Fatal("Microsoft launch can be retried under an offline player")
 	}
 	a.state.UseStation(launcher.StationProfile{Key: "station-fixture"})
 	row.Account = ""
-	if _, ok := row.retryTarget(a.state); ok {
+	if _, ok := launcher.RetryTarget(row, a.state); ok {
 		t.Fatal("a legacy launch without a captured account can be retried under a station identity")
 	}
 	row.Account = a.state.AccountKey()
-	if _, ok := row.retryTarget(a.state); !ok {
+	if _, ok := launcher.RetryTarget(row, a.state); !ok {
 		t.Fatal("retry did not retain the captured station account")
 	}
 }

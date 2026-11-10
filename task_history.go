@@ -1,118 +1,31 @@
 package main
 
 import (
-	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
-	"os"
-	"path/filepath"
-	"slices"
-	"time"
 
-	"github.com/CAUCraft/LXMCL/internal/launcher"
 	launcherlog "github.com/CAUCraft/LXMCL/internal/log"
+	"github.com/CAUCraft/LXMCL/internal/tasks"
 )
+
+type taskRecord = tasks.Record
+type resourceTask = tasks.Resource
 
 const (
-	historyLimit = 24
-
-	taskCompleted = "已完成"
-	taskStarted   = "已启动"
-	taskExited    = "已退出"
-	taskFailed    = "已失败"
-	taskCanceled  = "已取消"
-	taskLaunch    = "启动游戏"
-	taskVerify    = "下载 / 校验"
+	historyLimit  = tasks.Limit
+	taskCompleted = tasks.Completed
+	taskStarted   = tasks.Started
+	taskExited    = tasks.Exited
+	taskFailed    = tasks.Failed
+	taskCanceled  = tasks.Canceled
+	taskLaunch    = tasks.Launch
+	taskVerify    = tasks.Verify
 )
 
-type resourceTask struct {
-	Kind    launcher.ContentKind `json:"kind"`
-	Project string               `json:"project"`
-	Version string               `json:"version"`
-	Title   string               `json:"title"`
-}
-
-type taskRecord struct {
-	InstanceID int           `json:"instance_id,omitempty"`
-	Revision   uint64        `json:"instance_revision,omitempty"`
-	Name       string        `json:"name"`
-	Version    string        `json:"version"`
-	Server     string        `json:"server,omitempty"`
-	Account    string        `json:"account,omitempty"`
-	Action     string        `json:"action"`
-	Status     string        `json:"status"`
-	Detail     string        `json:"detail,omitempty"`
-	Folder     string        `json:"folder,omitempty"`
-	Log        string        `json:"log,omitempty"`
-	PID        int           `json:"pid,omitempty"`
-	At         time.Time     `json:"at"`
-	Resource   *resourceTask `json:"resource,omitempty"`
-}
-
-func (r taskRecord) retryTarget(s launcher.State) (launcher.Instance, bool) {
-	if r.InstanceID == 0 || (r.Status != taskFailed && r.Status != taskCanceled) ||
-		(r.Action != taskLaunch && r.Action != taskVerify && r.Resource == nil) {
-		return launcher.Instance{}, false
-	}
-	if r.Action == taskLaunch && (r.Account != "" && r.Account != s.AccountKey() ||
-		r.Account == "" && (s.MicrosoftProfile != "" || s.StationKey != "")) {
-		return launcher.Instance{}, false
-	}
-	i, ok := s.Find(r.InstanceID)
-	return i, ok && i.Revision == r.Revision && i.Version == r.Version &&
-		(r.Resource == nil || (r.Resource.Project != "" && r.Resource.Version != "" && r.Resource.Kind.Supports(i)))
-}
-
-func loadTaskHistory(root string) ([]taskRecord, error) {
-	f, err := os.Open(filepath.Join(root, "tasks.json"))
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	var records []taskRecord
-	if err := json.NewDecoder(io.LimitReader(f, 2<<20)).Decode(&records); err != nil {
-		return nil, err
-	}
-	return records[:min(len(records), historyLimit)], nil
-}
-
-func updateTaskHistory(records []taskRecord, record taskRecord) []taskRecord {
-	next := []taskRecord{record}
-	for _, item := range records {
-		if !item.At.Equal(record.At) {
-			next = append(next, item)
-		}
-		if len(next) == historyLimit {
-			break
-		}
-	}
-	return next
-}
-
-func saveTaskHistory(root string, records []taskRecord) error {
-	if err := os.MkdirAll(root, 0700); err != nil {
-		return err
-	}
-	f, err := os.CreateTemp(root, ".lxmcl-tasks-*")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(f.Name())
-	enc := json.NewEncoder(f)
-	enc.SetIndent("", "  ")
-	err = enc.Encode(records)
-	if err == nil {
-		err = f.Sync()
-	}
-	if err := errors.Join(err, f.Close()); err != nil {
-		return err
-	}
-	return os.Rename(f.Name(), filepath.Join(root, "tasks.json"))
-}
+var (
+	loadTaskHistory   = tasks.Load
+	saveTaskHistory   = tasks.Save
+	updateTaskHistory = tasks.Update
+)
 
 func (a *desktop) restoreTaskHistory(records []taskRecord) {
 	a.history = records
@@ -124,11 +37,10 @@ func (a *desktop) restoreTaskHistory(records []taskRecord) {
 	}
 }
 
-func (a *desktop) saveTask(records []taskRecord, record taskRecord, render func()) []taskRecord {
-	next := updateTaskHistory(records, record)
-	err := saveTaskHistory(a.store.Root, next)
+func (a *desktop) saveTask(record taskRecord, render func()) {
+	_, err := a.journal.Record(a.store.Root, record)
 	a.post(func() {
-		a.history = next
+		a.history = a.journal.Snapshot()
 		render()
 		if err != nil {
 			// Preserve the game outcome and report the separate disk error.
@@ -136,10 +48,7 @@ func (a *desktop) saveTask(records []taskRecord, record taskRecord, render func(
 			a.noticeError = true
 		}
 	})
-	return next
 }
-
-func (a *desktop) taskSnapshot() []taskRecord { return slices.Clone(a.history) }
 
 func (a *desktop) showLog(path string) {
 	if !launcherlog.IsGame(path) {

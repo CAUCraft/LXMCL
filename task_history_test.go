@@ -12,11 +12,11 @@ func TestResourceRetryKeepsOriginalInstanceRevision(t *testing.T) {
 	state := launcher.State{Instances: []launcher.Instance{i}, Selected: 4}
 	row := taskRecord{InstanceID: i.ID, Revision: i.Revision, Version: i.Version, Status: taskCanceled,
 		Resource: &resourceTask{Kind: launcher.Mods, Project: "modA", Version: "releaseA"}}
-	if target, ok := row.retryTarget(state); !ok || target.ID != i.ID {
+	if target, ok := launcher.RetryTarget(row, state); !ok || target.ID != i.ID {
 		t.Fatal("resource retry did not use its original instance")
 	}
 	state.Instances[0].Revision++
-	if _, ok := row.retryTarget(state); ok {
+	if _, ok := launcher.RetryTarget(row, state); ok {
 		t.Fatal("resource retry was accepted after an instance revision change")
 	}
 }
