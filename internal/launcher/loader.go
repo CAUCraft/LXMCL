@@ -12,12 +12,15 @@ const (
 	LoaderFabric   = "Fabric"
 	LoaderForge    = "Forge"
 	LoaderNeoForge = "NeoForge"
+	LoaderQuilt    = "Quilt"
 )
 
 var forgeVersion = regexp.MustCompile(`^[0-9]{1,4}(\.[0-9]{1,5}){2,3}(-[a-zA-Z][a-zA-Z0-9]{0,15})?$`)
 
 func (i Instance) Forge() bool    { return strings.EqualFold(i.Loader, LoaderForge) }
 func (i Instance) NeoForge() bool { return strings.EqualFold(i.Loader, LoaderNeoForge) }
+func (i Instance) Quilt() bool    { return strings.EqualFold(i.Loader, LoaderQuilt) }
+func (i Instance) knot() bool     { return i.Fabric() || i.Quilt() }
 func (i Instance) patched() bool  { return i.Forge() || i.NeoForge() }
 
 func (i Instance) LoaderName() string {
@@ -39,6 +42,10 @@ func normalizeLoader(game, kind, version string) (string, string, error) {
 	case "fabric", "fabric-loader":
 		if fabricVersionID.MatchString(version) {
 			return LoaderFabric, version, nil
+		}
+	case "quilt", "quilt-loader":
+		if fabricVersionID.MatchString(version) {
+			return LoaderQuilt, version, nil
 		}
 	case "forge":
 		version = strings.TrimPrefix(version, game+"-")

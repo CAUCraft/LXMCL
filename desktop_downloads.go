@@ -81,15 +81,32 @@ func (a *desktop) downloads(c *ui.Context) {
 }
 
 type installView struct {
-	query, version, name string
-	loader               int
-	fabricGame, fabric   string
-	fabricVersions       []string
-	fabricBusy           bool
-	fabricErr, err       string
-	request              uint64
-	fabricCancel         context.CancelFunc
-	scroll               ui.ScrollState
+	query, version, name                  string
+	loader                                int
+	loaderGame, loaderKind, loaderVersion string
+	loaderVersions                        []launcher.LoaderRelease
+	loaderBusy                            bool
+	loaderErr, err                        string
+	request                               uint64
+	loaderCancel                          context.CancelFunc
+	scroll                                ui.ScrollState
+}
+
+var installLoaders = []string{launcher.LoaderVanilla, launcher.LoaderFabric, launcher.LoaderForge, launcher.LoaderNeoForge, launcher.LoaderQuilt}
+
+func (p *installView) kind() string { return installLoaders[p.loader] }
+
+func (p *installView) currentLoaderCatalog() bool {
+	return p.loaderGame == p.version && p.loaderKind == p.kind()
+}
+
+func (p *installView) cancelLoaders() {
+	if p.loaderCancel != nil {
+		p.loaderCancel()
+		p.loaderCancel = nil
+	}
+	p.request++
+	p.loaderBusy = false
 }
 
 func (a *desktop) openInstall(version string, fabric bool) {
@@ -102,31 +119,28 @@ func (a *desktop) openInstall(version string, fabric bool) {
 	}
 }
 
-func (a *desktop) loadInstallFabric() {
+func (a *desktop) loadInstallLoaders() {
 	p := &a.install
-	if p.version == "" || a.ctx == nil {
+	if p.version == "" || p.loader == 0 || a.ctx == nil {
 		return
 	}
-	if p.fabricCancel != nil {
-		p.fabricCancel()
-	}
-	ctx, cancel := context.WithTimeout(a.ctx, 15*time.Second)
-	p.fabricCancel = cancel
-	p.request++
-	request, game := p.request, p.version
-	p.fabricGame, p.fabric, p.fabricErr, p.fabricVersions, p.fabricBusy = game, "", "", nil, true
+	p.cancelLoaders()
+	ctx, cancel := context.WithTimeout(a.ctx, 30*time.Second)
+	p.loaderCancel = cancel
+	request, game, kind := p.request, p.version, p.kind()
+	p.loaderGame, p.loaderKind, p.loaderVersion, p.loaderErr, p.loaderVersions, p.loaderBusy = game, kind, "", "", nil, true
 	go func() {
 		defer cancel()
-		versions, err := launcher.FabricVersions(ctx, game)
+		versions, err := launcher.LoaderVersions(ctx, game, kind)
 		a.post(func() {
 			if p.request != request {
 				return
 			}
-			p.fabricBusy, p.fabricVersions = false, versions
+			p.loaderBusy, p.loaderVersions = false, versions
 			if err != nil {
-				p.fabricErr = err.Error()
+				p.loaderErr = err.Error()
 			} else if len(versions) != 0 {
-				p.fabric = versions[0]
+				p.loaderVersion = versions[0].Version
 			}
 		})
 	}()
@@ -193,49 +207,57 @@ func (a *desktop) installVersions(c *ui.Context, p *installView) {
 }
 
 func (a *desktop) installDetails(c *ui.Context, p *installView) {
-	defaultName := a.installName(p)
 	heading(c, "Minecraft "+p.version)
 	layout.Divider(c, layout.DividerProps{})
 	layout.ScrollArea(c, layout.ScrollAreaProps{}, func() {
 		ui.Column(c).Gap(8).Padding(4, 2).Children(func() {
 			settingsRow(c, "实例名称", func() {
 				before := p.name
-				settingsInput(c, "实例名称", &p.name, defaultName, 0, false)
+				settingsInput(c, "实例名称", &p.name, a.installName(p), 0, false)
 				if before != p.name {
 					p.err = ""
 				}
 			})
 			settingsRow(c, "加载器", func() {
 				before := p.loader
-				action.Segmented(c, &p.loader, []string{"原版", "Fabric"}, action.SegmentedProps{Size: theme.Small}).Label("安装加载器")
+				action.Segmented(c, &p.loader, []string{"原版", "Fabric", "Forge", "NeoForge", "Quilt"}, action.SegmentedProps{Size: theme.Small}).Label("安装加载器")
 				if before != p.loader {
 					p.err = ""
+					if p.loader == 0 && p.loaderBusy {
+						p.cancelLoaders()
+						p.loaderGame = ""
+					}
 				}
 			})
-			if p.loader == 1 {
-				if p.fabricGame != p.version {
-					a.loadInstallFabric()
+			if p.loader != 0 {
+				kind := p.kind()
+				if !p.currentLoaderCatalog() {
+					a.loadInstallLoaders()
 				}
-				settingsRow(c, "Fabric 版本", func() {
+				settingsRow(c, "加载器版本", func() {
 					switch {
-					case p.fabricBusy:
-						flightLoading(c, "读取 Fabric 版本…")
-					case p.fabricErr != "":
-						if button(c, "重试读取 Fabric", action.Default, false) {
-							a.loadInstallFabric()
+					case p.loaderBusy:
+						flightLoading(c, "读取 "+kind+" 版本…")
+					case p.loaderErr != "":
+						if button(c, "重试读取 "+kind, action.Default, false) {
+							a.loadInstallLoaders()
 						}
-					case len(p.fabricVersions) == 0:
-						muted(c, "此游戏版本没有可用的 Fabric 稳定版").FontSize(12)
+					case len(p.loaderVersions) == 0:
+						muted(c, "此游戏版本没有可用的 "+kind+" 版本").FontSize(12)
 					default:
-						options := make([]field.SelectOption, 0, len(p.fabricVersions))
-						for _, v := range p.fabricVersions {
-							options = append(options, field.SelectOption{Value: v, Label: v})
+						options := make([]field.SelectOption, 0, len(p.loaderVersions))
+						for _, v := range p.loaderVersions {
+							label := v.Version
+							if v.Preview {
+								label += " · 预览"
+							}
+							options = append(options, field.SelectOption{Value: v.Version, Label: label})
 						}
-						catalogPicker(c, &p.fabric, options, "Fabric 版本", "", false).Grow(1).MinWidth(0).MaxWidth(224)
+						catalogPicker(c.Key(kind), &p.loaderVersion, options, kind+" 版本", "", false).Grow(1).MinWidth(0).MaxWidth(254)
 					}
 				})
-				if p.fabricErr != "" {
-					feedback.Alert(c, p.fabricErr, feedback.AlertProps{Type: feedback.Warning})
+				if p.loaderErr != "" {
+					feedback.Alert(c, p.loaderErr, feedback.AlertProps{Type: feedback.Warning})
 				}
 			}
 			layout.Divider(c, layout.DividerProps{})
@@ -254,17 +276,17 @@ func (a *desktop) installDetails(c *ui.Context, p *installView) {
 	}).Grow(1).MinHeight(0)
 	layout.Divider(c, layout.DividerProps{})
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Justify(ui.End).Children(func() {
-		locked := a.busy || a.running != nil || (p.loader == 1 && (p.fabricBusy || p.fabric == "" || p.fabricGame != p.version))
+		locked := a.busy || a.running != nil || (p.loader != 0 && (p.loaderBusy || p.loaderVersion == "" || !p.currentLoaderCatalog()))
 		if button(c, "安装实例", action.Primary, locked) {
-			a.submitInstall(p, defaultName)
+			a.submitInstall(p, a.installName(p))
 		}
 	})
 }
 
 func (a *desktop) installName(p *installView) string {
 	base := p.version
-	if p.loader == 1 {
-		base += " Fabric"
+	if p.loader != 0 {
+		base += " " + p.kind()
 	}
 	candidate := base
 	for n := 2; slices.ContainsFunc(a.state.Instances, func(i launcher.Instance) bool {
@@ -283,18 +305,18 @@ func (a *desktop) submitInstall(p *installView, defaultName string) {
 		p.err = "请从官方版本列表选择要安装的版本"
 		return
 	}
-	name, fabric := strings.TrimSpace(p.name), ""
+	name, loaderVersion := strings.TrimSpace(p.name), ""
 	if name == "" {
 		name = defaultName
 	}
-	if p.loader == 1 {
-		if p.fabricGame != p.version || !slices.Contains(p.fabricVersions, p.fabric) {
-			p.err = "请选择兼容的 Fabric 版本"
+	if p.loader != 0 {
+		if !p.currentLoaderCatalog() || !slices.ContainsFunc(p.loaderVersions, func(v launcher.LoaderRelease) bool { return v.Version == p.loaderVersion }) {
+			p.err = "请选择兼容的 " + p.kind() + " 版本"
 			return
 		}
-		fabric = p.fabric
+		loaderVersion = p.loaderVersion
 	}
-	next, instance, err := newInstallation(a.state, name, p.version, fabric)
+	next, instance, err := newLoaderInstallation(a.state, name, p.version, p.kind(), loaderVersion)
 	if err != nil {
 		p.err = err.Error()
 		return
@@ -313,14 +335,6 @@ func (a *desktop) submitInstall(p *installView, defaultName string) {
 		}
 		a.play(instance, true)
 	})
-}
-
-func newInstallation(state launcher.State, name, version, fabric string) (launcher.State, launcher.Instance, error) {
-	loader := launcher.LoaderVanilla
-	if fabric != "" {
-		loader = launcher.LoaderFabric
-	}
-	return newLoaderInstallation(state, name, version, loader, fabric)
 }
 
 func newLoaderInstallation(state launcher.State, name, version, loader, loaderVersion string) (launcher.State, launcher.Instance, error) {

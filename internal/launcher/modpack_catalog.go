@@ -132,12 +132,12 @@ func unsupportedPackTags(games, loaders []string) string {
 	}
 	if len(loaders) > 0 && !slices.ContainsFunc(loaders, func(s string) bool {
 		switch strings.ToLower(s) {
-		case "fabric", "forge", "neoforge", "minecraft", "vanilla":
+		case "fabric", "forge", "neoforge", "quilt", "minecraft", "vanilla":
 			return true
 		}
 		return false
 	}) {
-		return "需要原版、Fabric、Forge 或 NeoForge"
+		return "不支持此整合包的加载器"
 	}
 	return ""
 }

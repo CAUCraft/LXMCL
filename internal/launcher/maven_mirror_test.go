@@ -65,7 +65,7 @@ func TestNeoForgeMirrorsCannotSupplyUntrustedChecksumOrPublishBadFile(t *testing
 				t.Fatal("a general mirror was contacted for a checksum")
 			}
 			resp := fixtureResponse(http.StatusFound, nil)
-			resp.Header.Set("Location", neoBMCL+strings.TrimPrefix(req.URL.Path, "/releases/"))
+			resp.Header.Set("Location", bmclMaven+strings.TrimPrefix(req.URL.Path, "/releases/"))
 			return resp, nil
 		}
 		return fixtureResponse(http.StatusOK, []byte("corrupt")), nil
@@ -94,5 +94,39 @@ func TestNeoForgeCancelStopsBeforeTryingAnotherSource(t *testing.T) {
 	})}}
 	if _, err := d.fetchSHA1(ctx, neoMaven+"net/neoforged/test.jar"); !errors.Is(err, context.Canceled) || tried != 1 {
 		t.Fatalf("canceled request still tried other sources: %d %v", tried, err)
+	}
+}
+
+func TestFabricAndForgeMirrorOnlyVerifiedFiles(t *testing.T) {
+	for _, repo := range []string{fabricMaven, forgeMaven} {
+		t.Run(repo, func(t *testing.T) {
+			const path = "org/example/demo/1.0+build/demo-1.0+build.jar"
+			const contents = "verified bytes"
+			sha := fmt.Sprintf("%x", sha1.Sum([]byte(contents)))
+			d := &downloads{http: &http.Client{Transport: transportFunc(func(req *http.Request) (*http.Response, error) {
+				switch req.URL.String() {
+				case repo + path + ".sha1":
+					return fixtureResponse(http.StatusOK, []byte(sha)), nil
+				case repo + path:
+					return nil, context.DeadlineExceeded
+				case njuMaven + path:
+					return fixtureResponse(http.StatusOK, []byte(contents)), nil
+				default:
+					t.Fatalf("unexpected request: %s", req.URL)
+					return nil, nil
+				}
+			})}}
+			actual, err := d.fetchSHA1(t.Context(), repo+path)
+			if err != nil || actual != sha {
+				t.Fatalf("failed to read origin checksum: %s %v", actual, err)
+			}
+			dest := filepath.Join(t.TempDir(), "demo.jar")
+			if err := d.file(t.Context(), dest, artifact{URL: repo + path, SHA: actual, Size: int64(len(contents))}); err != nil {
+				t.Fatal(err)
+			}
+			if got, err := os.ReadFile(dest); err != nil || string(got) != contents || !d.mavenMirrorUsed {
+				t.Fatalf("verified mirror download missing: %q, %v", got, err)
+			}
+		})
 	}
 }

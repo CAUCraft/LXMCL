@@ -38,11 +38,11 @@ var officialHTTP = &http.Client{
 }
 
 type downloads struct {
-	http          *http.Client
-	mu            sync.Mutex
-	cooldown      map[string]time.Time
-	neoOriginDown bool
-	neoMirrorUsed bool
+	http            *http.Client
+	mu              sync.Mutex
+	cooldown        map[string]time.Time
+	mavenOriginDown map[string]bool
+	mavenMirrorUsed bool
 }
 
 func officialURL(u *url.URL) bool {
@@ -50,7 +50,8 @@ func officialURL(u *url.URL) bool {
 		slices.Contains([]string{"piston-meta.mojang.com", "piston-data.mojang.com",
 			"libraries.minecraft.net", "resources.download.minecraft.net", "launcher.mojang.com",
 			"launchermeta.mojang.com", "meta.fabricmc.net", "maven.fabricmc.net",
-			"api.modrinth.com", "cdn.modrinth.com", "maven.minecraftforge.net",
+			"api.modrinth.com", "cdn.modrinth.com", "maven.minecraftforge.net", "files.minecraftforge.net",
+			"meta.quiltmc.org", "maven.quiltmc.org",
 			"maven.neoforged.net", "repo.maven.apache.org", "repo1.maven.org"}, u.Hostname())
 }
 

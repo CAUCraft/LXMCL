@@ -13,6 +13,7 @@ import (
 )
 
 const fabricMeta = "https://meta.fabricmc.net/v2/versions/loader/"
+const quiltMeta = "https://meta.quiltmc.org/v3/versions/loader/"
 
 var (
 	fabricVersionID = regexp.MustCompile(`^[0-9][0-9A-Za-z.+_-]{0,63}$`)
@@ -62,134 +63,159 @@ func FabricVersions(ctx context.Context, gameVersion string) ([]string, error) {
 	return stable, nil
 }
 
-type fabricArguments struct{ JVM, Game []json.RawMessage }
+type loaderArguments struct{ JVM, Game []json.RawMessage }
 
-type fabricRuntime struct {
+type knotRuntime struct {
 	GameVersion   string
 	LoaderVersion string
 	MainClass     string
-	Arguments     fabricArguments
+	Arguments     loaderArguments
 	Libraries     []artifact
 }
 
-func (g Game) fabricDir(i Instance) string {
-	return filepath.Join(g.Cache, "fabric", i.Version, i.LoaderVersion)
+func (g Game) knotDir(i Instance) string {
+	loader := "fabric"
+	if i.Quilt() {
+		loader = "quilt"
+	}
+	return filepath.Join(g.Cache, loader, i.Version, i.LoaderVersion)
 }
 
-func (g Game) readFabric(i Instance) (fabricRuntime, error) {
-	var profile fabricRuntime
-	ok, err := readJSON(filepath.Join(g.fabricDir(i), "verified.json"), &profile)
+func knotSource(i Instance) (meta, prefix, main string) {
+	if i.Quilt() {
+		return quiltMeta, "quilt-loader-", "org.quiltmc.loader.impl.launch.knot.KnotClient"
+	}
+	return fabricMeta, "fabric-loader-", "net.fabricmc.loader.impl.launch.knot.KnotClient"
+}
+
+func knotName(i Instance) string {
+	if i.Quilt() {
+		return LoaderQuilt
+	}
+	return LoaderFabric
+}
+
+func (g Game) readKnot(i Instance) (knotRuntime, error) {
+	_, _, main := knotSource(i)
+	var profile knotRuntime
+	ok, err := readJSON(filepath.Join(g.knotDir(i), "verified.json"), &profile)
 	if err != nil {
 		return profile, err
 	}
 	if !ok || profile.GameVersion != i.Version || profile.LoaderVersion != i.LoaderVersion ||
-		profile.MainClass != "net.fabricmc.loader.impl.launch.knot.KnotClient" || len(profile.Libraries) == 0 {
-		return profile, errors.New("Fabric 文件尚未校验")
+		profile.MainClass != main || len(profile.Libraries) == 0 {
+		return profile, fmt.Errorf("%s 文件尚未校验", knotName(i))
 	}
 	return profile, nil
 }
 
-func fabricLibraryPath(name string) (string, error) {
+func knotLibraryPath(name string) (string, error) {
 	parts := strings.Split(name, ":")
 	if len(parts) != 3 || !mavenPart.MatchString(parts[1]) || !mavenPart.MatchString(parts[2]) {
-		return "", fmt.Errorf("不支持的 Fabric 运行库：%s", name)
+		return "", fmt.Errorf("不支持的加载器运行库：%s", name)
 	}
 	group := strings.Split(parts[0], ".")
 	for _, part := range group {
 		if !mavenPart.MatchString(part) {
-			return "", fmt.Errorf("无效的 Fabric 运行库坐标：%s", name)
+			return "", fmt.Errorf("无效的加载器运行库坐标：%s", name)
 		}
 	}
 	return strings.Join(group, "/") + "/" + parts[1] + "/" + parts[2] + "/" + parts[1] + "-" + parts[2] + ".jar", nil
 }
 
-func (g Game) fabricFiles(i Instance, libs []artifact) ([]fileDownload, []string, error) {
+func (g Game) knotFiles(i Instance, libs []artifact) ([]fileDownload, []string, error) {
 	var files []fileDownload
 	var classpath []string
 	for _, lib := range libs {
 		if !filepath.IsLocal(lib.Path) || strings.ContainsAny(lib.Path, ":\\") || filepath.Ext(lib.Path) != ".jar" {
-			return nil, nil, fmt.Errorf("无效的 Fabric 运行库路径：%s", lib.Path)
+			return nil, nil, fmt.Errorf("无效的 %s 运行库路径：%s", knotName(i), lib.Path)
 		}
-		path := filepath.Join(g.fabricDir(i), "libraries", filepath.FromSlash(lib.Path))
+		path := filepath.Join(g.knotDir(i), "libraries", filepath.FromSlash(lib.Path))
 		files = append(files, fileDownload{path, lib})
 		classpath = append(classpath, path)
 	}
 	return files, classpath, nil
 }
 
-func (g Game) installFabric(ctx context.Context, i Instance, d *downloads, report func(Progress)) error {
-	report(Progress{Stage: "获取 Fabric 加载器"})
+func (g Game) installKnot(ctx context.Context, i Instance, d *downloads, report func(Progress)) error {
+	loader := knotName(i)
+	if _, _, err := g.verifyKnot(ctx, i); err == nil {
+		return nil
+	}
+	report(Progress{Stage: "获取 " + loader + " 加载器"})
 	var remote struct {
 		ID           string
 		InheritsFrom string
 		MainClass    string
-		Arguments    fabricArguments
+		Arguments    loaderArguments
 		Libraries    []struct {
 			Name, URL, SHA1 string
 			Size            int64
 		}
 	}
-	source := fabricMeta + url.PathEscape(i.Version) + "/" + url.PathEscape(i.LoaderVersion) + "/profile/json"
+	meta, prefix, main := knotSource(i)
+	source := meta + url.PathEscape(i.Version) + "/" + url.PathEscape(i.LoaderVersion) + "/profile/json"
 	if err := downloadJSON(ctx, d, source, &remote); err != nil {
 		return err
 	}
-	if remote.InheritsFrom != i.Version || remote.ID != "fabric-loader-"+i.LoaderVersion+"-"+i.Version ||
-		remote.MainClass != "net.fabricmc.loader.impl.launch.knot.KnotClient" || len(remote.Libraries) == 0 {
-		return errors.New("Fabric 配置不匹配当前 Minecraft 与加载器版本")
+	if remote.InheritsFrom != i.Version || remote.ID != prefix+i.LoaderVersion+"-"+i.Version ||
+		remote.MainClass != main || len(remote.Libraries) == 0 {
+		return fmt.Errorf("%s 配置不匹配当前 Minecraft 与加载器版本", loader)
 	}
-	p := fabricRuntime{GameVersion: i.Version, LoaderVersion: i.LoaderVersion, MainClass: remote.MainClass, Arguments: remote.Arguments}
+	p := knotRuntime{GameVersion: i.Version, LoaderVersion: i.LoaderVersion, MainClass: remote.MainClass, Arguments: remote.Arguments}
+	var checksums []int
 	for _, lib := range remote.Libraries {
-		path, err := fabricLibraryPath(lib.Name)
+		path, err := knotLibraryPath(lib.Name)
 		if err != nil {
 			return err
 		}
-		if lib.URL != "https://maven.fabricmc.net/" && lib.URL != "https://libraries.minecraft.net/" {
-			return fmt.Errorf("Fabric 运行库来源不受支持：%s", lib.URL)
+		if lib.URL != fabricMaven && lib.URL != "https://libraries.minecraft.net/" &&
+			!(i.Quilt() && lib.URL == "https://maven.quiltmc.org/repository/release/") {
+			return fmt.Errorf("%s 运行库来源不受支持：%s", loader, lib.URL)
 		}
 		a := artifact{Path: path, URL: lib.URL + path, SHA: lib.SHA1, Size: lib.Size}
 		if a.Size == 0 {
 			a.Size = unknownSize
 		}
 		if a.SHA == "" {
-			err := retry(ctx, func() error {
-				res, err := d.get(ctx, a.URL+".sha1")
-				if err != nil {
-					return err
-				}
-				defer res.Body.Close()
-				b, err := io.ReadAll(io.LimitReader(res.Body, 128))
-				a.SHA = strings.TrimSpace(string(b))
-				return err
-			})
-			if err != nil {
-				return err
-			}
-		}
-		if _, err := a.checksum(); err != nil {
+			checksums = append(checksums, len(p.Libraries))
+		} else if _, err := a.checksum(); err != nil {
 			return err
 		}
 		p.Libraries = append(p.Libraries, a)
 	}
-	files, _, err := g.fabricFiles(i, p.Libraries)
+	if err := batch(ctx, checksums, func(ctx context.Context, index int) error {
+		lib := &p.Libraries[index]
+		sha, err := d.fetchSHA1(ctx, lib.URL)
+		if err != nil {
+			return fmt.Errorf("无法获取 %s 运行库的校验值：%w", filepath.Base(lib.Path), err)
+		}
+		lib.SHA = sha
+		_, err = lib.checksum()
+		return err
+	}, nil); err != nil {
+		return err
+	}
+	files, _, err := g.knotFiles(i, p.Libraries)
 	if err != nil {
 		return err
 	}
-	if err := d.batch(ctx, "下载并校验 Fabric", files, report); err != nil {
+	if err := d.batch(ctx, "下载并校验 "+loader, files, report); err != nil {
 		return err
 	}
 	data, err := json.Marshal(p)
 	if err != nil {
 		return err
 	}
-	return writeFile(filepath.Join(g.fabricDir(i), "verified.json"), data)
+	return writeFile(filepath.Join(g.knotDir(i), "verified.json"), data)
 }
 
-func (g Game) verifyFabric(ctx context.Context, i Instance) (fabricRuntime, []string, error) {
-	p, err := g.readFabric(i)
+func (g Game) verifyKnot(ctx context.Context, i Instance) (knotRuntime, []string, error) {
+	p, err := g.readKnot(i)
 	if err != nil {
 		return p, nil, err
 	}
-	files, cp, err := g.fabricFiles(i, p.Libraries)
+	files, cp, err := g.knotFiles(i, p.Libraries)
 	if err == nil {
 		err = batch(ctx, files, func(ctx context.Context, f fileDownload) error { return verifyArtifact(ctx, f) }, nil)
 	}

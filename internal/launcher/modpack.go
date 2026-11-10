@@ -237,7 +237,7 @@ func readModpack(r io.ReaderAt, size int64, source ModpackSource) (modpackPlan, 
 		for id, v := range m.Dependencies {
 			switch id {
 			case "minecraft":
-			case "fabric-loader", "forge", "neoforge":
+			case "fabric-loader", "forge", "neoforge", "quilt-loader":
 				if loader != "" {
 					return p, errors.New("整合包清单同时指定了多个加载器")
 				}

@@ -247,8 +247,8 @@ func (g Game) Installed(i Instance) bool {
 			return false
 		}
 	}
-	if i.Fabric() {
-		_, err := g.readFabric(i)
+	if i.knot() {
+		_, err := g.readKnot(i)
 		return err == nil
 	}
 	if i.patched() {
@@ -464,8 +464,8 @@ func (g Game) installWithJava(ctx context.Context, i Instance, javaPath string, 
 	if err := writeFile(filepath.Join(dir, "verified"), receipt); err != nil {
 		return err
 	}
-	if i.Fabric() {
-		return g.installFabric(ctx, i, d, report)
+	if i.knot() {
+		return g.installKnot(ctx, i, d, report)
 	}
 	if i.patched() {
 		return g.installForge(ctx, i, m, javaPath, d, report)
@@ -587,10 +587,10 @@ func (g Game) start(ctx context.Context, i Instance, settings Settings, server s
 	}
 	m, cp, err := g.verifyInstalled(ctx, i)
 	libraryDir, launchVersion := filepath.Join(g.Cache, "libraries"), m.ID
-	if err == nil && i.Fabric() {
-		var profile fabricRuntime
+	if err == nil && i.knot() {
+		var profile knotRuntime
 		var libs []string
-		profile, libs, err = g.verifyFabric(ctx, i)
+		profile, libs, err = g.verifyKnot(ctx, i)
 		if err == nil {
 			cp = append(libs, cp...)
 			m.MainClass = profile.MainClass

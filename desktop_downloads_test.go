@@ -23,7 +23,7 @@ func TestModpackWorkspaceShowsSourcesAndNewInstanceConfirmation(t *testing.T) {
 	p.project = project
 	p.releases = []launcher.ModpackRelease{
 		{ID: "fabric", Title: "飞行测试包 1.0", Games: []string{"1.21.1"}, Loaders: []string{"fabric"}, Channel: "release"},
-		{ID: "quilt", Title: "飞行测试包 Quilt", Games: []string{"1.21.1"}, Loaders: []string{"quilt"}, Unavailable: "需要原版、Fabric、Forge 或 NeoForge"},
+		{ID: "older", Title: "飞行测试包旧版", Games: []string{"1.19.2"}, Loaders: []string{"forge"}, Unavailable: "需要 Minecraft 1.20.1 或之后的正式版"},
 	}
 	for _, label := range []string{"下载", "整合包", "飞行测试包 1.0"} {
 		if err := tt.Click(label); err != nil {
@@ -103,7 +103,8 @@ func TestDownloadPageSelectsVersionAndLoader(t *testing.T) {
 		}
 	}
 	p := &a.install
-	p.fabricGame, p.fabric, p.fabricVersions = p.version, "0.16.14", []string{"0.16.14", "0.16.13"}
+	p.loaderGame, p.loaderKind, p.loaderVersion = p.version, launcher.LoaderFabric, "0.16.14"
+	p.loaderVersions = []launcher.LoaderRelease{{Version: "0.16.14"}, {Version: "0.16.13"}}
 	tt.Advance(300 * time.Millisecond)
 	tt.Frame()
 	if a.page != pageDownloads || a.downloadPage != downloadGame || p.version != "1.21.4" || p.loader != 1 {
@@ -115,13 +116,25 @@ func TestDownloadPageSelectsVersionAndLoader(t *testing.T) {
 		t.Fatalf("the version list and install action do not fit in the compact window: %+v %+v", version, install)
 	}
 	capture(t, tt, "download-game-dark")
-	next, instance, err := newInstallation(a.state, "下载测试", p.version, p.fabric)
+	next, instance, err := newLoaderInstallation(a.state, "下载测试", p.version, p.kind(), p.loaderVersion)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if next.Selected != 1 || !instance.Fabric() || instance.LoaderVersion != "0.16.14" || instance.ID != 3 ||
 		instance.GameDir != filepath.Join(a.state.Settings.GameRoot, "instance-3") || len(a.state.Instances) != 2 {
 		t.Fatalf("installation would change the wrong configuration: %+v / %+v", next, instance)
+	}
+	if err := tt.Click("NeoForge"); err != nil {
+		t.Fatal(err)
+	}
+	if p.currentLoaderCatalog() {
+		t.Fatal("switching loaders retained the Fabric catalog")
+	}
+	p.loaderGame, p.loaderKind, p.loaderVersion = p.version, launcher.LoaderNeoForge, "21.4.120"
+	p.loaderVersions = []launcher.LoaderRelease{{Version: "21.4.120"}}
+	tt.Frame()
+	if _, ok := tt.Find("NeoForge 版本"); !ok {
+		t.Fatal("missing NeoForge catalog control")
 	}
 }
 

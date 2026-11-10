@@ -179,11 +179,11 @@ func TestModpackRejectsUnsafeArchives(t *testing.T) {
 			}
 		})
 	}
-	file := packFile(t, "quilt.zip", map[string]string{
+	file := packFile(t, "unsupported.zip", map[string]string{
 		"manifest.json": `{"manifestType":"minecraftModpack","manifestVersion":1,
-			"minecraft":{"version":"1.21.1","modLoaders":[{"id":"quilt-0.28.1","primary":true}]}}`,
+			"minecraft":{"version":"1.21.1","modLoaders":[{"id":"unknown-0.28.1","primary":true}]}}`,
 	})
-	if _, err := PrepareLocalModpack(t.Context(), file); err == nil || !strings.Contains(err.Error(), "quilt") {
+	if _, err := PrepareLocalModpack(t.Context(), file); err == nil || !strings.Contains(err.Error(), "unknown") {
 		t.Fatalf("did not reject unsupported runtime: %v", err)
 	}
 }

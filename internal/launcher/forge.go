@@ -37,7 +37,7 @@ type forgeLibrary struct {
 
 type forgeProfile struct {
 	Platform, ID, InheritsFrom, MainClass, LoaderVersion string
-	Arguments                                            fabricArguments
+	Arguments                                            loaderArguments
 	Libraries                                            []forgeLibrary
 	Auxiliary                                            []forgeLibrary `json:",omitempty"`
 }
