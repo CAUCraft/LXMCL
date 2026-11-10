@@ -1,4 +1,4 @@
-package launcher
+package account
 
 import (
 	"context"
@@ -16,7 +16,7 @@ type xboxToken struct {
 	DisplayClaims struct{ XUI []struct{ UHS, XID string } }
 }
 
-func (c authClient) minecraftSession(ctx context.Context, tokens microsoftTokens) (MicrosoftAccount, MinecraftSession, error) {
+func (c Client) minecraftSession(ctx context.Context, tokens microsoftTokens) (MicrosoftAccount, MinecraftSession, error) {
 	var account MicrosoftAccount
 	var session MinecraftSession
 	if tokens.Access == "" || tokens.Refresh == "" {

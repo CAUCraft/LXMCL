@@ -1,4 +1,4 @@
-package launcher
+package account
 
 import (
 	"bytes"
@@ -12,8 +12,6 @@ import (
 	"github.com/CAUCraft/LXMCL/internal/i18n"
 )
 
-type authClient struct{ http *http.Client }
-
 type authResponseError struct {
 	service string
 	status  int
@@ -25,7 +23,7 @@ func (e *authResponseError) Error() string {
 	return i18n.Text("auth.http_status", e.service, e.status)
 }
 
-func (c authClient) request(ctx context.Context, service, endpoint, method, contentType string, body io.Reader, bearer string, out any) error {
+func (c Client) request(ctx context.Context, service, endpoint, method, contentType string, body io.Reader, bearer string, out any) error {
 	req, err := http.NewRequestWithContext(ctx, method, endpoint, body)
 	if err != nil {
 		return err
@@ -41,7 +39,7 @@ func (c authClient) request(ctx context.Context, service, endpoint, method, cont
 	if req.URL.Hostname() == "user.auth.xboxlive.com" || req.URL.Hostname() == "xsts.auth.xboxlive.com" {
 		req.Header.Set("x-xbl-contract-version", "1")
 	}
-	res, err := c.http.Do(req)
+	res, err := c.httpClient().Do(req)
 	if err != nil {
 		return i18n.Error("auth.connection_failed", service, err)
 	}
@@ -70,13 +68,13 @@ func (c authClient) request(ctx context.Context, service, endpoint, method, cont
 	return nil
 }
 
-func (c authClient) form(ctx context.Context, endpoint string, args url.Values, out any) error {
+func (c Client) form(ctx context.Context, endpoint string, args url.Values, out any) error {
 	args.Set("client_id", microsoftClientID)
 	return c.request(ctx, "Microsoft", microsoftOAuth+endpoint, http.MethodPost,
 		"application/x-www-form-urlencoded", strings.NewReader(args.Encode()), "", out)
 }
 
-func (c authClient) post(ctx context.Context, service, endpoint string, body, out any) error {
+func (c Client) post(ctx context.Context, service, endpoint string, body, out any) error {
 	raw, err := json.Marshal(body)
 	if err != nil {
 		return err

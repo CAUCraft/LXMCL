@@ -1,6 +1,6 @@
 //go:build !windows
 
-package launcher
+package account
 
 import "github.com/CAUCraft/LXMCL/internal/i18n"
 

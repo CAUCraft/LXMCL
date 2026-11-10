@@ -1,14 +1,11 @@
-package launcher
+package account
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
-	"net/http"
 	"net/url"
 	"slices"
 	"strings"
@@ -59,10 +56,10 @@ type StationLogin struct {
 }
 
 func BeginStationLogin(ctx context.Context, endpoint, login, password string) (StationLogin, error) {
-	return (authClient{authHTTP}).beginStationLogin(ctx, endpoint, login, password)
+	return (Client{}).BeginStationLogin(ctx, endpoint, login, password)
 }
 
-func (c authClient) beginStationLogin(ctx context.Context, endpoint, login, password string) (StationLogin, error) {
+func (c Client) BeginStationLogin(ctx context.Context, endpoint, login, password string) (StationLogin, error) {
 	u, err := stationRoot(endpoint)
 	if err != nil {
 		return StationLogin{}, err
@@ -128,10 +125,10 @@ func (p StationLogin) Roles() []StationRole {
 }
 
 func (p StationLogin) Bind(ctx context.Context, id string) (StationSession, error) {
-	return (authClient{authHTTP}).bindStationRole(ctx, p, id)
+	return (Client{}).BindStationRole(ctx, p, id)
 }
 
-func (c authClient) bindStationRole(ctx context.Context, p StationLogin, id string) (StationSession, error) {
+func (c Client) BindStationRole(ctx context.Context, p StationLogin, id string) (StationSession, error) {
 	roles := p.Roles()
 	i := slices.IndexFunc(roles, func(r StationRole) bool { return strings.EqualFold(r.ID, id) })
 	if i < 0 {
@@ -170,54 +167,4 @@ func stationHash(s string) string {
 
 func stationKey(api, user, role string) string {
 	return stationHash(api + "\x00" + user + "\x00" + role)
-}
-
-func (s StationSession) validFor(p StationProfile) bool {
-	root, err := stationRoot(p.API)
-	return err == nil && root.String() == p.API && validStationRole(p.StationRole) &&
-		s.Profile.Key == p.Key && s.Profile.API == p.API && s.Profile.ID == p.ID &&
-		p.Key == stationKey(p.API, s.user, p.ID) && s.access != "" && s.client != ""
-}
-
-func (c authClient) refreshStation(ctx context.Context, api, token, client string, role *StationRole) (stationAuth, error) {
-	var reply stationAuth
-	body := map[string]any{"accessToken": token, "clientToken": client, "requestUser": true}
-	if role != nil {
-		body["selectedProfile"] = role
-	}
-	err := c.post(ctx, i18n.Text("station.session_service"), api+"authserver/refresh", body, &reply)
-	return reply, err
-}
-
-func (s StationSession) Verify(ctx context.Context) (StationSession, error) {
-	return (authClient{authHTTP}).verifyStation(ctx, s)
-}
-
-func (c authClient) verifyStation(ctx context.Context, s StationSession) (StationSession, error) {
-	if !s.validFor(s.Profile) {
-		return s, ErrSkinStationLogin
-	}
-	body, _ := json.Marshal(map[string]string{"accessToken": s.access, "clientToken": s.client})
-	err := c.request(ctx, i18n.Text("station.session_service"), s.Profile.API+"authserver/validate", http.MethodPost, "application/json", bytes.NewReader(body), "", nil)
-	if err == nil {
-		return s, nil
-	}
-	var failure *authResponseError
-	if !errors.As(err, &failure) || (failure.status != 401 && failure.status != 403) {
-		return s, err
-	}
-	reply, err := c.refreshStation(ctx, s.Profile.API, s.access, s.client, nil)
-	if err != nil {
-		if errors.As(err, &failure) && (failure.status == 401 || failure.status == 403) {
-			return s, ErrSkinStationLogin
-		}
-		return s, err
-	}
-	if !reply.valid(s.client) || !validStationRole(reply.SelectedProfile) ||
-		!strings.EqualFold(reply.SelectedProfile.ID, s.Profile.ID) ||
-		(reply.User.ID != "" && strings.HasPrefix(s.user, "id:") && s.user != "id:"+stationHash(reply.User.ID)) {
-		return s, ErrSkinStationLogin
-	}
-	s.access, s.Profile.Name = reply.AccessToken, reply.SelectedProfile.Name
-	return s, nil
 }

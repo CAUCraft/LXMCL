@@ -1,4 +1,4 @@
-package launcher
+package account
 
 import (
 	"bytes"
@@ -21,7 +21,7 @@ func TestMicrosoftDeviceLoginAndIdentity(t *testing.T) {
 	polls := 0
 	owned := true
 	profile := id
-	client := authClient{&http.Client{Transport: transportFunc(func(r *http.Request) (*http.Response, error) {
+	client := Client{Transport: transportFunc(func(r *http.Request) (*http.Response, error) {
 		res := func(status int, body string) (*http.Response, error) {
 			return fixtureResponse(status, []byte(body)), nil
 		}
@@ -87,60 +87,60 @@ func TestMicrosoftDeviceLoginAndIdentity(t *testing.T) {
 			t.Fatalf("unexpected authentication request: %s", r.URL)
 			return nil, nil
 		}
-	})}}
-	code, err := client.begin(t.Context())
+	})}
+	code, err := client.BeginMicrosoftLogin(t.Context())
 	if err != nil || code.Code != "CODE-123" || code.interval != 5*time.Second {
 		t.Fatalf("device authorization failed: %v", err)
 	}
 	code.interval = time.Millisecond
-	account, session, err := client.complete(t.Context(), code)
+	account, session, err := client.CompleteMicrosoftLogin(t.Context(), code)
 	if err != nil || polls != 2 || len(stages) != 8 || account.Profile.ID != id || account.refreshToken != "refresh-fixture" {
 		t.Fatalf("authentication did not reach the verified profile: %v", err)
 	}
-	identity, err := launchIdentity("OfflinePlayer", &session)
+	identity, err := session.LaunchIdentity()
 	if err != nil || identity.name != "OnlinePlayer" || identity.uuid != id || identity.token != "minecraft-fixture" ||
 		identity.xuid != "9001" || identity.clientID != microsoftClientID || identity.kind != "msa" {
 		t.Fatalf("launch did not use the Microsoft profile: %v", err)
 	}
 	session.expiresAt = time.Now().Add(-time.Second)
-	if _, err := launchIdentity("OfflinePlayer", &session); !errors.Is(err, ErrMicrosoftRequired) {
+	if _, err := session.LaunchIdentity(); !errors.Is(err, ErrMicrosoftRequired) {
 		t.Fatal("expired Microsoft session fell back to an offline account")
 	}
-	if refreshed, _, err := client.refresh(t.Context(), account); err != nil || refreshed.refreshToken != "rotated-fixture" {
+	if refreshed, _, err := client.RefreshMicrosoftLogin(t.Context(), account); err != nil || refreshed.refreshToken != "rotated-fixture" {
 		t.Fatalf("refresh did not rotate the credential: %v", err)
 	}
 	profile = strings.Repeat("a", 32)
-	if _, _, err := client.refresh(t.Context(), account); err == nil {
+	if _, _, err := client.RefreshMicrosoftLogin(t.Context(), account); err == nil {
 		t.Fatal("refresh accepted a different Minecraft identity")
 	}
 	owned = false
-	if _, _, err := client.refresh(t.Context(), account); err == nil || !strings.Contains(err.Error(), i18n.Text("microsoft.minecraft_license_missing")) ||
+	if _, _, err := client.RefreshMicrosoftLogin(t.Context(), account); err == nil || !strings.Contains(err.Error(), i18n.Text("microsoft.minecraft_license_missing")) ||
 		stages[len(stages)-1] != "/entitlements/mcstore" {
 		t.Fatalf("account without game ownership was accepted: %v", err)
 	}
 }
 
 func TestMicrosoftDeviceRejectsUntrustedVerificationLink(t *testing.T) {
-	client := authClient{&http.Client{Transport: transportFunc(func(r *http.Request) (*http.Response, error) {
+	client := Client{Transport: transportFunc(func(r *http.Request) (*http.Response, error) {
 		if r.URL.Hostname() != "login.microsoftonline.com" {
 			t.Fatal("device code request used an unexpected host")
 		}
 		return fixtureResponse(200, []byte(`{"user_code":"CODE","device_code":"device","verification_uri":"https://www.microsoft.com.example.test/login","expires_in":900}`)), nil
-	})}}
-	if _, err := client.begin(t.Context()); err == nil {
+	})}
+	if _, err := client.BeginMicrosoftLogin(t.Context()); err == nil {
 		t.Fatal("accepted a spoofed device login site")
 	}
 }
 
 func TestMicrosoftCredentialVault(t *testing.T) {
-	store := Store{Root: t.TempDir()}
+	store := Vault{Root: t.TempDir()}
 	account := MicrosoftAccount{Profile: MicrosoftProfile{ID: strings.Repeat("a", 32), Name: "Player"}, refreshToken: "fake-refresh-token-for-test"}
 	if err := store.SaveMicrosoftAccount(account); err != nil {
 		t.Fatal(err)
 	}
 	path := filepath.Join(store.Root, microsoftVault)
 	blob, err := os.ReadFile(path)
-	if !MicrosoftCredentialsPersist() {
+	if !CredentialsPersist() {
 		if !errors.Is(err, os.ErrNotExist) {
 			t.Fatal("platform without a vault wrote credentials")
 		}

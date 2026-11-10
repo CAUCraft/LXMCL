@@ -1,4 +1,4 @@
-package launcher
+package account
 
 import (
 	"crypto/sha256"
@@ -21,8 +21,8 @@ type stationRecord struct {
 	User    string         `json:"user_key"`
 }
 
-func (s Store) LoadStationSession(profile StationProfile) (StationSession, error) {
-	if !MicrosoftCredentialsPersist() {
+func (s Vault) LoadStationSession(profile StationProfile) (StationSession, error) {
+	if !CredentialsPersist() {
 		return StationSession{}, ErrSkinStationLogin
 	}
 	path, err := stationVaultPath(s.Root, profile.Key)
@@ -60,11 +60,11 @@ func (s Store) LoadStationSession(profile StationProfile) (StationSession, error
 	return session, nil
 }
 
-func (s Store) SaveStationSession(session StationSession) error {
+func (s Vault) SaveStationSession(session StationSession) error {
 	if !session.validFor(session.Profile) {
 		return ErrSkinStationLogin
 	}
-	if !MicrosoftCredentialsPersist() {
+	if !CredentialsPersist() {
 		return nil
 	}
 	path, err := stationVaultPath(s.Root, session.Profile.Key)
@@ -86,8 +86,8 @@ func (s Store) SaveStationSession(session StationSession) error {
 	return storage.WriteFile(path, encrypted)
 }
 
-func (s Store) DeleteStationSession(key string) error {
-	if !MicrosoftCredentialsPersist() {
+func (s Vault) DeleteStationSession(key string) error {
+	if !CredentialsPersist() {
 		return nil
 	}
 	path, err := stationVaultPath(s.Root, key)

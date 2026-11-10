@@ -1,4 +1,4 @@
-package launcher
+package account
 
 import (
 	"context"
@@ -79,16 +79,26 @@ func stationAgent(ctx context.Context, cache string, client *http.Client) (strin
 	return path, storage.WriteFile(path, data)
 }
 
-func (s StationSession) launchArgs(ctx context.Context, cache string) ([]string, error) {
+// LaunchArgs prepares verified authlib-injector options for this bound session.
+func (s StationSession) LaunchArgs(ctx context.Context, cache string) ([]string, error) {
+	return (Client{}).StationLaunchArgs(ctx, s, cache)
+}
+
+func (c Client) StationLaunchArgs(ctx context.Context, s StationSession, cache string) ([]string, error) {
+	if !s.validFor(s.Profile) {
+		return nil, ErrSkinStationLogin
+	}
 	root, err := stationRoot(s.Profile.API)
 	if err != nil {
 		return nil, err
 	}
-	_, _, metadata, err := (authClient{authHTTP}).stationMetadata(ctx, root, false)
+	_, _, metadata, err := c.stationMetadata(ctx, root, false)
 	if err != nil {
 		return nil, err
 	}
-	path, err := stationAgent(ctx, cache, agentHTTP)
+	client := *agentHTTP
+	client.Transport = c.Transport
+	path, err := stationAgent(ctx, cache, &client)
 	if err != nil {
 		return nil, err
 	}

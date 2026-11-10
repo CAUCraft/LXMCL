@@ -1,4 +1,4 @@
-package launcher
+package account
 
 import (
 	"bytes"
@@ -41,7 +41,7 @@ func stationRoot(raw string) (*url.URL, error) {
 	return u, nil
 }
 
-func (c authClient) stationMetadata(ctx context.Context, u *url.URL, discover bool) (*url.URL, stationMetadata, []byte, error) {
+func (c Client) stationMetadata(ctx context.Context, u *url.URL, discover bool) (*url.URL, stationMetadata, []byte, error) {
 	var meta stationMetadata
 	for hop := 0; hop < 4; hop++ {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
@@ -49,7 +49,7 @@ func (c authClient) stationMetadata(ctx context.Context, u *url.URL, discover bo
 			return nil, meta, nil, err
 		}
 		req.Header.Set("Accept", "application/json")
-		res, err := c.http.Do(req)
+		res, err := c.httpClient().Do(req)
 		if err != nil {
 			return nil, meta, nil, i18n.Error("station.connection_failed", err)
 		}

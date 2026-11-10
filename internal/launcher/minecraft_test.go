@@ -62,7 +62,10 @@ func newInstallFixture(t *testing.T) *installFixture {
 	libraryEntry := map[string]any{"downloads": map[string]artifact{"artifact": library}}
 	version := add("https://piston-meta.mojang.com/version.json", marshal(map[string]any{
 		"id": "1.21.1", "type": "release", "mainClass": "test.Main",
-		"arguments":   map[string][]string{"jvm": {"-cp", "${classpath}"}},
+		"arguments": map[string][]string{
+			"jvm":  {"-cp", "${classpath}"},
+			"game": {"--username", "${auth_player_name}", "--accessToken", "${auth_access_token}", "--userType", "${user_type}"},
+		},
 		"javaVersion": map[string]int{"majorVersion": 21},
 		"downloads":   map[string]artifact{"client": client},
 		"assetIndex":  map[string]any{"id": "17", "url": index.URL, "size": index.Size, "sha1": index.SHA},

@@ -2,8 +2,6 @@ package launcher
 
 import (
 	"context"
-	"crypto/md5"
-	"encoding/hex"
 	"errors"
 	"os"
 	"os/exec"
@@ -11,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/CAUCraft/LXMCL/internal/account"
 	"github.com/CAUCraft/LXMCL/internal/i18n"
 	"github.com/CAUCraft/LXMCL/internal/instance"
 	"github.com/CAUCraft/LXMCL/internal/javaruntime"
@@ -48,13 +47,7 @@ func (g Game) StartWithStation(ctx context.Context, i Instance, settings Setting
 	return g.start(ctx, i, settings, server, identity, &session)
 }
 
-func stationIdentity(session StationSession) (gameIdentity, error) {
-	p := session.Profile
-	if !session.validFor(p) {
-		return gameIdentity{}, ErrSkinStationLogin
-	}
-	return gameIdentity{name: p.Name, uuid: p.ID, token: session.access, kind: "mojang"}, nil
-}
+func stationIdentity(session StationSession) (gameIdentity, error) { return session.LaunchIdentity() }
 
 func (g Game) start(ctx context.Context, i Instance, settings Settings, server string, identity gameIdentity, station *StationSession) (Running, error) {
 	return g.startProgress(ctx, i, settings, server, identity, station, nil)
@@ -128,11 +121,14 @@ func (g Game) startProgress(ctx context.Context, i Instance, settings Settings, 
 	values := map[string]string{
 		"natives_directory": natives, "launcher_name": "LXMCL", "launcher_version": "0.2",
 		"classpath": strings.Join(cp, string(os.PathListSeparator)), "classpath_separator": string(os.PathListSeparator),
-		"library_directory": libraryDir, "auth_player_name": identity.name,
-		"version_name": launchVersion, "game_directory": i.GameDir, "assets_root": filepath.Join(g.Cache, "assets"),
-		"assets_index_name": m.AssetIndex.ID, "auth_uuid": identity.uuid, "auth_access_token": identity.token,
-		"clientid": identity.clientID, "auth_xuid": identity.xuid, "user_type": identity.kind, "version_type": m.Type,
-		"user_properties": "{}",
+		"library_directory": libraryDir,
+		"version_name":      launchVersion, "game_directory": i.GameDir, "assets_root": filepath.Join(g.Cache, "assets"),
+		"assets_index_name": m.AssetIndex.ID,
+		"version_type":      m.Type,
+		"user_properties":   "{}",
+	}
+	for key, value := range identity.Arguments() {
+		values[key] = value
 	}
 	jvm, err := gameArgs(m.Arguments.JVM, values, nil)
 	if err != nil {
@@ -147,7 +143,7 @@ func (g Game) startProgress(ctx context.Context, i Instance, settings Settings, 
 	}
 	args := append([]string{"-Xmx" + strconv.Itoa(memory) + "M"}, jvm...)
 	if station != nil {
-		extra, err := station.launchArgs(ctx, g.Cache)
+		extra, err := station.LaunchArgs(ctx, g.Cache)
 		if err != nil {
 			return Running{}, err
 		}
@@ -184,24 +180,13 @@ func (g Game) startProgress(ctx context.Context, i Instance, settings Settings, 
 	return Running{PID: cmd.Process.Pid, Log: log.Name(), Done: done}, nil
 }
 
-type gameIdentity struct {
-	name, uuid, token, clientID, xuid, kind string
-}
+type gameIdentity = account.LaunchIdentity
 
 func launchIdentity(offline string, session *MinecraftSession) (gameIdentity, error) {
 	if session != nil {
-		if !session.ValidFor(session.Profile.ID) || !profileID.MatchString(session.Profile.ID) || !instance.ValidPlayerName(session.Profile.Name) {
-			return gameIdentity{}, ErrMicrosoftRequired
-		}
-		return gameIdentity{session.Profile.Name, session.Profile.ID, session.accessToken, microsoftClientID, session.xuid, "msa"}, nil
+		return session.LaunchIdentity()
 	}
-	if !instance.ValidPlayerName(offline) {
-		return gameIdentity{}, i18n.Error("account.offline_name_invalid")
-	}
-	uuid := md5.Sum([]byte("OfflinePlayer:" + offline))
-	uuid[6] = uuid[6]&0x0f | 0x30
-	uuid[8] = uuid[8]&0x3f | 0x80
-	return gameIdentity{name: offline, uuid: hex.EncodeToString(uuid[:]), token: "0", kind: "legacy"}, nil
+	return account.OfflineIdentity(offline)
 }
 
 var (

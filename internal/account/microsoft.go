@@ -1,9 +1,8 @@
-package launcher
+package account
 
 import (
 	"context"
 	"errors"
-	"net/http"
 	"net/url"
 	"regexp"
 	"time"
@@ -25,10 +24,6 @@ var (
 	ErrMicrosoftRequired = i18n.Error("microsoft.login_required")
 	ErrMicrosoftExpired  = i18n.Error("microsoft.code_expired")
 	profileID            = regexp.MustCompile(`^[a-fA-F0-9]{32}$`)
-	authHTTP             = &http.Client{
-		Timeout:       20 * time.Second,
-		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-	}
 )
 
 type MicrosoftProfile struct {
@@ -60,10 +55,10 @@ type MicrosoftDeviceCode struct {
 }
 
 func BeginMicrosoftLogin(ctx context.Context) (MicrosoftDeviceCode, error) {
-	return (authClient{authHTTP}).begin(ctx)
+	return (Client{}).BeginMicrosoftLogin(ctx)
 }
 
-func (c authClient) begin(ctx context.Context) (MicrosoftDeviceCode, error) {
+func (c Client) BeginMicrosoftLogin(ctx context.Context) (MicrosoftDeviceCode, error) {
 	var reply struct {
 		Code         string `json:"user_code"`
 		DeviceCode   string `json:"device_code"`
@@ -94,10 +89,10 @@ type microsoftTokens struct {
 }
 
 func CompleteMicrosoftLogin(ctx context.Context, code MicrosoftDeviceCode) (MicrosoftAccount, MinecraftSession, error) {
-	return (authClient{authHTTP}).complete(ctx, code)
+	return (Client{}).CompleteMicrosoftLogin(ctx, code)
 }
 
-func (c authClient) complete(ctx context.Context, code MicrosoftDeviceCode) (MicrosoftAccount, MinecraftSession, error) {
+func (c Client) CompleteMicrosoftLogin(ctx context.Context, code MicrosoftDeviceCode) (MicrosoftAccount, MinecraftSession, error) {
 	poll, cancel := context.WithDeadline(ctx, code.ExpiresAt)
 	defer cancel()
 	delay := code.interval
@@ -136,10 +131,10 @@ func (c authClient) complete(ctx context.Context, code MicrosoftDeviceCode) (Mic
 }
 
 func RefreshMicrosoftLogin(ctx context.Context, account MicrosoftAccount) (MicrosoftAccount, MinecraftSession, error) {
-	return (authClient{authHTTP}).refresh(ctx, account)
+	return (Client{}).RefreshMicrosoftLogin(ctx, account)
 }
 
-func (c authClient) refresh(ctx context.Context, account MicrosoftAccount) (MicrosoftAccount, MinecraftSession, error) {
+func (c Client) RefreshMicrosoftLogin(ctx context.Context, account MicrosoftAccount) (MicrosoftAccount, MinecraftSession, error) {
 	if account.refreshToken == "" || !profileID.MatchString(account.Profile.ID) {
 		return account, MinecraftSession{}, ErrMicrosoftRequired
 	}
@@ -175,4 +170,15 @@ func microsoftTokenError(err error) error {
 		}
 	}
 	return err
+}
+
+func waitContext(ctx context.Context, delay time.Duration) error {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }

@@ -1,4 +1,4 @@
-package launcher
+package account
 
 import (
 	"bytes"
@@ -29,7 +29,7 @@ func TestMinecraftAppearanceRequests(t *testing.T) {
 	s := MinecraftSession{Profile: MicrosoftProfile{ID: id}, accessToken: "game-fixture", expiresAt: time.Now().Add(time.Hour)}
 	pngBytes := textureFixture(t, 64, 64)
 	var requests []string
-	client := authClient{&http.Client{Transport: transportFunc(func(r *http.Request) (*http.Response, error) {
+	client := Client{Transport: transportFunc(func(r *http.Request) (*http.Response, error) {
 		if r.URL.Host != "api.minecraftservices.com" || r.Header.Get("Authorization") != "Bearer game-fixture" {
 			t.Fatalf("unexpected Minecraft profile request: %s", r.URL)
 		}
@@ -62,30 +62,30 @@ func TestMinecraftAppearanceRequests(t *testing.T) {
 			t.Fatalf("unexpected request: %s", request)
 		}
 		return fixtureResponse(204, nil), nil
-	})}}
-	data, err := client.appearance(t.Context(), s)
+	})}
+	data, err := client.Appearance(t.Context(), s)
 	if err != nil || data.Skin.URL != texture || data.Skin.Variant != "SLIM" || len(data.Capes) != 1 || data.ActiveCape().ID != cape {
 		t.Fatalf("unexpected appearance: %+v, %v", data, err)
 	}
-	if err := client.uploadSkin(t.Context(), s, pngBytes, "slim"); err != nil {
+	if err := client.UploadSkin(t.Context(), s, pngBytes, "slim"); err != nil {
 		t.Fatal(err)
 	}
-	if err := client.setCape(t.Context(), s, cape); err != nil {
+	if err := client.SetCape(t.Context(), s, cape); err != nil {
 		t.Fatal(err)
 	}
-	if err := client.setCape(t.Context(), s, ""); err != nil {
+	if err := client.SetCape(t.Context(), s, ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := client.uploadSkin(t.Context(), s, textureFixture(t, 64, 32), "slim"); err == nil {
+	if err := client.UploadSkin(t.Context(), s, textureFixture(t, 64, 32), "slim"); err == nil {
 		t.Fatal("accepted the slim model for a legacy skin")
 	}
-	if err := client.uploadSkin(t.Context(), s, textureFixture(t, 128, 128), "classic"); err == nil {
+	if err := client.UploadSkin(t.Context(), s, textureFixture(t, 128, 128), "classic"); err == nil {
 		t.Fatal("accepted an unsupported skin size")
 	}
-	if err := client.setCape(t.Context(), s, "../"); err == nil {
+	if err := client.SetCape(t.Context(), s, "../"); err == nil {
 		t.Fatal("accepted an invalid cape ID")
 	}
-	if _, err := client.appearance(t.Context(), MinecraftSession{}); !errors.Is(err, ErrMicrosoftRequired) {
+	if _, err := client.Appearance(t.Context(), MinecraftSession{}); !errors.Is(err, ErrMicrosoftRequired) {
 		t.Fatalf("accepted an unsigned session: %v", err)
 	}
 	if !slices.Equal(requests, []string{"GET /minecraft/profile", "POST /minecraft/profile/skins",
@@ -97,18 +97,18 @@ func TestMinecraftAppearanceRequests(t *testing.T) {
 func TestProfileTextureUsesOfficialCDNWithoutCredentials(t *testing.T) {
 	calls := 0
 	texture := textureFixture(t, 64, 64)
-	client := authClient{&http.Client{Transport: transportFunc(func(r *http.Request) (*http.Response, error) {
+	client := Client{Transport: transportFunc(func(r *http.Request) (*http.Response, error) {
 		calls++
 		if r.URL.Scheme != "https" || r.URL.Host != "textures.minecraft.net" || r.Header.Get("Authorization") != "" {
 			t.Fatalf("unexpected texture request: %s", r.URL)
 		}
 		return fixtureResponse(200, texture), nil
-	})}}
-	if img, err := client.texture(t.Context(), "http://textures.minecraft.net/texture/abc", true); err != nil || img.Bounds().Dx() != 64 {
+	})}
+	if img, err := client.FetchProfileTexture(t.Context(), "http://textures.minecraft.net/texture/abc", true); err != nil || img.Bounds().Dx() != 64 {
 		t.Fatalf("official texture was not decoded: %v", err)
 	}
 	for _, url := range []string{"https://example.com/texture/abc", "https://textures.minecraft.net:443/texture/abc", "https://textures.minecraft.net/profile"} {
-		if _, err := client.texture(t.Context(), url, true); err == nil {
+		if _, err := client.FetchProfileTexture(t.Context(), url, true); err == nil {
 			t.Fatalf("accepted unexpected texture address %s", url)
 		}
 	}

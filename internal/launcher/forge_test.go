@@ -44,9 +44,16 @@ func TestMain(m *testing.M) {
 			args := os.Args[2:]
 			main := slices.Index(args, shimMain)
 			cp := slices.Index(args, "-cp")
+			value := func(flag string) string {
+				if n := slices.Index(args, flag); n >= 0 && n+1 < len(args) {
+					return args[n+1]
+				}
+				return ""
+			}
 			mods, _ := os.ReadFile("config/probe.txt")
 			if cp < 0 || cp+1 >= len(args) || !strings.Contains(args[cp+1], "patched-1-client.jar") ||
 				main < 0 || !slices.Contains(args[main+1:], "shimClient") || string(mods) != "isolated" ||
+				value("--username") != "Player" || value("--accessToken") != "0" || value("--userType") != "legacy" ||
 				!slices.ContainsFunc(args[:max(main, 0)], func(arg string) bool {
 					return strings.HasPrefix(arg, "-DignoreList=") && strings.HasSuffix(arg, ".jar,client.jar")
 				}) || os.Getenv("CURSEFORGE_API_KEY") != "" {

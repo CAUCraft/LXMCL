@@ -1,4 +1,4 @@
-package launcher
+package account
 
 import (
 	"context"
@@ -20,10 +20,10 @@ type StationTextures struct {
 }
 
 func (p StationProfile) Textures(ctx context.Context) (StationTextures, error) {
-	return (authClient{authHTTP}).stationTextures(ctx, p)
+	return (Client{}).StationTextures(ctx, p)
 }
 
-func (c authClient) stationTextures(ctx context.Context, p StationProfile) (StationTextures, error) {
+func (c Client) StationTextures(ctx context.Context, p StationProfile) (StationTextures, error) {
 	root, err := stationRoot(p.API)
 	if err != nil || !validStationRole(p.StationRole) {
 		return StationTextures{}, i18n.Error("station.role_invalid")
@@ -69,7 +69,7 @@ func (c authClient) stationTextures(ctx context.Context, p StationProfile) (Stat
 	return StationTextures{}, nil
 }
 
-func (c authClient) stationTexture(ctx context.Context, root *url.URL, domains []string, raw string, skin bool) (image.Image, error) {
+func (c Client) stationTexture(ctx context.Context, root *url.URL, domains []string, raw string, skin bool) (image.Image, error) {
 	if raw == "" {
 		return nil, nil
 	}
@@ -92,7 +92,7 @@ func (c authClient) stationTexture(ctx context.Context, root *url.URL, domains [
 	if err != nil {
 		return nil, err
 	}
-	res, err := c.http.Do(req)
+	res, err := c.httpClient().Do(req)
 	if err != nil {
 		return nil, i18n.Error("station.texture_download_failed")
 	}

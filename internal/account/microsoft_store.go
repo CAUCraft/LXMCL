@@ -1,4 +1,4 @@
-package launcher
+package account
 
 import (
 	"encoding/json"
@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"runtime"
 
 	"github.com/CAUCraft/LXMCL/internal/i18n"
 	"github.com/CAUCraft/LXMCL/internal/instance"
@@ -14,17 +13,14 @@ import (
 )
 
 const microsoftVault = "microsoft-account.dat"
-const maxVaultSize = 64 << 10
-
-func MicrosoftCredentialsPersist() bool { return runtime.GOOS == "windows" }
 
 type microsoftRecord struct {
 	Profile MicrosoftProfile `json:"profile"`
 	Refresh string           `json:"refresh_token"`
 }
 
-func (s Store) LoadMicrosoftAccount() (MicrosoftAccount, error) {
-	if !MicrosoftCredentialsPersist() {
+func (s Vault) LoadMicrosoftAccount() (MicrosoftAccount, error) {
+	if !CredentialsPersist() {
 		return MicrosoftAccount{}, nil
 	}
 	f, err := os.Open(filepath.Join(s.Root, microsoftVault))
@@ -55,8 +51,8 @@ func (s Store) LoadMicrosoftAccount() (MicrosoftAccount, error) {
 	return MicrosoftAccount{Profile: record.Profile, refreshToken: record.Refresh}, nil
 }
 
-func (s Store) SaveMicrosoftAccount(account MicrosoftAccount) error {
-	if !MicrosoftCredentialsPersist() {
+func (s Vault) SaveMicrosoftAccount(account MicrosoftAccount) error {
+	if !CredentialsPersist() {
 		return nil
 	}
 	if account.refreshToken == "" || !profileID.MatchString(account.Profile.ID) || !instance.ValidPlayerName(account.Profile.Name) {
@@ -74,8 +70,8 @@ func (s Store) SaveMicrosoftAccount(account MicrosoftAccount) error {
 	return storage.WriteFile(filepath.Join(s.Root, microsoftVault), encrypted)
 }
 
-func (s Store) DeleteMicrosoftAccount() error {
-	if !MicrosoftCredentialsPersist() {
+func (s Vault) DeleteMicrosoftAccount() error {
+	if !CredentialsPersist() {
 		return nil
 	}
 	err := os.Remove(filepath.Join(s.Root, microsoftVault))

@@ -1,4 +1,4 @@
-package launcher
+package account
 
 import (
 	"bytes"
@@ -24,7 +24,7 @@ func TestStationDiscoveryLoginRefreshAndTextures(t *testing.T) {
 	var clientToken string
 	var requests []string
 	verified := false
-	c := authClient{&http.Client{Transport: transportFunc(func(r *http.Request) (*http.Response, error) {
+	c := Client{Transport: transportFunc(func(r *http.Request) (*http.Response, error) {
 		requests = append(requests, r.URL.Path)
 		if r.Header.Get("Authorization") != "" || r.URL.Scheme != "https" {
 			t.Fatalf("unexpected request: %s", r.URL)
@@ -84,24 +84,24 @@ func TestStationDiscoveryLoginRefreshAndTextures(t *testing.T) {
 		}
 		t.Fatalf("unexpected request: %s", r.URL)
 		return nil, nil
-	})}}
-	pending, err := c.beginStationLogin(t.Context(), "https://skin.example.test", "user-fixture", "secret-fixture")
+	})}
+	pending, err := c.BeginStationLogin(t.Context(), "https://skin.example.test", "user-fixture", "secret-fixture")
 	if err != nil || !slices.Equal(pending.Roles(), roles) {
 		t.Fatalf("login did not return the two roles: %v", err)
 	}
-	if _, err := c.bindStationRole(t.Context(), pending, "invalid"); err == nil {
+	if _, err := c.BindStationRole(t.Context(), pending, "invalid"); err == nil {
 		t.Fatal("accepted an unknown role")
 	}
-	session, err := c.bindStationRole(t.Context(), pending, id2)
+	session, err := c.BindStationRole(t.Context(), pending, id2)
 	if err != nil || session.Profile.API != root || session.Profile.Name != "Second" {
 		t.Fatalf("could not bind the selected role: %v", err)
 	}
-	session, err = c.verifyStation(t.Context(), session)
-	identity, identityErr := stationIdentity(session)
+	session, err = c.VerifyStation(t.Context(), session)
+	identity, identityErr := session.LaunchIdentity()
 	if err != nil || identityErr != nil || identity.uuid != id2 || identity.kind != "mojang" || identity.token != "rotated" {
 		t.Fatalf("launch identity did not use the verified station role: %v %v", err, identityErr)
 	}
-	tex, err := c.stationTextures(t.Context(), session.Profile)
+	tex, err := c.StationTextures(t.Context(), session.Profile)
 	if err != nil || tex.Skin == nil || tex.Cape == nil || !tex.Slim {
 		t.Fatalf("skin and cape were not decoded: %v", err)
 	}
@@ -111,19 +111,11 @@ func TestStationDiscoveryLoginRefreshAndTextures(t *testing.T) {
 	if !slices.Equal(want, requests) {
 		t.Fatalf("unexpected protocol flow: %v", requests)
 	}
-	state := State{MicrosoftProfile: id1}
-	state.UseStation(session.Profile)
-	if state.AccountKey() != "station:"+session.Profile.Key || state.MicrosoftProfile != "" {
-		t.Fatal("station selection did not replace Microsoft as the launch identity")
-	}
-	store := Store{Root: t.TempDir()}
-	if err := store.Save(state); err != nil {
-		t.Fatal(err)
-	}
+	store := Vault{Root: t.TempDir()}
 	if err := store.SaveStationSession(session); err != nil {
 		t.Fatal(err)
 	}
-	if MicrosoftCredentialsPersist() {
+	if CredentialsPersist() {
 		file, _ := stationVaultPath(store.Root, session.Profile.Key)
 		data, err := os.ReadFile(file)
 		if err != nil || bytes.Contains(data, []byte(session.access)) || bytes.Contains(data, []byte(session.client)) {
@@ -134,21 +126,18 @@ func TestStationDiscoveryLoginRefreshAndTextures(t *testing.T) {
 			t.Fatal("station session could not be restored")
 		}
 	}
-	if err := state.UseOfflinePlayer("Player"); err != nil || state.StationKey != "" {
-		t.Fatal("offline launch retained the station identity")
-	}
 }
 
 func TestStationDoesNotSendCredentialsToDiscoveredDifferentHost(t *testing.T) {
-	c := authClient{&http.Client{Transport: transportFunc(func(r *http.Request) (*http.Response, error) {
+	c := Client{Transport: transportFunc(func(r *http.Request) (*http.Response, error) {
 		if r.Method != http.MethodGet || r.URL.Host != "skin.example.test" {
 			t.Fatalf("unexpected request: %s %s", r.Method, r.URL)
 		}
 		res := fixtureResponse(200, nil)
 		res.Header = http.Header{"X-Authlib-Injector-Api-Location": {"https://other.example.test/auth/"}}
 		return res, nil
-	})}}
-	if _, err := c.beginStationLogin(t.Context(), "https://skin.example.test", "login-fixture", "secret-fixture"); err == nil {
+	})}
+	if _, err := c.BeginStationLogin(t.Context(), "https://skin.example.test", "login-fixture", "secret-fixture"); err == nil {
 		t.Fatal("accepted cross-host discovery for a credential endpoint")
 	}
 }
@@ -163,7 +152,7 @@ func TestStationAgentRejectsUnverifiedDownload(t *testing.T) {
 	if _, err := stationAgent(t.Context(), t.TempDir(), c); err == nil || !strings.Contains(err.Error(), "SHA-256") {
 		t.Fatal("unverified agent could be used for launch")
 	}
-	if _, err := stationIdentity(StationSession{}); !errors.Is(err, ErrSkinStationLogin) {
+	if _, err := (StationSession{}).LaunchIdentity(); !errors.Is(err, ErrSkinStationLogin) {
 		t.Fatal("missing station credentials silently fell back to an offline identity")
 	}
 }
