@@ -29,6 +29,8 @@ NeoForge 官方 Maven 请求失败时，启动器会尝试 NeoForge CDN。NeoFor
 
 CurseForge 在线查询和下载依赖需要 [CurseForge API Key](https://console.curseforge.com/)。复制 [`.env.example`](../.env.example) 为 `.env`，在 `LXMCL_CURSEFORGE_API_KEY=` 后填入密钥并重启。启动器依次检查数据目录、当前工作目录和程序目录，使用第一个包含密钥的 `.env`。进程环境变量 `LXMCL_CURSEFORGE_API_KEY` 或 `CURSEFORGE_API_KEY` 优先于文件；页面输入只在本次运行中覆盖。不要提交含密钥的 `.env`。如果作者未开放某个必需文件的第三方下载，安装会报告文件并停止。
 
+本地 API 密钥放在 `.env`，仓库模板只保留空变量。CI 所需凭据通过 GitHub Secrets 或运行时令牌提供。Microsoft 和皮肤站会话由启动器管理，在 Windows 上使用系统加密存储；公开的 Microsoft OAuth 客户端 ID 不属于密钥。CI 在构建前检查本地配置和凭据文件是否被 Git 跟踪。
+
 Modrinth 按目标实例的游戏版本搜索，模组同时按 Fabric、Forge、NeoForge 或 Quilt 筛选。选择文件和解析必要依赖时，都会再次核对 Minecraft 版本与加载器。Quilt 模组声明的 Fabric API 依赖可用同游戏版本的 Quilted Fabric API 或上游 Fabric API。资源下载按 SHA-512 校验，重试绑定原实例、配置修订和资源版本。模组 JAR 要有对应的加载器描述文件，资源包 ZIP 要有 `pack.mcmeta`，光影 ZIP 要有 `shaders/` 内容。使用光影需要 Iris 等兼容模组。
 
 存档备份位于数据目录的 `backups/`，恢复支持包含 `世界名/level.dat` 的 ZIP，不覆盖已有世界。

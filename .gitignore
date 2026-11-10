@@ -4,10 +4,17 @@
 *.log
 .DS_Store
 /LXMCL-UI-review-*.zip
-/.env
-/.env.*
+# 本地配置、账号凭据和启动器数据不入库。
+.env
+.env.*
 !/.env.example
 microsoft-account.dat
+**/skin-stations/*.dat
+launcher.json
+launcher-settings.json
+instances.json
+tasks.json
+.lxmcl-*
 **/__pycache__/
 *.pyc
 

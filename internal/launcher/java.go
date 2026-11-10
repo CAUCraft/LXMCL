@@ -41,6 +41,7 @@ func ProbeJava(ctx context.Context, path string) (Java, error) {
 	// Probe its console counterpart while retaining the requested executable.
 	probe := javaConsole(path)
 	cmd := exec.CommandContext(ctx, probe, "-XshowSettings:properties", "-version")
+	cmd.Env = javaEnvironment(false)
 	hideConsole(cmd)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -69,9 +70,10 @@ func javaConsole(path string) string {
 
 func javaEnvironment(installer bool) []string {
 	return slices.DeleteFunc(os.Environ(), func(entry string) bool {
-		key, _, _ := strings.Cut(strings.ToUpper(entry), "=")
+		key, _, _ := strings.Cut(entry, "=")
+		key = strings.ToUpper(key)
 		switch key {
-		case "LXMCL_CURSEFORGE_API_KEY", "CURSEFORGE_API_KEY":
+		case launcherCurseForgeKey, standardCurseForgeKey:
 			return true
 		case "JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS", "_JAVA_OPTIONS":
 			return installer
