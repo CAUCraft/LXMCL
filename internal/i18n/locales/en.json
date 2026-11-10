@@ -87,6 +87,7 @@
   "instance.form_target_changed": "The instance changed. Reopen the form",
   "instance.game_dir_required": "The instance needs an absolute game directory",
   "instance.game_root_required": "Set an absolute game directory first",
+  "instance.id_exhausted": "No new instance ID is available",
   "instance.loader_target_changed": "The instance changed. Reopen the loader settings",
   "instance.name_conflict": "An instance with this name already exists",
   "instance.name_invalid": "The instance name must be 1–48 characters",

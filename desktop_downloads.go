@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"path/filepath"
 	"slices"
@@ -361,22 +360,5 @@ func (a *desktop) submitInstall(p *installView, defaultName string) {
 }
 
 func newLoaderInstallation(state launcher.State, name, version, loader, loaderVersion string) (launcher.State, launcher.Instance, error) {
-	next := state.Clone()
-	if err := next.Create(name, version); err != nil {
-		return state, launcher.Instance{}, err
-	}
-	i, ok := next.Find(next.Selected)
-	if !ok {
-		return state, launcher.Instance{}, errors.New("无法取得新实例")
-	}
-	if loader != launcher.LoaderVanilla {
-		if err := next.ConfigureModLoader(i.ID, i.Revision, loader, loaderVersion); err != nil {
-			return state, launcher.Instance{}, err
-		}
-		i, _ = next.Find(i.ID)
-	}
-	if _, ok := state.Find(state.Selected); ok {
-		next.Selected = state.Selected
-	}
-	return next, i, nil
+	return state.PrepareInstallation(name, version, loader, loaderVersion)
 }

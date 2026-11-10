@@ -1,9 +1,11 @@
-package launcher
+package config
 
 import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/CAUCraft/LXMCL/internal/instance"
 )
 
 func TestMigrationAndInstanceIdentity(t *testing.T) {
@@ -101,11 +103,11 @@ func TestInstanceLaunchOverridesAndDuplicatePersist(t *testing.T) {
 		}
 	}
 	source, selected := state.Instances[0], state.Selected
-	opts := LaunchOptions{JavaMode: JavaAuto, Memory: 8192, Display: DisplayResolution, Width: 1280, Height: 720}
+	opts := instance.LaunchOptions{JavaMode: instance.JavaAuto, Memory: 8192, Display: instance.DisplayResolution, Width: 1280, Height: 720}
 	if err := state.ConfigureLaunch(source.ID, source.Revision, opts); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.ConfigureLaunch(source.ID, source.Revision, LaunchOptions{}); err == nil {
+	if err := state.ConfigureLaunch(source.ID, source.Revision, instance.LaunchOptions{}); err == nil {
 		t.Fatal("stale draft replaced the saved overrides")
 	}
 	duplicate, err := state.Duplicate(source.ID, source.Revision+1, "独立副本")

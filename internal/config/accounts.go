@@ -1,8 +1,9 @@
-package launcher
+package config
 
 import (
 	"slices"
 
+	"github.com/CAUCraft/LXMCL/internal/account"
 	"github.com/CAUCraft/LXMCL/internal/i18n"
 	"github.com/CAUCraft/LXMCL/internal/instance"
 )
@@ -44,16 +45,16 @@ func (s *State) ForgetOfflinePlayer(name string) {
 	}
 }
 
-func (s State) Station(key string) (StationProfile, bool) {
+func (s State) Station(key string) (account.StationProfile, bool) {
 	for _, p := range s.StationProfiles {
 		if p.Key == key {
 			return p, true
 		}
 	}
-	return StationProfile{}, false
+	return account.StationProfile{}, false
 }
 
-func (s *State) UseStation(p StationProfile) {
+func (s *State) UseStation(p account.StationProfile) {
 	s.MicrosoftProfile, s.StationKey = "", p.Key
 	for i, existing := range s.StationProfiles {
 		if existing.Key == p.Key {

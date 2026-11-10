@@ -87,6 +87,7 @@
   "instance.form_target_changed": "实例已变更，请重新打开表单",
   "instance.game_dir_required": "实例需要绝对游戏目录",
   "instance.game_root_required": "请先设置绝对游戏目录",
+  "instance.id_exhausted": "无法分配新的实例编号",
   "instance.loader_target_changed": "实例已变更，请重新打开加载器设置",
   "instance.name_conflict": "已有同名实例",
   "instance.name_invalid": "实例名称须为 1–48 个字符",

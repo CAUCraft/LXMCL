@@ -1,57 +1,15 @@
 package launcher
 
-import (
-	"encoding/json"
-	"os"
-	"path/filepath"
+import "github.com/CAUCraft/LXMCL/internal/config"
 
-	"github.com/CAUCraft/LXMCL/internal/storage"
-)
-
+// Store combines configuration and credential storage for application callers.
+// Configuration rules belong to config; encrypted credentials belong to account.
 type Store struct{ Root string }
 
 func DefaultStore() (Store, error) {
-	dir, err := os.UserConfigDir()
-	if err != nil {
-		return Store{}, err
-	}
-	if local := os.Getenv("LOCALAPPDATA"); local != "" {
-		dir = local
-	}
-	return Store{Root: filepath.Join(dir, "org.caucraft.lxmcl")}, nil
+	s, err := config.DefaultStore()
+	return Store{Root: s.Root}, err
 }
 
-func (s Store) Load() (State, error) {
-	state := State{
-		Settings: Settings{GameRoot: filepath.Join(s.Root, "games"), Player: "Player", Memory: 4096},
-		NextID:   1,
-	}
-	found, err := storage.ReadJSON(filepath.Join(s.Root, "launcher.json"), &state)
-	if found || err != nil {
-		return state, err
-	}
-	// Import the last Rust release on first use. The original files stay in place.
-	if _, err = storage.ReadJSON(filepath.Join(s.Root, "launcher-settings.json"), &state.Settings); err != nil {
-		return state, err
-	}
-	var old struct{ Instances []Instance }
-	if _, err = storage.ReadJSON(filepath.Join(s.Root, "instances.json"), &old); err != nil {
-		return state, err
-	}
-	state.Instances = old.Instances
-	for _, i := range state.Instances {
-		state.NextID = max(state.NextID, i.ID+1)
-	}
-	if len(state.Instances) > 0 {
-		state.Selected = state.Instances[0].ID
-	}
-	return state, nil
-}
-
-func (s Store) Save(state State) error {
-	b, err := json.MarshalIndent(state, "", "  ")
-	if err != nil {
-		return err
-	}
-	return storage.WriteFile(filepath.Join(s.Root, "launcher.json"), b)
-}
+func (s Store) Load() (State, error)   { return (config.Store{Root: s.Root}).Load() }
+func (s Store) Save(state State) error { return (config.Store{Root: s.Root}).Save(state) }

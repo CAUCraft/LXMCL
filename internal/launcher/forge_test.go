@@ -32,7 +32,7 @@ func TestMain(m *testing.M) {
 	if os.Getenv("LXMCL_TEST_FORGE_PROCESS") == "1" && len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "-XshowSettings:properties":
-			if os.Getenv(launcherCurseForgeKey) != "" || os.Getenv(standardCurseForgeKey) != "" {
+			if os.Getenv("LXMCL_CURSEFORGE_API_KEY") != "" || os.Getenv("CURSEFORGE_API_KEY") != "" {
 				os.Exit(2)
 			}
 			fmt.Println("    java.specification.version = 21")
@@ -121,8 +121,8 @@ func shimForgeInstall(args []string) error {
 
 func TestPatchedModpackInstallAndLaunch(t *testing.T) {
 	t.Setenv("LXMCL_TEST_FORGE_PROCESS", "1")
-	t.Setenv(standardCurseForgeKey, "must-not-reach-java")
-	t.Setenv(launcherCurseForgeKey, "must-not-reach-java")
+	t.Setenv("CURSEFORGE_API_KEY", "must-not-reach-java")
+	t.Setenv("LXMCL_CURSEFORGE_API_KEY", "must-not-reach-java")
 	java, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)

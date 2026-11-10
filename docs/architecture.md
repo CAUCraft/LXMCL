@@ -7,6 +7,7 @@ LXMCL 使用 Go、MyGo 原生窗口和 Lobe MyGo 组件。主包负责界面状�
 | 模块 | 边界与主要接口 |
 | --- | --- |
 | `internal/launcher` | 应用编排与外部服务适配。`Game.Execute` 接收 `LaunchRequest`，返回 `LaunchResult`；现有游戏、账号与资源 API 保持兼容。 |
+| `internal/config` | `State` 管理配置快照、实例集合、账号选择和服务器收藏；`PrepareInstallation` 生成独立安装草稿；`Store` 读取、迁移及保存配置，本地平台密钥读取不进入进程环境。 |
 | `internal/account` | Microsoft、皮肤站认证及外观协议；`Client` 提供可注入的网络接口，`Vault` 加密保存凭据，`LaunchIdentity` 提供已校验的游戏身份。 |
 | `internal/instance` | 实例配置、加载器和启动参数校验，不执行网络或 UI 操作。 |
 | `internal/minecraft` | `Client` 查询游戏与加载器目录；`Runtime` 管理原版和加载器安装、缓存校验、Java 要求与启动。`LaunchOptions` 输入身份及可选 JVM 准备回调，`Running` 返回进程和日志。 |
@@ -24,7 +25,7 @@ LXMCL 使用 Go、MyGo 原生窗口和 Lobe MyGo 组件。主包负责界面状�
 | `internal/log` | 游戏与加载器安装器的日志路径、写入文件创建及游戏日志预览。 |
 | `internal/i18n` | 从嵌入式 JSON 按键读取后端文案，保留错误链与语言回退。 |
 
-依赖向下流动：桌面调用应用编排，编排组合领域模块和基础设施。`minecraft`、`account`、`catalog`、`content`、`distribution`、`modpack`、`javaruntime`、`tasks`、`instance` 等包不反向导入 `launcher`。任务记录可引用资源类型，不能引用桌面组件或启动器实例状态。`launcher` 的公开类型别名和薄包装保留现有调用接口，协议和文件操作交给对应模块。
+依赖向下流动：桌面调用应用编排，编排组合领域模块和基础设施。`config`、`minecraft`、`account`、`catalog`、`content`、`distribution`、`modpack`、`javaruntime`、`tasks`、`instance` 等包不反向导入 `launcher`。任务记录可引用资源类型，不能引用桌面组件或启动器实例状态。`launcher` 的公开类型别名和薄包装保留现有调用接口，协议和文件操作交给对应模块。
 
 ```mermaid
 flowchart TD
@@ -32,6 +33,11 @@ flowchart TD
     UI --> Tasks[tasks 执行与历史]
     Launcher --> Tasks
     Launcher --> Account[account]
+    Launcher --> Config[config 配置快照]
+    Config --> Instance
+    Config --> Account
+    Config --> Storage
+    Config --> Server[server 地址校验]
     Launcher --> Java[javaruntime]
     Launcher --> Minecraft[minecraft 安装与启动]
     Minecraft --> Java
@@ -62,6 +68,16 @@ flowchart TD
     Account --> Storage[storage]
     Launcher --> Logs[log]
 ```
+
+## 配置与实例集合
+
+`config.State` 是可修改的配置快照，交给后台操作或编辑草稿前调用 `Clone`。实例、账号列表及服务器收藏都复制独立切片；实例修改继续检查 ID 与修订，移除配置不操作游戏目录。`instance` 保留单个实例的校验规则，`config` 管理集合中的名称、编号和选中项。账号模块负责认证与凭据，配置中只保存选择键和展示档案。
+
+游戏与整合包共用 `State.PrepareInstallation`：复制快照、创建实例、规范化加载器并保留有效的原启动选择。成功返回新快照和明确的安装目标，失败返回原状态，不消耗编号、不创建文件。桌面只提交表单值，安装和保存仍由应用层在后台执行。
+
+`Store.Load` 保留 `launcher.json` 的字段和默认设置。仅在该文件不存在时导入 `launcher-settings.json` 与 `instances.json`，损坏的当前配置不会回退到旧文件；读取和迁移都不重写源文件。读取、保存和新建统一保证 `next_id` 至少大于已有最大 ID，并保留已保存的更高计数。移除实例不降低计数，编号耗尽会报告错误，避免重复编号、目录复用或整数溢出；既有 ID、目录、修订与选择不被重新分配。
+
+`Store.Save` 以临时文件替换配置，写入由调用方串行。`launcher.State` 保留类型别名；`launcher.Store` 保留原有 `Root` 和方法，将配置交给 `config.Store`，凭据交给 `account.Vault`。配置模块不依赖任务历史、Minecraft 安装或桌面组件。`.env` 读取保持环境变量优先、再按数据目录／工作目录／程序目录查找的顺序，不展开变量，也不把密钥写入配置或进程环境。
 
 ## 启动与账号
 
@@ -111,7 +127,7 @@ flowchart TD
 
 `catalog` 中的 Modrinth / CurseForge 适配器负责查询、版本选择和下载来源；`content` 负责 JAR / ZIP 格式、文件名、实例目录访问、启停和导入校验。已有资源同时通过大小、摘要和加载器标记检查后才能复用；失败会保留原文件。添加资源只安装选中文件，必要前置由用户选择。
 
-`catalog.Client` 的零值可用，通过 `Transport` 注入网络传输；超时、API 主机、凭据和重定向策略归模块维护。API 请求不跟随重定向，完整 JSON 响应最多 8 MiB，取消和限流等待复用 `transfer`。CurseForge 密钥仅由该 API 的请求及解析器持有，图标和文件请求不接收密钥。`.env` 读取、实例选择、状态保存和下载任务仍属于 `launcher`。
+`catalog.Client` 的零值可用，通过 `Transport` 注入网络传输；超时、API 主机、凭据和重定向策略归模块维护。API 请求不跟随重定向，完整 JSON 响应最多 8 MiB，取消和限流等待复用 `transfer`。CurseForge 密钥仅由该 API 的请求及解析器持有，图标和文件请求不接收密钥。`.env` 读取、实例选择和状态持久化属于 `config`，下载任务由 `launcher` 编排。
 
 资源目录的 `PackProject` / `PackVersion` / `PackFile` 保持原 JSON 字段，`ResourceFilter` 表示查询条件。`DownloadFile` 供界面选择展示文件，`DownloadAsset` 校验已选文件的来源、正大小及 SHA-512；目录列表与作者指定版本仅提供可校验的文件，不会因主文件无效而改用其他附件。前置浏览只查询元数据：在实例内验证原实例的版本和加载器，在独立浏览时尊重作者指定版本；未指定版本的 Fabric API 仍可回退到 Quilt API 包。
 

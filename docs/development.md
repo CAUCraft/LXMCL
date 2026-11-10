@@ -19,6 +19,8 @@ go tool mygo build -platform windows/amd64
 
 默认根目录为 `%LOCALAPPDATA%\org.caucraft.lxmcl`：`launcher.json` 保存设置和实例，`tasks.json` 保存最近 24 条任务，`cache` 保存共享的客户端、库和资源。首次迁移会读取旧版配置。存档、游戏设置和 `launcher-logs` 位于各实例目录；移除实例配置不会删除这些文件。
 
+配置快照、实例集合和旧数据迁移由 `internal/config` 管理，`launcher.State` / `Store` 保留兼容入口。修改快照前调用 `Clone`，游戏和整合包安装使用 `PrepareInstallation` 返回新快照及目标实例，已有启动选择保持不变。读取或保存时补齐缺失、落后的 `next_id`，保留更高的历史计数和全部旧实例标识；损坏的当前配置不被旧版文件替代。配置写入继续通过应用层串行执行，账号凭据独立存于 `account.Vault`。
+
 实例可继承或覆盖全局 Java 与内存，并指定启动分辨率或全屏。检测 Java 读取实际版本元数据，只检查本地运行时；游戏启动或加载器安装缺少 Java 时，Windows x64 会根据元数据中的组件和最低版本下载 Mojang 官方运行时。缓存位于 `cache/java/windows-x64/`，文件与清单按官方 SHA-1 和大小校验，实际运行 Java 探测版本后才发布安装目录。指定 Java 路径时不会自动替换。复制实例配置只复制版本和启动设置，并分配新目录。
 
 「下载 → 游戏版本」从官方目录选 Minecraft 和加载器版本。原版不需要额外配置，Fabric、Forge、NeoForge 和 Quilt 会分别列出可选版本，预览版单独标注。「安装实例」会保存配置并下载游戏文件，不启动游戏，也不切换已有的启动目标。失败或取消后可在下载任务中重试。
