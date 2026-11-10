@@ -3,6 +3,7 @@ package content_test
 import (
 	"archive/zip"
 	"bytes"
+	"crypto/sha512"
 	"fmt"
 	"io"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/CAUCraft/LXMCL/internal/content"
+	"github.com/CAUCraft/LXMCL/internal/distribution"
 	"github.com/CAUCraft/LXMCL/internal/instance"
 )
 
@@ -84,5 +86,29 @@ func TestWriteVerifiedPreservesDisabledResources(t *testing.T) {
 				t.Fatalf("unexpected files: %v, %v", entries, err)
 			}
 		})
+	}
+}
+
+func TestInstallValidatesDescriptorBeforeReusingResource(t *testing.T) {
+	i := instance.Instance{GameDir: t.TempDir()}
+	body := resourceArchive(t, "pack.mcmeta")
+	dir := filepath.Join(i.GameDir, "resourcepacks")
+	if err := os.Mkdir(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	name := filepath.Join(dir, "pack.zip")
+	if err := os.WriteFile(name, body, 0644); err != nil {
+		t.Fatal(err)
+	}
+	// Matching bytes must not bypass source validation at the public interface.
+	asset := distribution.Asset{
+		URLs: []string{"https://example.invalid/pack.zip"}, Size: int64(len(body)),
+		Algorithm: "sha512", Digest: fmt.Sprintf("%x", sha512.Sum512(body)),
+	}
+	if err := content.Install(t.Context(), i, content.ResourcePacks, "pack.zip", asset, nil); err == nil {
+		t.Fatal("reused resource with an invalid descriptor")
+	}
+	if got, err := os.ReadFile(name); err != nil || !bytes.Equal(got, body) {
+		t.Fatalf("existing resource changed: %v", err)
 	}
 }

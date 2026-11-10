@@ -12,7 +12,7 @@ LXMCL 使用 Go、MyGo 原生窗口和 Lobe MyGo 组件。主包负责界面状�
 | `internal/instance` | 实例配置、加载器和启动参数校验，不执行网络或 UI 操作。 |
 | `internal/minecraft` | `Client` 查询游戏与加载器目录；`Runtime` 管理原版和加载器安装、缓存校验、Java 要求与启动。`LaunchOptions` 输入身份及可选 JVM 准备回调，`Running` 返回进程和日志。 |
 | `internal/javaruntime` | `Probe` / `Find` 探测 Java；`Manager.Local` 只检查本地；`Resolve` 按需求选取或安装；`Ensure` 校验并安装受管运行时。 |
-| `internal/content` | `Kind` 定义资源格式；`List` / `Import` / `SetEnabled` / `WriteVerified` 管理实例资源文件，`ValidateArchive` 统一检查新文件和复用文件的格式，不依赖下载平台。 |
+| `internal/content` | `Kind` 定义资源格式；`List` / `Import` / `SetEnabled` 管理实例资源，`Install` 校验并复用或下载选定文件；远程安装与 `WriteVerified` 共用归档检查和发布流程，不依赖平台目录模型。 |
 | `internal/catalog` | `Client` 查询 Modrinth / CurseForge 项目、版本、前置和图标；`DownloadAsset` 返回可校验的文件描述；`CurseForgeResolver` 提供整合包依赖解析。 |
 | `internal/distribution` | `Asset` 描述来源、大小和摘要；`Asset.Fetch` 管理流式下载的来源、重定向和重试；`Cache.Ensure` 校验可复用缓存，`Cache.Export` 向选定文件夹发布已校验副本。 |
 | `internal/modpack` | `Prepare` / `PrepareLocal` 生成不可修改的预览；`Install` 解析清单、安装到临时目录、发布文件并提交实例，失败时回滚。 |
@@ -62,6 +62,7 @@ flowchart TD
     Launcher --> Instance[instance]
     Tasks --> Content
     Content --> Instance
+    Content --> Distribution
     Content --> Transfer[transfer]
     Content --> Storage
     Java --> Transfer
@@ -101,7 +102,7 @@ flowchart TD
 
 内部按元数据、文件清单、安装、收据、校验、加载器协议、启动参数和进程分文件。共享缓存继续使用 `versions/<id>`、`libraries`、`assets`，Fabric / Quilt 沿用各自目录，Forge / NeoForge 保留游戏版本、加载器版本和平台分层。新收据记录官方版本摘要及平台；历史 `verified = 1` 仍兼容，启动会校验其元数据列出的文件，显式修复后升级收据。调用方串行执行同一实例和缓存的写操作。
 
-资源文件下载通过 `distribution.Asset.Fetch` 与 `content.WriteVerified` 组合，不再依赖 Minecraft 下载器。`Fetch` 在每次尝试中调用消费者，消费者负责摘要、归档格式校验及原子发布；缓存消费者使用 `CopyVerified`。CurseForge 和 Modrinth 的 CDN 跳转分别保持在对应平台范围内，文件请求不继承 API Cookie。
+资源文件安装通过 `content.Install` 组合 `distribution.Asset.Fetch`、`CopyVerified` 和资源归档校验，不再依赖 Minecraft 下载器。`Fetch` 在每次尝试中调用消费者，消费者负责校验和原子发布；每次复制创建独立摘要状态。CurseForge 和 Modrinth 的 CDN 跳转分别保持在对应平台范围内，文件请求不继承 API Cookie。
 
 ## Java 运行时
 
@@ -129,6 +130,8 @@ flowchart TD
 
 `catalog` 中的 Modrinth / CurseForge 适配器负责查询、版本选择和下载来源；`content` 负责 JAR / ZIP 格式、文件名、实例目录访问、启停和导入校验。已有资源同时通过大小、摘要和加载器标记检查后才能复用；失败会保留原文件。添加资源只安装选中文件，必要前置由用户选择。
 
+`content.Install(ctx, target, kind, name, asset, client)` 接收明确的实例、资源类型、文件名和 `distribution.Asset`；可选 HTTP 客户端只影响传输与超时，来源策略仍归分发模块。入口先检查文件名、大小和文件描述，再读取已有资源；已有文件通过大小、摘要及归档标记检查时直接复用，否则报告错误并保留文件。缺少文件时下载、校验后发布。`launcher` 只检查平台版本与实例的兼容性、选择文件并转换进度，不再操作资源文件或计算摘要；模块不导入 `catalog`、`tasks` 或 `launcher`。
+
 `catalog.Client` 的零值可用，通过 `Transport` 注入网络传输；超时、API 主机、凭据和重定向策略归模块维护。API 请求不跟随重定向，完整 JSON 响应最多 8 MiB，取消和限流等待复用 `transfer`。CurseForge 密钥仅由该 API 的请求及解析器持有，图标和文件请求不接收密钥。`.env` 读取、实例选择和状态持久化属于 `config`，下载任务由 `launcher` 编排。
 
 资源目录的 `PackProject` / `PackVersion` / `PackFile` 保持原 JSON 字段，`ResourceFilter` 表示查询条件。`DownloadFile` 供界面选择展示文件，`DownloadAsset` 校验已选文件的来源、正大小及 SHA-512；目录列表与作者指定版本仅提供可校验的文件，不会因主文件无效而改用其他附件。前置浏览只查询元数据：在实例内验证原实例的版本和加载器，在独立浏览时尊重作者指定版本；未指定版本的 Fabric API 仍可回退到 Quilt API 包。
@@ -137,7 +140,7 @@ flowchart TD
 
 `distribution.Asset` 支持 SHA-512、SHA-1 和 MD5，保留 `cache/modpacks/<algorithm>/<digest>` 路径；每次复用重新读取并校验文件，下载成功后才以临时文件发布。`Cache.Client` 可注入网络传输和超时，来源与重定向限制仍由模块执行。CurseForge CDN 的重定向不能跳出其 CDN 域名集合，API 密钥不参与文件下载。
 
-`Cache.Export` 在下载前打开选定目录，复用缓存后再次校验实际复制字节，发布成功才报告完成。`launcher` 只选择文件描述并翻译进度。实例资源的 `WriteVerified` 负责大小、摘要与加载器归档标记，两者都通过 `storage.PublishNew` 发布：先写入同目录随机 `.lxmcl-*.part`，回调完成校验，再同步、关闭写入文件并原子创建最终名称。同名文件、目录和符号链接均保留；准备失败或取消只清理本次临时文件，不删除最终名称。
+`Cache.Export` 在下载前打开选定目录，复用缓存后再次校验实际复制字节，发布成功才报告完成。`launcher` 只选择文件描述并翻译进度。实例资源的 `Install` 与 `WriteVerified` 共用私有 `publishResource`，统一归档标记、禁用冲突和发布；所有新资源与文件夹下载都通过 `storage.PublishNew` 发布：先写入同目录随机 `.lxmcl-*.part`，回调完成校验，再同步、关闭写入文件并原子创建最终名称。同名文件、目录和符号链接均保留；准备失败或取消只清理本次临时文件，不删除最终名称。
 
 发布目标始终基于已打开目录。Windows 使用原生句柄重命名并禁用覆盖，不依赖硬链接；其他平台使用同目录硬链接创建最终名称，再清理临时名称，不支持硬链接的文件系统会返回错误。进程在发布前退出可能留下 `.part`，资源列表不会将其视为 JAR / ZIP，重试使用新的临时名称；不自动删除其他操作留下的临时文件。这里保证文件可见性，不承诺突然断电时的目录持久性。Windows 接口见 [NtSetInformationFile](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ntsetinformationfile) 与 [FILE_RENAME_INFORMATION](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/ns-ntifs-_file_rename_information)。
 
