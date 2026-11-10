@@ -281,6 +281,8 @@
   "saves.backup_too_large": "The world backup exceeds 32 GiB",
   "saves.backup_too_many_files": "The world backup exceeds 50,000 files",
   "saves.no_worlds_to_back_up": "This instance has no worlds to back up",
+  "saves.path_conflict": "Conflicting world archive path: %s",
+  "saves.path_invalid": "World archive path is not portable: %s",
   "saves.restore_partial": "Restored %d worlds: %w",
   "server.address_invalid": "Enter a Java server hostname or IP address, optionally with a port",
   "server.favorite_duplicate": "This server is already a favorite",

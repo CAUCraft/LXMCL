@@ -18,7 +18,7 @@ LXMCL 使用 Go、MyGo 原生窗口和 Lobe MyGo 组件。主包负责界面状�
 | `internal/modpack` | `Prepare` / `PrepareLocal` 生成不可修改的预览；`Install` 解析清单、安装到临时目录、发布文件并提交实例，失败时回滚。 |
 | `internal/tasks` | `Run` 管理一次执行的进度生命周期；`Record` 保存任务目标与结果；`Journal` 串行更新历史。 |
 | `internal/server` | `Address` 规范化地址；`Client.Ping` 查询 Java 服务器状态，DNS 与连接方式可注入，地址规则、连接生命周期和协议解析分文件维护。 |
-| `internal/saves` | 世界备份与恢复，保留已有世界。 |
+| `internal/saves` | `Backup` / `Restore` 管理世界归档；文件规划、路径规则、ZIP 读写和发布分别维护，`BackupsDir` 保留原备份布局。 |
 | `internal/transfer` | 下载字节、摘要和大小校验、文件发布、并发批次与取消；`Retry` 统一有限次数的传输重试与服务端等待时间，业务重试由调用方决定。 |
 | `internal/storage` | 文件读写、路径校验及有大小限制的完整归档 JSON 读取；`PublishNew` 在已打开目录内准备新文件并以不覆盖方式发布。 |
 | `internal/process` | 平台进程属性；进程的业务生命周期由调用方管理。 |
@@ -61,6 +61,9 @@ flowchart TD
     Distribution --> Storage
     Launcher --> Instance[instance]
     Launcher --> Server
+    Launcher --> Saves[saves 存档]
+    Saves --> Storage
+    Saves --> Transfer
     Tasks --> Content
     Content --> Instance
     Content --> Distribution
@@ -130,6 +133,14 @@ flowchart TD
 `server.Client.Ping` 管理一次状态查询的连接生命周期，`LookupSRV` 与 `DialContext` 可注入 DNS 和 TCP 连接方式；零值使用系统实现。`Address` 保留原有地址规范化和校验规则，私有协议实现只接收读写连接与握手地址，处理报文和图标，不读取配置或选择实例。包级 `server.Ping` 及 `launcher.PingServer` 保留兼容入口。
 
 域名使用默认端口时查询 SRV，失败或无记录时回退原地址；TCP 使用解析结果，握手始终使用原规范化主机和端口。固定 5 秒总超时覆盖 DNS、连接和收包，连接在退出或取消时关闭，取消导致的读写错误返回 context 原因。`Latency` 延续连接及响应耗时的含义，不包含 SRV 查询。状态报文保持 1 MiB 上限，图标仅解析受限大小的 64×64 PNG，图标解析失败不影响状态结果。
+
+## 存档备份与恢复
+
+`saves.Backup` 与 `Restore` 只编排规划、归档读写和发布，`launcher` 保留兼容入口。私有备份计划发现含 `level.dat` 的世界并收集文件元数据，恢复计划检查 ZIP 条目和世界目录；两个计划共用跨平台路径规则，拒绝重复文件、大小写别名及文件与父目录冲突，允许同名重复目录。完整清单校验通过后才创建输出目录，继续限制 50000 个条目和 32 GiB，并跳过 `session.lock` 文件。
+
+备份写入仍检查源文件身份、大小和修改时间，通过 `storage.PublishNew` 在 ZIP 关闭、文件同步后发布，失败不留下最终 ZIP。目录继续为 `backups/instance-<id>`，保留时间戳随机后缀命名。文件元数据检查不能提供运行中世界的一致快照，备份应在游戏停止写入后进行。
+
+恢复先在实例 `saves` 下的临时目录完成解压、大小与 ZIP 校验，再逐个发布世界；已有名称使用 `世界名 (2)` 等后缀。解压失败不发布世界，发布阶段失败或取消返回已恢复数量，已发布世界保留。同实例存档修改由调用方串行，不承诺与外部进程并发操作时的目录事务。
 
 ## 文件、资源和安装
 

@@ -6,55 +6,33 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path"
-	"path/filepath"
-	"sort"
-	"strings"
 
 	"github.com/CAUCraft/LXMCL/internal/i18n"
-	"github.com/CAUCraft/LXMCL/internal/transfer"
 )
 
 // Restore imports ZIPs whose top-level folders contain level.dat.
-// Existing worlds are kept; a conflicting name receives a new suffix.
+// Imported worlds receive a new suffix if their name is already taken. Callers
+// must serialize changes to the same instance. On publication failure, the count
+// reports worlds already restored.
 func Restore(ctx context.Context, gameDir, source string) (int, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
 	z, err := zip.OpenReader(source)
 	if err != nil {
 		return 0, err
 	}
 	defer z.Close()
-	if len(z.File) == 0 || len(z.File) > maxSaveEntries {
-		return 0, i18n.Error("saves.archive_entry_count_invalid")
+	plan, err := planRestore(ctx, z.File)
+	if err != nil {
+		return 0, err
 	}
-	worlds := make(map[string]bool)
-	var size uint64
-	for _, entry := range z.File {
-		name := strings.TrimSuffix(entry.Name, "/")
-		if !fs.ValidPath(name) || name == "." || !filepath.IsLocal(filepath.FromSlash(name)) ||
-			strings.ContainsAny(name, ":\\") || (!entry.Mode().IsRegular() && !entry.FileInfo().IsDir()) {
-			return 0, i18n.Error("saves.archive_path_or_type_invalid", entry.Name)
-		}
-		world, rest, nested := strings.Cut(name, "/")
-		if !nested && !entry.FileInfo().IsDir() {
-			return 0, i18n.Error("saves.archive_world_directory_required")
-		}
-		worlds[world] = worlds[world] || (rest == "level.dat" && entry.Mode().IsRegular())
-		if entry.UncompressedSize64 > maxSaveBytes-size {
-			return 0, i18n.Error("saves.archive_expanded_too_large")
-		}
-		size += entry.UncompressedSize64
+	if err := ctx.Err(); err != nil {
+		return 0, err
 	}
-	names := make([]string, 0, len(worlds))
-	for name, valid := range worlds {
-		if !valid {
-			return 0, i18n.Error("saves.archive_level_dat_missing", name)
-		}
-		names = append(names, name)
-	}
-	sort.Strings(names)
 	root, err := savesRoot(gameDir, true)
 	if err != nil {
 		return 0, err
@@ -65,33 +43,23 @@ func Restore(ctx context.Context, gameDir, source string) (int, error) {
 		return 0, err
 	}
 	defer root.RemoveAll(stage)
-	for _, entry := range z.File {
-		if err := ctx.Err(); err != nil {
-			return 0, err
-		}
-		name := path.Join(stage, entry.Name)
-		if entry.FileInfo().IsDir() {
-			if err := root.MkdirAll(name, 0755); err != nil {
-				return 0, err
-			}
-			continue
-		}
-		if path.Base(name) == "session.lock" {
-			continue
-		}
-		if err := root.MkdirAll(path.Dir(name), 0755); err != nil {
-			return 0, err
-		}
-		if err := extractSaveFile(ctx, root, name, entry); err != nil {
-			return 0, err
-		}
-	}
-	if err := ctx.Err(); err != nil {
+	staged, err := root.OpenRoot(stage)
+	if err != nil {
 		return 0, err
 	}
-	for n, world := range names {
+	if err := errors.Join(extractArchive(ctx, staged, plan.entries), staged.Close()); err != nil {
+		return 0, err
+	}
+	return publishWorlds(ctx, root, stage, plan.worlds)
+}
+
+func publishWorlds(ctx context.Context, root *os.Root, stage string, worlds []string) (int, error) {
+	for n, world := range worlds {
 		dst := world
 		for suffix := 2; ; suffix++ {
+			if err := ctx.Err(); err != nil {
+				return n, err
+			}
 			if _, err := root.Lstat(dst); errors.Is(err, fs.ErrNotExist) {
 				break
 			} else if err != nil {
@@ -103,22 +71,5 @@ func Restore(ctx context.Context, gameDir, source string) (int, error) {
 			return n, i18n.Error("saves.restore_partial", n, err)
 		}
 	}
-	return len(names), nil
-}
-
-func extractSaveFile(ctx context.Context, root *os.Root, name string, entry *zip.File) error {
-	src, err := entry.Open()
-	if err != nil {
-		return err
-	}
-	defer src.Close()
-	dst, err := root.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
-	if err != nil {
-		return err
-	}
-	n, err := io.Copy(dst, io.LimitReader(transfer.Reader(ctx, src), int64(entry.UncompressedSize64)+1))
-	if err == nil && uint64(n) != entry.UncompressedSize64 {
-		err = i18n.Error("saves.archive_size_mismatch")
-	}
-	return errors.Join(err, dst.Close())
+	return len(worlds), nil
 }

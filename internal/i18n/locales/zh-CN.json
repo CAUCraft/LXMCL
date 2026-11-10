@@ -281,6 +281,8 @@
   "saves.backup_too_large": "存档备份超过 32 GiB",
   "saves.backup_too_many_files": "存档备份超过 50000 个文件",
   "saves.no_worlds_to_back_up": "此实例还没有可备份的存档",
+  "saves.path_conflict": "存档归档路径冲突：%s",
+  "saves.path_invalid": "存档归档路径无法跨平台使用：%s",
   "saves.restore_partial": "已恢复 %d 个存档：%w",
   "server.address_invalid": "请输入 Java 服务器域名或 IP，可附端口",
   "server.favorite_duplicate": "已收藏此服务器",

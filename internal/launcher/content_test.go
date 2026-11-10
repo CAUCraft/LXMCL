@@ -3,7 +3,9 @@ package launcher
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"crypto/sha512"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -204,5 +206,34 @@ func TestBackupAndRestoreKeepExistingWorld(t *testing.T) {
 	}
 	if _, err := RestoreSaves(t.Context(), i, malicious); err == nil {
 		t.Fatal("accepted a world archive with path traversal")
+	}
+	conflict := testZIP(t, map[string]string{
+		"World/level.dat": "valid", "World/data": "file", "World/data/chunk": "nested",
+	})
+	if err := os.WriteFile(malicious, conflict, 0600); err != nil {
+		t.Fatal(err)
+	}
+	i.GameDir = filepath.Join(t.TempDir(), "uncreated")
+	if n, err := RestoreSaves(t.Context(), i, malicious); err == nil || n != 0 {
+		t.Fatalf("accepted conflicting archive paths: %d, %v", n, err)
+	}
+	if _, err := os.Stat(i.GameDir); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("invalid restore created its destination: %v", err)
+	}
+}
+
+func TestCanceledSaveOperationsDoNotCreateDirectories(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	root := t.TempDir()
+	i := Instance{ID: 3, GameDir: filepath.Join(root, "game")}
+	if name, err := BackupSaves(ctx, i, filepath.Join(root, "data")); name != "" || !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled backup returned %q, %v", name, err)
+	}
+	if n, err := RestoreSaves(ctx, i, filepath.Join(root, "absent.zip")); n != 0 || !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled restore returned %d, %v", n, err)
+	}
+	if entries, err := os.ReadDir(root); err != nil || len(entries) != 0 {
+		t.Fatalf("canceled operations created files: %v, %v", entries, err)
 	}
 }
