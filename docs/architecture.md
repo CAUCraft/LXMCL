@@ -14,13 +14,13 @@ LXMCL 使用 Go、MyGo 原生窗口和 Lobe MyGo 组件。主包负责界面状�
 | `internal/javaruntime` | `Probe` / `Find` 探测 Java；`Manager.Local` 只检查本地；`Resolve` 按需求选取或安装；`Ensure` 校验并安装受管运行时。 |
 | `internal/content` | `Kind` 定义资源格式；`List` / `Import` / `SetEnabled` / `WriteVerified` 管理实例资源文件，`ValidateArchive` 统一检查新文件和复用文件的格式，不依赖下载平台。 |
 | `internal/catalog` | `Client` 查询 Modrinth / CurseForge 项目、版本、前置和图标；`DownloadAsset` 返回可校验的文件描述；`CurseForgeResolver` 提供整合包依赖解析。 |
-| `internal/distribution` | `Asset` 描述来源、大小和摘要；`Asset.Fetch` 管理流式下载的来源、重定向和重试；`Cache.Ensure` 校验并保存可复用缓存。 |
+| `internal/distribution` | `Asset` 描述来源、大小和摘要；`Asset.Fetch` 管理流式下载的来源、重定向和重试；`Cache.Ensure` 校验可复用缓存，`Cache.Export` 向选定文件夹发布已校验副本。 |
 | `internal/modpack` | `Prepare` / `PrepareLocal` 生成不可修改的预览；`Install` 解析清单、安装到临时目录、发布文件并提交实例，失败时回滚。 |
 | `internal/tasks` | `Run` 管理一次执行的进度生命周期；`Record` 保存任务目标与结果；`Journal` 串行更新历史。 |
 | `internal/server` | 服务器地址校验和状态探测。 |
 | `internal/saves` | 世界备份与恢复，保留已有世界。 |
 | `internal/transfer` | 下载字节、摘要和大小校验、文件发布、并发批次与取消；`Retry` 统一有限次数的传输重试与服务端等待时间，业务重试由调用方决定。 |
-| `internal/storage` | 文件读写、路径校验及有大小限制的完整归档 JSON 读取。 |
+| `internal/storage` | 文件读写、路径校验及有大小限制的完整归档 JSON 读取；`PublishNew` 在已打开目录内准备新文件并以不覆盖方式发布。 |
 | `internal/process` | 平台进程属性；进程的业务生命周期由调用方管理。 |
 | `internal/log` | 游戏与加载器安装器的日志路径、写入文件创建及游戏日志预览。 |
 | `internal/i18n` | 从嵌入式 JSON 按键读取后端文案，保留错误链与语言回退。 |
@@ -58,10 +58,12 @@ flowchart TD
     Modpack --> Instance
     Modpack --> Tasks
     Distribution --> Transfer
+    Distribution --> Storage
     Launcher --> Instance[instance]
     Tasks --> Content
     Content --> Instance
-    Content --> Transfer[transfer / storage]
+    Content --> Transfer[transfer]
+    Content --> Storage
     Java --> Transfer
     Java --> Process[process]
     Account --> Instance
@@ -134,6 +136,12 @@ flowchart TD
 `ModpackRelease` 的来源、文件描述和平台下载限制由目录模块持有。`DownloadAsset` 返回独立描述，修改展示文案或返回的 URL 列表不能改变平台限制。游戏或加载器不支持时仍允许保存可校验归档；安装入口还需通过整合包解析和实例校验。图标接口自行注册 PNG、JPEG、GIF 和 WebP 解码器，读取上限 2 MiB、尺寸上限 2048 × 2048，输出 96 × 96 图像，不依赖桌面初始化。
 
 `distribution.Asset` 支持 SHA-512、SHA-1 和 MD5，保留 `cache/modpacks/<algorithm>/<digest>` 路径；每次复用重新读取并校验文件，下载成功后才以临时文件发布。`Cache.Client` 可注入网络传输和超时，来源与重定向限制仍由模块执行。CurseForge CDN 的重定向不能跳出其 CDN 域名集合，API 密钥不参与文件下载。
+
+`Cache.Export` 在下载前打开选定目录，复用缓存后再次校验实际复制字节，发布成功才报告完成。`launcher` 只选择文件描述并翻译进度。实例资源的 `WriteVerified` 负责大小、摘要与加载器归档标记，两者都通过 `storage.PublishNew` 发布：先写入同目录随机 `.lxmcl-*.part`，回调完成校验，再同步、关闭写入文件并原子创建最终名称。同名文件、目录和符号链接均保留；准备失败或取消只清理本次临时文件，不删除最终名称。
+
+发布目标始终基于已打开目录。Windows 使用原生句柄重命名并禁用覆盖，不依赖硬链接；其他平台使用同目录硬链接创建最终名称，再清理临时名称，不支持硬链接的文件系统会返回错误。进程在发布前退出可能留下 `.part`，资源列表不会将其视为 JAR / ZIP，重试使用新的临时名称；不自动删除其他操作留下的临时文件。这里保证文件可见性，不承诺突然断电时的目录持久性。Windows 接口见 [NtSetInformationFile](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ntsetinformationfile) 与 [FILE_RENAME_INFORMATION](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/ns-ntifs-_file_rename_information)。
+
+资源写入在复制前和归档校验后检查对应 `.disabled` 文件，保留已有禁用资源。同实例内的资源操作仍由调用方串行；启用与禁用两个名称无法作为一对原子检查，不保证与外部进程同时启停资源的事务隔离。
 
 `modpack.Prepared` 仅公开 `Info()`，保留值比较能力以供桌面识别当前预览；归档位置和指纹由模块持有。安装时重新核对指纹，防止预览后的文件变更。Modrinth、CurseForge 清单解析、路径计划、文件填充和发布事务分别维护，内部 ZIP 条目与安装计划不暴露给调用方。Forge 安装器使用 `storage.ReadArchiveJSON`，不依赖整合包解析器或整合包文件限制。
 

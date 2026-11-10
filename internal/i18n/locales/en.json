@@ -324,6 +324,7 @@
   "station.vault_too_large": "The skin site credentials are too large",
   "storage.archive_json_missing": "The required JSON entry is missing from the archive",
   "storage.archive_json_too_large": "The archive JSON entry exceeds the size limit",
+  "storage.filename_invalid": "The filename must be a single portable name without a directory path",
   "storage.json_read_failed": "Could not read %s: %w",
   "tasks.history_too_large": "Task history exceeds 2 MiB and cannot be loaded or saved",
   "tasks.journal_root_changed": "The task history directory changed during operation",

@@ -2,10 +2,6 @@ package launcher
 
 import (
 	"context"
-	"errors"
-	"io"
-	"os"
-	"path/filepath"
 
 	"github.com/CAUCraft/LXMCL/internal/distribution"
 	"github.com/CAUCraft/LXMCL/internal/i18n"
@@ -28,54 +24,14 @@ func (g Game) DownloadModpackFile(ctx context.Context, release ModpackRelease, f
 }
 
 func (g Game) saveDownload(ctx context.Context, a distribution.Asset, name, folder string, report func(Progress)) error {
-	if !filepath.IsAbs(folder) {
-		return i18n.Error("download.folder_required")
-	}
-	root, err := os.OpenRoot(folder)
-	if err != nil {
-		return i18n.Error("download.folder_open_failed", err)
-	}
-	defer root.Close()
-	if _, err := root.Lstat(name); err == nil {
-		return i18n.Error("download.folder_name_conflict", name)
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	if report != nil {
-		report(Progress{Stage: i18n.Text("progress.download_and_verify", name), Total: 1})
-	}
-	verified, err := (distribution.Cache{Root: g.Cache}).Ensure(ctx, a)
-	if err != nil {
-		return err
-	}
-	src, err := os.Open(verified)
-	if err != nil {
-		return err
-	}
-	defer src.Close()
-	if err := writeFolderDownload(ctx, root, name, a, src); err != nil {
-		return err
-	}
-	if report != nil {
-		report(Progress{Stage: i18n.Text("progress.saved_file", name), Done: 1, Total: 1})
-	}
-	return nil
-}
-
-func writeFolderDownload(ctx context.Context, root *os.Root, name string, a distribution.Asset, src io.Reader) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	f, err := root.OpenFile(name, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
-	if err != nil {
-		return err
-	}
-	err = a.CopyVerified(ctx, f, src)
-	if err == nil {
-		err = ctx.Err()
-	}
-	if err = errors.Join(err, f.Close()); err != nil {
-		_ = root.Remove(name)
-	}
-	return err
+	return (distribution.Cache{Root: g.Cache}).Export(ctx, a, name, folder, func(done, total int) {
+		if report == nil {
+			return
+		}
+		key := "progress.download_and_verify"
+		if done == total {
+			key = "progress.saved_file"
+		}
+		report(Progress{Stage: i18n.Text(key, name), Done: done, Total: total})
+	})
 }

@@ -324,6 +324,7 @@
   "station.vault_too_large": "皮肤站凭据过大",
   "storage.archive_json_missing": "压缩包缺少必需的 JSON 文件",
   "storage.archive_json_too_large": "压缩包内的 JSON 文件超出大小限制",
+  "storage.filename_invalid": "文件名必须是兼容各平台的单个名称，不能包含目录路径",
   "storage.json_read_failed": "无法读取 %s：%w",
   "tasks.history_too_large": "任务历史超过 2 MiB，无法读取或保存",
   "tasks.journal_root_changed": "任务记录目录在运行中发生变化",
