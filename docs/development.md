@@ -33,6 +33,8 @@ go tool mygo build -platform windows/amd64
 
 Minecraft 安装和启动由 `internal/minecraft.Runtime` 提供；游戏与加载器目录查询通过 `minecraft.Client`，传输由 `Client.Transport` 注入。应用层只传入提交时的实例、设置和已校验身份，皮肤站 JVM 参数通过回调准备。扩展运行时无需访问 `State` / `Store` 或整合包清单。缓存收据、加载器协议、启动参数和进程管理分别维护；现有 `launcher.Game` 调用保持兼容。`internal/testutil/mcfixture` 提供可控官方文件夹具，集成测试通过公开接口验证安装、取消、进程启动和旧缓存修复。
 
+Minecraft 与 Java 的 SHA-1 文件通过 `transfer.Artifact.Check` 验证，通过 `Ensure` 复用或下载替换缓存；校验摘要由文件描述内部解析，调用方只传本地路径与未知大小上限。已知长度不受该上限限制，未知长度必须提供有效上限；缓存损坏返回未通过，I/O 或取消返回错误。原缓存路径、损坏修复及重试行为保持不变，下载校验失败继续支持 `errors.Is(err, transfer.ErrMismatch)`。相关验证复用游戏安装、Forge 和受管 Java 测试，仅单独保留一个大小边界回归。
+
 项目搜索、版本查询、前置浏览和图标读取由 `internal/catalog.Client` 提供，通过 `Transport` 注入测试传输。目录模块不读写配置或实例文件；可下载版本须包含有效来源、大小和摘要。前置浏览保持只读，作者指定版本不会被自动替换，普通资源安装不会自动下载前置。CurseForge 依赖解析通过 `CurseForgeResolver` 接入整合包安装，API 密钥只发送到 CurseForge 官方 API。
 
 NeoForge 官方 Maven 请求失败时，启动器会尝试 NeoForge CDN。NeoForge、Forge 和 Fabric Maven 文件可回退到 BMCLAPI 镜像，始终沿用加载器元数据或官方 Maven 提供的校验值。校验地址遇到临时网络错误时会限次重试。所有来源都无法提供匹配文件时，任务失败并保留可复用的已校验缓存。

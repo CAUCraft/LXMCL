@@ -12,11 +12,7 @@ import (
 )
 
 func verifyArtifact(ctx context.Context, file fileDownload) error {
-	digest, err := file.file.Checksum()
-	if err != nil {
-		return i18n.Error("common.context_error", filepath.Base(file.path), err)
-	}
-	ok, err := transfer.Check(ctx, file.path, file.file, digest, maxMetadata)
+	ok, err := file.file.Check(ctx, file.path, maxMetadata)
 	if err != nil {
 		return err
 	}

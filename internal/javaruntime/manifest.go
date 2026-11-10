@@ -89,11 +89,7 @@ func (m manifest) verify(ctx context.Context, root string) error {
 			continue
 		}
 		a := f.Downloads.Raw
-		digest, err := a.Checksum()
-		if err != nil {
-			return err
-		}
-		ok, err := transfer.Check(ctx, filepath.Join(root, filepath.FromSlash(name)), a, digest, metadataLimit)
+		ok, err := a.Check(ctx, filepath.Join(root, filepath.FromSlash(name)), metadataLimit)
 		if err != nil {
 			return err
 		}

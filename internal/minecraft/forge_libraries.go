@@ -52,7 +52,7 @@ func (g Runtime) prefetchForgeLibraries(ctx context.Context, d *downloads, game 
 		}
 		cache := filepath.Join(g.Cache, "loader-libraries", hex.EncodeToString(sum))
 		base := filepath.Join(g.Cache, "libraries", filepath.FromSlash(f.file.Path))
-		if ok, err := transfer.Check(ctx, base, f.file, sum, 128<<20); ok && err == nil {
+		if ok, err := f.file.Check(ctx, base, 128<<20); ok && err == nil {
 			cache = base
 		} else {
 			if err := d.fileBound(ctx, cache, f.file, 128<<20); err != nil {

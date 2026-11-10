@@ -83,11 +83,7 @@ func (m Manager) verify(ctx context.Context, dir string, req Requirement) (Runti
 	if suffix, ok := strings.CutPrefix(filepath.Base(dir), "runtime-"); ok {
 		sha, _, _ := strings.Cut(suffix, "-")
 		a := transfer.Artifact{SHA: sha, Size: transfer.UnknownSize}
-		digest, err := a.Checksum()
-		if err != nil {
-			return Runtime{}, err
-		}
-		valid, err := transfer.Check(ctx, manifestPath, a, digest, metadataLimit)
+		valid, err := a.Check(ctx, manifestPath, metadataLimit)
 		if err != nil {
 			return Runtime{}, err
 		}

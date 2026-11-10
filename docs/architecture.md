@@ -19,7 +19,7 @@ LXMCL 使用 Go、MyGo 原生窗口和 Lobe MyGo 组件。主包负责界面状�
 | `internal/tasks` | `Run` 管理一次执行的进度生命周期；`Record` 保存任务目标与结果；`Journal` 串行更新历史。 |
 | `internal/server` | `Address` 规范化地址；`Client.Ping` 查询 Java 服务器状态，DNS 与连接方式可注入，地址规则、连接生命周期和协议解析分文件维护。 |
 | `internal/saves` | `Backup` / `Restore` 管理世界归档；文件规划、路径规则、ZIP 读写和发布分别维护，`BackupsDir` 保留原备份布局。 |
-| `internal/transfer` | 下载字节、摘要和大小校验、文件发布、并发批次与取消；`Retry` 统一有限次数的传输重试与服务端等待时间，业务重试由调用方决定。 |
+| `internal/transfer` | `Artifact.Check` 校验文件，`Ensure` 复用或下载替换缓存；元数据、流式校验与下载编排分开。`Batch` 管理并发与取消，`Retry` 统一有限次数的传输重试与服务端等待时间。 |
 | `internal/storage` | 文件读写、路径校验及有大小限制的完整归档 JSON 读取；`PublishNew` 在已打开目录内准备新文件并以不覆盖方式发布。 |
 | `internal/process` | 平台进程属性；进程的业务生命周期由调用方管理。 |
 | `internal/log` | 游戏与加载器安装器的日志路径、写入文件创建及游戏日志预览。 |
@@ -145,6 +145,10 @@ flowchart TD
 ## 文件、资源和安装
 
 实例使用独立游戏目录，共享经过官方哈希和大小校验的下载缓存。Minecraft 目录、元数据、安装校验、参数和进程启动分文件维护；Forge 安装器、运行库与配置，以及整合包清单和实例安装流程分别维护。
+
+`transfer.Artifact.Check(ctx, file, unknownLimit)` 将 SHA-1 与大小约束绑定在同一个文件描述内，调用者无需先解析摘要再传回校验函数。缺失或字节不匹配返回 `false, nil`，元数据、文件类型、I/O 和取消问题返回错误；本地校验不要求 URL 或元数据路径。只有 `Size == UnknownSize` 时才使用非负且小于 `MaxInt64` 的上限，恰好达到上限合法，已知大小按声明长度校验。`Checksum` 保留用于元数据检查和摘要缓存命名。
+
+`artifact.go` 定义元数据，`verify.go` 统一缓存读取与下载复制的有界校验，`ensure.go` 编排缓存复用、取流和替换。每次读取或重试创建独立哈希状态；下载失败、校验失败或取消保留旧缓存，摘要不符继续保留 `ErrMismatch` 身份。`Ensure` 使用原有 `.download-*` 临时文件与替换语义，来源、重定向和重试由 Minecraft / Java 下载适配器管理；调用方串行修改同一目标。
 
 `catalog` 中的 Modrinth / CurseForge 适配器负责查询、版本选择和下载来源；`content` 负责 JAR / ZIP 格式、文件名、实例目录访问、启停和导入校验。已有资源同时通过大小、摘要和加载器标记检查后才能复用；失败会保留原文件。添加资源只安装选中文件，必要前置由用户选择。
 
