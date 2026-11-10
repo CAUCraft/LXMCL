@@ -316,6 +316,14 @@ func (a *desktop) submitInstall(p *installView, defaultName string) {
 }
 
 func newInstallation(state launcher.State, name, version, fabric string) (launcher.State, launcher.Instance, error) {
+	loader := launcher.LoaderVanilla
+	if fabric != "" {
+		loader = launcher.LoaderFabric
+	}
+	return newLoaderInstallation(state, name, version, loader, fabric)
+}
+
+func newLoaderInstallation(state launcher.State, name, version, loader, loaderVersion string) (launcher.State, launcher.Instance, error) {
 	next := state.Clone()
 	if err := next.Create(name, version); err != nil {
 		return state, launcher.Instance{}, err
@@ -324,8 +332,8 @@ func newInstallation(state launcher.State, name, version, fabric string) (launch
 	if !ok {
 		return state, launcher.Instance{}, errors.New("无法取得新实例")
 	}
-	if fabric != "" {
-		if err := next.ConfigureLoader(i.ID, i.Revision, fabric); err != nil {
+	if loader != launcher.LoaderVanilla {
+		if err := next.ConfigureModLoader(i.ID, i.Revision, loader, loaderVersion); err != nil {
 			return state, launcher.Instance{}, err
 		}
 		i, _ = next.Find(i.ID)

@@ -48,7 +48,8 @@ func officialURL(u *url.URL) bool {
 		slices.Contains([]string{"piston-meta.mojang.com", "piston-data.mojang.com",
 			"libraries.minecraft.net", "resources.download.minecraft.net", "launcher.mojang.com",
 			"launchermeta.mojang.com", "meta.fabricmc.net", "maven.fabricmc.net",
-			"api.modrinth.com", "cdn.modrinth.com"}, u.Hostname())
+			"api.modrinth.com", "cdn.modrinth.com", "maven.minecraftforge.net",
+			"maven.neoforged.net", "repo.maven.apache.org", "repo1.maven.org"}, u.Hostname())
 }
 
 type responseError struct {
@@ -190,6 +191,10 @@ func (r cancelReader) Read(p []byte) (int, error) {
 }
 
 func checkFile(ctx context.Context, file string, a artifact, digest []byte) (bool, error) {
+	return checkFileBound(ctx, file, a, digest, maxMetadata)
+}
+
+func checkFileBound(ctx context.Context, file string, a artifact, digest []byte, unknownLimit int64) (bool, error) {
 	if err := ctx.Err(); err != nil {
 		return false, err
 	}
@@ -203,7 +208,7 @@ func checkFile(ctx context.Context, file string, a artifact, digest []byte) (boo
 	if !st.Mode().IsRegular() {
 		return false, fmt.Errorf("%s 不是普通文件", file)
 	}
-	if a.Size == unknownSize && st.Size() > maxMetadata || a.Size != unknownSize && a.Size != st.Size() {
+	if a.Size == unknownSize && st.Size() > unknownLimit || a.Size != unknownSize && a.Size != st.Size() {
 		return false, nil
 	}
 	f, err := os.Open(file)
@@ -215,18 +220,22 @@ func checkFile(ctx context.Context, file string, a artifact, digest []byte) (boo
 	}
 	defer f.Close()
 	h := sha1.New()
-	n, err := io.Copy(h, cancelReader{ctx, f})
-	return err == nil && (a.Size == unknownSize && n <= maxMetadata || a.Size == n) && bytes.Equal(h.Sum(nil), digest), err
+	n, err := io.Copy(h, io.LimitReader(cancelReader{ctx, f}, st.Size()+1))
+	return err == nil && n == st.Size() && bytes.Equal(h.Sum(nil), digest), err
 }
 
 var errDownloadMismatch = errors.New("下载文件校验失败")
 
 func (d *downloads) file(ctx context.Context, file string, a artifact) error {
+	return d.fileBound(ctx, file, a, maxMetadata)
+}
+
+func (d *downloads) fileBound(ctx context.Context, file string, a artifact, unknownLimit int64) error {
 	digest, err := a.checksum()
 	if err != nil {
 		return fmt.Errorf("%s：%w", filepath.Base(file), err)
 	}
-	ok, err := checkFile(ctx, file, a, digest)
+	ok, err := checkFileBound(ctx, file, a, digest, unknownLimit)
 	if ok || err != nil {
 		return err
 	}
@@ -247,7 +256,7 @@ func (d *downloads) file(ctx context.Context, file string, a artifact) error {
 		h := sha1.New()
 		limit := a.Size + 1
 		if a.Size == unknownSize {
-			limit = maxMetadata + 1
+			limit = unknownLimit + 1
 		}
 		n, err := io.Copy(io.MultiWriter(f, h), io.LimitReader(cancelReader{ctx, resp.Body}, limit))
 		if err = errors.Join(err, f.Close()); err != nil {

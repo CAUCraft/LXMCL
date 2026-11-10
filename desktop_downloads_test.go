@@ -23,7 +23,7 @@ func TestModpackWorkspaceShowsSourcesAndNewInstanceConfirmation(t *testing.T) {
 	p.project = project
 	p.releases = []launcher.ModpackRelease{
 		{ID: "fabric", Title: "飞行测试包 1.0", Games: []string{"1.21.1"}, Loaders: []string{"fabric"}, Channel: "release"},
-		{ID: "forge", Title: "飞行测试包 Forge", Games: []string{"1.21.1"}, Loaders: []string{"forge"}, Unavailable: "当前仅支持原版和 Fabric 整合包"},
+		{ID: "quilt", Title: "飞行测试包 Quilt", Games: []string{"1.21.1"}, Loaders: []string{"quilt"}, Unavailable: "需要原版、Fabric、Forge 或 NeoForge"},
 	}
 	for _, label := range []string{"下载", "整合包", "飞行测试包 1.0"} {
 		if err := tt.Click(label); err != nil {
@@ -62,7 +62,7 @@ func TestModpackWorkspaceShowsSourcesAndNewInstanceConfirmation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = entry.Write([]byte(`{"formatVersion":1,"game":"minecraft","name":"飞行测试包","versionId":"1.0","dependencies":{"minecraft":"1.21.1","fabric-loader":"0.16.14"}}`)); err != nil {
+	if _, err = entry.Write([]byte(`{"formatVersion":1,"game":"minecraft","name":"飞行测试包","versionId":"1.0","dependencies":{"minecraft":"1.21.1","forge":"52.1.14"}}`)); err != nil {
 		t.Fatal(err)
 	}
 	if err := w.Close(); err != nil {
@@ -74,6 +74,11 @@ func TestModpackWorkspaceShowsSourcesAndNewInstanceConfirmation(t *testing.T) {
 	p.prepared, err = launcher.PrepareLocalModpack(t.Context(), file)
 	if err != nil {
 		t.Fatal(err)
+	}
+	next, inst, err := newLoaderInstallation(a.state, p.prepared.Info().Name, p.prepared.Info().Minecraft,
+		p.prepared.Info().Loader, p.prepared.Info().LoaderVersion)
+	if err != nil || !inst.Forge() || inst.LoaderVersion != "52.1.14" || next.Selected != a.state.Selected {
+		t.Fatalf("wrong Forge instance or selection: %+v, %v", inst, err)
 	}
 	p.name, p.archive = p.prepared.Info().Name, filepath.Base(file)
 	tt.Frame()

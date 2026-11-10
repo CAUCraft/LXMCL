@@ -441,10 +441,7 @@ func (a *desktop) modpackConfirmation(c *ui.Context, p *modpackView) {
 	if p.prepared.Info().Source == "" {
 		return
 	}
-	loader := "原版"
-	if info.Fabric != "" {
-		loader = "Fabric " + info.Fabric
-	}
+	loader := (launcher.Instance{Loader: info.Loader, LoaderVersion: info.LoaderVersion}).LoaderName()
 	subtitle := string(info.Source)
 	if info.Version != "" {
 		subtitle += " · " + info.Version
@@ -456,6 +453,9 @@ func (a *desktop) modpackConfirmation(c *ui.Context, p *modpackView) {
 		ui.Column(c).Gap(8).Children(func() {
 			muted(c, fmt.Sprintf("Minecraft %s · %s", info.Minecraft, loader))
 			muted(c, fmt.Sprintf("%d 个必需依赖 · %d 个内含文件", info.Downloads, info.Overrides)).FontSize(13)
+			if info.Loader == launcher.LoaderForge || info.Loader == launcher.LoaderNeoForge {
+				muted(c, "首次安装加载器需要兼容的 Java。").FontSize(12)
+			}
 			muted(c, "实例名称").FontSize(12)
 			field.Input(c.Key("modpack-instance-name"), &p.name, field.InputProps{Placeholder: "输入新实例名称"}).
 				Label("整合包实例名称").Disabled(a.busy)
@@ -518,7 +518,7 @@ func (a *desktop) installModpack() {
 		(info.Source == launcher.CurseForgeModpacks && info.Downloads > 0 && key == "") {
 		return
 	}
-	next, i, err := newInstallation(a.state, p.name, info.Minecraft, info.Fabric)
+	next, i, err := newLoaderInstallation(a.state, p.name, info.Minecraft, info.Loader, info.LoaderVersion)
 	if err != nil {
 		p.installErr = err.Error()
 		return
@@ -570,6 +570,7 @@ func (a *desktop) installModpack() {
 					p.installErr = err.Error()
 				}
 				a.message("整合包安装失败 · "+i.Name, err)
+				a.noticeJava = errors.Is(err, launcher.ErrJavaRequired)
 				a.noticeTask = true
 			}
 		})

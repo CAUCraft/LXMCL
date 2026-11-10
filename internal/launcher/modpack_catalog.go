@@ -128,16 +128,16 @@ func ListModpackReleases(ctx context.Context, project ModpackProject, key, game 
 
 func unsupportedPackTags(games, loaders []string) string {
 	if slices.ContainsFunc(games, releaseID.MatchString) && !slices.ContainsFunc(games, modernRelease) {
-		return "需要 Minecraft 1.20.5 或之后的正式版"
+		return "需要 Minecraft 1.20.1 或之后的正式版"
 	}
 	if len(loaders) > 0 && !slices.ContainsFunc(loaders, func(s string) bool {
 		switch strings.ToLower(s) {
-		case "fabric", "minecraft", "vanilla":
+		case "fabric", "forge", "neoforge", "minecraft", "vanilla":
 			return true
 		}
 		return false
 	}) {
-		return "当前仅支持原版和 Fabric 整合包"
+		return "需要原版、Fabric、Forge 或 NeoForge"
 	}
 	return ""
 }

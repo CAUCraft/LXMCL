@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -36,15 +37,9 @@ func ProbeJava(ctx context.Context, path string) (Java, error) {
 	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	probe := path
 	// javaw does not reliably write diagnostics to redirected stdout/stderr.
 	// Probe its console counterpart while retaining the requested executable.
-	if runtime.GOOS == "windows" && strings.EqualFold(filepath.Base(path), "javaw.exe") {
-		sibling := filepath.Join(filepath.Dir(path), "java.exe")
-		if st, err := os.Stat(sibling); err == nil && st.Mode().IsRegular() {
-			probe = sibling
-		}
-	}
+	probe := javaConsole(path)
 	cmd := exec.CommandContext(ctx, probe, "-XshowSettings:properties", "-version")
 	hideConsole(cmd)
 	out, err := cmd.CombinedOutput()
@@ -60,6 +55,29 @@ func ProbeJava(ctx context.Context, path string) (Java, error) {
 	}
 	major, err := strconv.Atoi(string(m[1]))
 	return Java{Path: path, Major: major}, err
+}
+
+func javaConsole(path string) string {
+	if runtime.GOOS == "windows" && strings.EqualFold(filepath.Base(path), "javaw.exe") {
+		sibling := filepath.Join(filepath.Dir(path), "java.exe")
+		if st, err := os.Stat(sibling); err == nil && st.Mode().IsRegular() {
+			return sibling
+		}
+	}
+	return path
+}
+
+func javaEnvironment(installer bool) []string {
+	return slices.DeleteFunc(os.Environ(), func(entry string) bool {
+		key, _, _ := strings.Cut(strings.ToUpper(entry), "=")
+		switch key {
+		case "LXMCL_CURSEFORGE_API_KEY", "CURSEFORGE_API_KEY":
+			return true
+		case "JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS", "_JAVA_OPTIONS":
+			return installer
+		}
+		return installer && (strings.Contains(key, "KEY") || strings.Contains(key, "TOKEN"))
+	})
 }
 
 func FindJava(ctx context.Context, preferred string, minimum int) (Java, error) {
@@ -88,6 +106,8 @@ func FindJava(ctx context.Context, preferred string, minimum int) (Java, error) 
 		}
 		if root := os.Getenv("APPDATA"); root != "" {
 			matches, _ := filepath.Glob(filepath.Join(root, ".minecraft", "runtime", "*", "*", "*", "bin", bin))
+			paths = append(paths, matches...)
+			matches, _ = filepath.Glob(filepath.Join(root, ".minecraft", "runtime", "*", "bin", bin))
 			paths = append(paths, matches...)
 		}
 	}

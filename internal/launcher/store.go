@@ -183,7 +183,7 @@ func (s *State) Create(name, version string) error {
 		return err
 	}
 	if !modernRelease(version) {
-		return errors.New("请选择 1.20.5 或之后的原版正式版本")
+		return errors.New("请选择 Minecraft 1.20.1 或之后的正式版")
 	}
 	if !filepath.IsAbs(s.Settings.GameRoot) {
 		return errors.New("请先设置绝对游戏目录")
@@ -216,16 +216,25 @@ func (s *State) Duplicate(id int, revision uint64, name string) (Instance, error
 }
 
 func (s *State) ConfigureLoader(id int, revision uint64, fabricVersion string) error {
+	kind := LoaderVanilla
+	if fabricVersion != "" {
+		kind = LoaderFabric
+	}
+	return s.ConfigureModLoader(id, revision, kind, fabricVersion)
+}
+
+func (s *State) ConfigureModLoader(id int, revision uint64, kind, version string) error {
 	for n := range s.Instances {
 		i := &s.Instances[n]
 		if i.ID != id || i.Revision != revision {
 			continue
 		}
 		next := *i
-		next.Loader, next.LoaderVersion = "Vanilla", ""
-		if fabricVersion != "" {
-			next.Loader, next.LoaderVersion = "Fabric", fabricVersion
+		loader, number, err := normalizeLoader(i.Version, kind, version)
+		if err != nil {
+			return err
 		}
+		next.Loader, next.LoaderVersion = loader, number
 		if err := supported(next); err != nil {
 			return err
 		}

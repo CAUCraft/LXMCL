@@ -464,7 +464,7 @@ func (a *desktop) playOnServer(i launcher.Instance, installOnly bool, server str
 		}
 		authFailed := err != nil
 		if err == nil && needsInstall {
-			err = g.Install(ctx, i, report)
+			err = g.InstallWithJava(ctx, i, settings.JavaPath, report)
 		}
 		var run launcher.Running
 		if err == nil && !installOnly {
@@ -478,7 +478,7 @@ func (a *desktop) playOnServer(i launcher.Instance, installOnly bool, server str
 			run, err = start()
 			if !needsInstall && errors.Is(err, launcher.ErrRepairRequired) && ctx.Err() == nil {
 				report(launcher.Progress{Stage: "修复游戏文件"})
-				err = g.Install(ctx, i, report)
+				err = g.InstallWithJava(ctx, i, settings.JavaPath, report)
 				if err == nil {
 					report(launcher.Progress{Stage: "检查 Java 并启动游戏"})
 					run, err = start()

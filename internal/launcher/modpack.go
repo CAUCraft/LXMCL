@@ -19,9 +19,10 @@ import (
 )
 
 type ModpackInfo struct {
-	Source                           ModpackSource
-	Name, Version, Minecraft, Fabric string
-	Downloads, Overrides             int
+	Source                   ModpackSource
+	Name, Version, Minecraft string
+	Loader, LoaderVersion    string
+	Downloads, Overrides     int
 }
 
 type PreparedModpack struct {
@@ -222,6 +223,7 @@ func readModpack(r io.ReaderAt, size int64, source ModpackSource) (modpackPlan, 
 		}
 	}
 	var layers []string
+	var loader, loaderVersion string
 	switch source {
 	case ModrinthModpacks:
 		var m mrpackManifest
@@ -235,13 +237,13 @@ func readModpack(r io.ReaderAt, size int64, source ModpackSource) (modpackPlan, 
 		for id, v := range m.Dependencies {
 			switch id {
 			case "minecraft":
-			case "fabric-loader":
-				if v == "" {
-					return p, errors.New("整合包没有指定 Fabric 版本")
+			case "fabric-loader", "forge", "neoforge":
+				if loader != "" {
+					return p, errors.New("整合包清单同时指定了多个加载器")
 				}
-				p.info.Fabric = v
+				loader, loaderVersion = id, v
 			default:
-				return p, fmt.Errorf("当前仅支持原版和 Fabric 整合包（清单要求 %s）", id)
+				return p, fmt.Errorf("整合包要求不支持的加载器 %s", id)
 			}
 		}
 		if len(m.Files) > maxModpackEntries {
@@ -294,11 +296,11 @@ func readModpack(r io.ReaderAt, size int64, source ModpackSource) (modpackPlan, 
 			return p, errors.New("CurseForge 清单没有指定主加载器")
 		}
 		if n >= 0 {
-			v, ok := strings.CutPrefix(loaders[n].ID, "fabric-")
-			if !ok || v == "" {
-				return p, fmt.Errorf("当前仅支持原版和 Fabric 整合包（清单要求 %s）", loaders[n].ID)
+			kind, version, ok := strings.Cut(loaders[n].ID, "-")
+			if !ok || kind == "" || version == "" {
+				return p, fmt.Errorf("CurseForge 清单的加载器无效：%s", loaders[n].ID)
 			}
-			p.info.Fabric = v
+			loader, loaderVersion = kind, version
 		}
 		if len(m.Files) > maxModpackEntries {
 			return p, errors.New("整合包依赖数量超出限制")
@@ -321,11 +323,9 @@ func readModpack(r io.ReaderAt, size int64, source ModpackSource) (modpackPlan, 
 	default:
 		return p, errors.New("未知整合包来源")
 	}
-	if !modernRelease(p.info.Minecraft) {
-		return p, errors.New("整合包需要使用 Minecraft 1.20.5 或之后的正式版")
-	}
-	if p.info.Fabric != "" && !fabricVersionID.MatchString(p.info.Fabric) {
-		return p, errors.New("整合包指定的 Fabric 版本无效")
+	p.info.Loader, p.info.LoaderVersion, err = normalizeLoader(p.info.Minecraft, loader, loaderVersion)
+	if err != nil {
+		return p, err
 	}
 	for _, layer := range layers {
 		for _, f := range z.File {
@@ -381,13 +381,17 @@ func (p modpackPlan) validate() error {
 // InstallModpack installs and validates all files before publishing the instance.
 // The caller serializes state writes and keeps the submitted state snapshot.
 func (g Game) InstallModpack(ctx context.Context, store Store, next State, i Instance, pack PreparedModpack, key string, report func(Progress)) error {
-	return g.installModpack(ctx, store, next, i, pack, newCurseForge(key), modpackHTTP, g.Install, report)
+	install := func(ctx context.Context, work Instance, report func(Progress)) error {
+		return g.InstallWithJava(ctx, work, next.Settings.JavaPath, report)
+	}
+	return g.installModpack(ctx, store, next, i, pack, newCurseForge(key), modpackHTTP, install, report)
 }
 
 func (g Game) installModpack(ctx context.Context, store Store, next State, i Instance, pack PreparedModpack, cf curseForge,
 	client *http.Client, install func(context.Context, Instance, func(Progress)) error, report func(Progress)) error {
 	saved, exists := next.Find(i.ID)
-	if !exists || saved != i || i.Version != pack.info.Minecraft || i.LoaderVersion != pack.info.Fabric || !filepath.IsAbs(i.GameDir) {
+	if !exists || saved != i || i.Version != pack.info.Minecraft || !strings.EqualFold(i.Loader, pack.info.Loader) ||
+		i.LoaderVersion != pack.info.LoaderVersion || !filepath.IsAbs(i.GameDir) {
 		return errors.New("整合包的实例配置已变更")
 	}
 	if err := supported(i); err != nil {

@@ -23,6 +23,8 @@ go tool mygo build -platform windows/amd64
 
 「下载 → 整合包」从 Modrinth 或 CurseForge 选项目和版本，也可用系统文件窗口导入 Modrinth `.mrpack` 或 CurseForge 导出的 `.zip`。确认名称后下载必需的客户端依赖并应用包内文件；选装文件和服务器专用文件默认跳过。整合包与游戏文件校验完毕后才登记新实例。取消或失败后，可返回安装页重试，已校验的下载可以复用。
 
+整合包按清单安装指定版本的 Fabric、Forge 或 NeoForge。Forge 和 NeoForge 使用经过校验的官方客户端安装器，首次安装需有兼容 Java；如检测失败，可在「设置」指定 Java 后重试。Minecraft 1.20.1–1.20.4 建议使用 Java 17，1.20.5 和 1.21 系列建议使用 Java 21，较新版本以 Minecraft 元数据为准。安装器日志位于数据目录的 `cache/installer-logs/`。
+
 CurseForge 在线查询和下载依赖需要 [CurseForge API Key](https://console.curseforge.com/)。可从页面输入（只保留到本次退出），也可在启动前设置 `LXMCL_CURSEFORGE_API_KEY` 或 `CURSEFORGE_API_KEY`。如果作者未开放某个必需文件的第三方下载，安装会报告文件并停止。
 
 Modrinth 按目标实例的游戏版本搜索，模组另按 Fabric 筛选。资源下载按 SHA-512 校验，重试绑定原实例、配置修订和资源版本。模组 JAR、资源包 ZIP 和光影 ZIP 分别需要 `fabric.mod.json`、`pack.mcmeta` 和 `shaders/` 内容。使用光影需要 Iris 等兼容模组。Fabric 加载器与库来自 Fabric Meta 和 Maven。

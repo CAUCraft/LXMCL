@@ -66,8 +66,8 @@ func packState(t *testing.T, info ModpackInfo) (Store, State, State, Instance) {
 	if err := next.Create("Imported", info.Minecraft); err != nil {
 		t.Fatal(err)
 	}
-	if info.Fabric != "" {
-		if err := next.ConfigureLoader(next.Selected, 1, info.Fabric); err != nil {
+	if info.Loader != LoaderVanilla {
+		if err := next.ConfigureModLoader(next.Selected, 1, info.Loader, info.LoaderVersion); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -179,11 +179,11 @@ func TestModpackRejectsUnsafeArchives(t *testing.T) {
 			}
 		})
 	}
-	file := packFile(t, "forge.zip", map[string]string{
+	file := packFile(t, "quilt.zip", map[string]string{
 		"manifest.json": `{"manifestType":"minecraftModpack","manifestVersion":1,
-			"minecraft":{"version":"1.21.1","modLoaders":[{"id":"forge-52.1.0","primary":true}]}}`,
+			"minecraft":{"version":"1.21.1","modLoaders":[{"id":"quilt-0.28.1","primary":true}]}}`,
 	})
-	if _, err := PrepareLocalModpack(t.Context(), file); err == nil || !strings.Contains(err.Error(), "forge-52.1.0") {
+	if _, err := PrepareLocalModpack(t.Context(), file); err == nil || !strings.Contains(err.Error(), "quilt") {
 		t.Fatalf("did not reject unsupported runtime: %v", err)
 	}
 }
@@ -195,7 +195,7 @@ func TestCurseForgeCatalogAndImport(t *testing.T) {
 	const archiveURL = "https://edge.forgecdn.net/files/1/3/pack.zip"
 	entries := map[string]string{
 		"manifest.json": `{"manifestType":"minecraftModpack","manifestVersion":1,"name":"Curse pack","version":"1",
-			"minecraft":{"version":"1.21.1","modLoaders":[{"id":"fabric-0.16.14","primary":true}]},
+			"minecraft":{"version":"1.21.1","modLoaders":[{"id":"forge-52.1.14"},{"id":"neoforge-21.1.200","primary":true}]},
 			"files":[{"projectID":30,"fileID":40,"required":true},{"projectID":41,"fileID":42,"required":false}],
 			"overrides":"overrides"}`,
 		"overrides/options.txt": "cf settings",
@@ -215,7 +215,7 @@ func TestCurseForgeCatalogAndImport(t *testing.T) {
 			json = `{"data":[{"id":10,"gameId":432,"classId":4471,"name":"Curse pack","slug":"curse-pack","isAvailable":true}],"pagination":{"totalCount":1}}`
 		case "/v1/mods/10/files":
 			json = fmt.Sprintf(`{"data":[{"id":20,"modId":10,"gameId":432,"displayName":"1.0","fileName":"pack.zip",
-				"isAvailable":true,"gameVersions":["1.21.1","Fabric"],"fileLength":%d,"hashes":[{"algo":1,"value":"%x"}],"downloadUrl":%q}]}`,
+				"isAvailable":true,"gameVersions":["1.21.1","NeoForge"],"fileLength":%d,"hashes":[{"algo":1,"value":"%x"}],"downloadUrl":%q}]}`,
 				len(archive), sha1.Sum(archive), archiveURL)
 		case "/v1/mods":
 			json = fmt.Sprintf(`{"data":[{"id":30,"gameId":432,"classId":6,"name":"Example","isAvailable":true,"allowModDistribution":%t}]}`, allow)
@@ -259,13 +259,14 @@ func TestCurseForgeCatalogAndImport(t *testing.T) {
 		t.Fatal(err)
 	}
 	local, err := PrepareLocalModpack(ctx, packFile(t, "curse-pack.zip", entries))
-	if err != nil || online.Info() != local.Info() || local.Info().Fabric != "0.16.14" || local.Info().Downloads != 1 {
+	if err != nil || online.Info() != local.Info() || local.Info().Loader != LoaderNeoForge ||
+		local.Info().LoaderVersion != "21.1.200" || local.Info().Downloads != 1 {
 		t.Fatalf("online and local metadata disagree: %+v / %+v, %v", online.Info(), local.Info(), err)
 	}
 	store, _, next, i := packState(t, local.Info())
 	verifyGame := func(_ context.Context, work Instance, _ func(Progress)) error {
-		if !work.Fabric() || work.LoaderVersion != "0.16.14" || work.GameDir == i.GameDir {
-			return errors.New("incorrect staged Fabric configuration")
+		if !work.NeoForge() || work.LoaderVersion != "21.1.200" || work.GameDir == i.GameDir {
+			return errors.New("incorrect staged NeoForge configuration")
 		}
 		return nil
 	}

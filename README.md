@@ -6,16 +6,16 @@ CAUCRAFT 的 Minecraft Java 版启动器，使用 Go、MyGo 和 Lobe MyGo 构建
 
 Windows x64：从 [GitHub Actions](https://github.com/CAUCraft/LXMCL/actions/workflows/ci.yml?query=branch%3Amain) 的成功构建下载开发版。正式版发布后见 [GitHub Releases](https://github.com/CAUCraft/LXMCL/releases)。
 
-面向 Minecraft Java 版 1.20.5 及之后的正式版本，需自备兼容 Java。
+面向 Minecraft Java 版 1.20.1 及之后的正式版本，需自备兼容 Java。
 
 - **实例**：从「下载 → 游戏版本」选择 Minecraft 版本及原版或 Fabric，直接创建实例并下载游戏。实例页可切换版本、校验文件和配置启动设置。
-- **整合包**：从「下载 → 整合包」搜索 Modrinth 或 CurseForge，或导入本地 `.mrpack` 和 CurseForge 导出的 `.zip`。选好版本和名称后安装为独立实例。CurseForge 在线查询和依赖下载需要 API Key。
+- **整合包**：从「下载 → 整合包」搜索 Modrinth 或 CurseForge，或导入本地 `.mrpack` 和 CurseForge 导出的 `.zip`。按清单安装原版、Fabric、Forge 或 NeoForge 和必需依赖，完成后可从独立实例启动。CurseForge 在线查询和依赖下载需要 API Key。
 - **资源**：从「下载」或实例的资源页进入 Modrinth，按目标实例筛选模组、资源包和光影包。模组自动下载必要依赖，本地资源可导入、停用或恢复。
 - **存档**：备份为 ZIP，恢复时保留已有同名世界。
 - **账号与服务器**：Microsoft、兼容 Yggdrasil 的第三方皮肤站与离线账号，支持皮肤头像、可旋转的 3D 预览、服务器收藏和直连。Microsoft 账号可上传 PNG 皮肤；皮肤站账号在站内修改外观。
 - **诊断**：Java 检测、下载进度、任务历史和游戏日志。
 
-目前支持原版和 Fabric 实例及整合包。Forge／NeoForge／Quilt 和 Java 自动安装尚未接入。
+Quilt 和 Java 自动安装尚未接入。
 
 ## 开发
 

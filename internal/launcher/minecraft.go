@@ -62,6 +62,7 @@ type metadata struct {
 		artifact
 	}
 	Libraries []struct {
+		Name      string
 		Rules     []rule
 		Downloads struct{ Artifact artifact }
 		Natives   map[string]string
@@ -119,7 +120,7 @@ func modernRelease(id string) bool {
 	if n, _ := fmt.Sscanf(id, "%d.%d.%d", &major, &minor, &patch); n < 2 {
 		return false
 	}
-	return major > 1 || (major == 1 && (minor > 20 || (minor == 20 && patch >= 5)))
+	return major > 1 || (major == 1 && (minor > 20 || (minor == 20 && patch >= 1)))
 }
 
 func Releases(ctx context.Context) ([]Version, error) {
@@ -224,11 +225,11 @@ func gameArgs(raw []json.RawMessage, values map[string]string, features map[stri
 func (g Game) versionDir(id string) string { return filepath.Join(g.Cache, "versions", id) }
 
 func supported(i Instance) error {
-	if !i.Vanilla() && (!i.Fabric() || !fabricVersionID.MatchString(i.LoaderVersion)) {
-		return errors.New("请选择原版或有效的 Fabric 加载器版本")
-	}
 	if !versionID.MatchString(i.Version) || !modernRelease(i.Version) || !filepath.IsAbs(i.GameDir) {
-		return errors.New("请选择 1.20.5 或更新的原版正式版本，并使用绝对游戏目录")
+		return errors.New("请选择 Minecraft 1.20.1 或之后的正式版，并使用绝对游戏目录")
+	}
+	if _, _, err := normalizeLoader(i.Version, i.Loader, i.LoaderVersion); err != nil {
+		return err
 	}
 	return nil
 }
@@ -248,6 +249,10 @@ func (g Game) Installed(i Instance) bool {
 	}
 	if i.Fabric() {
 		_, err := g.readFabric(i)
+		return err == nil
+	}
+	if i.patched() {
+		_, err := g.readForge(i)
 		return err == nil
 	}
 	return true
@@ -316,7 +321,7 @@ func (g Game) readVersion(id, expectedSHA string) (metadata, error) {
 	if err := json.Unmarshal(b, &m); err != nil {
 		return m, fmt.Errorf("无法读取版本元数据：%w", err)
 	}
-	if m.ID != id || m.Type != "release" || m.MainClass == "" || len(m.Arguments.JVM) == 0 || m.JavaVersion.MajorVersion < 21 {
+	if m.ID != id || m.Type != "release" || m.MainClass == "" || len(m.Arguments.JVM) == 0 || m.JavaVersion.MajorVersion < 17 {
 		return m, errors.New("版本元数据缺失或不受支持")
 	}
 	return m, nil
@@ -398,10 +403,18 @@ func (g Game) assets(indexPath string) ([]fileDownload, error) {
 }
 
 func (g Game) Install(ctx context.Context, i Instance, report func(Progress)) error {
-	return g.install(ctx, i, report, &downloads{http: officialHTTP})
+	return g.InstallWithJava(ctx, i, "", report)
+}
+
+func (g Game) InstallWithJava(ctx context.Context, i Instance, javaPath string, report func(Progress)) error {
+	return g.installWithJava(ctx, i, javaPath, report, &downloads{http: officialHTTP})
 }
 
 func (g Game) install(ctx context.Context, i Instance, report func(Progress), d *downloads) error {
+	return g.installWithJava(ctx, i, "", report, d)
+}
+
+func (g Game) installWithJava(ctx context.Context, i Instance, javaPath string, report func(Progress), d *downloads) error {
 	if err := supported(i); err != nil {
 		return err
 	}
@@ -453,6 +466,9 @@ func (g Game) install(ctx context.Context, i Instance, report func(Progress), d 
 	}
 	if i.Fabric() {
 		return g.installFabric(ctx, i, d, report)
+	}
+	if i.patched() {
+		return g.installForge(ctx, i, m, javaPath, d, report)
 	}
 	return nil
 }
@@ -570,6 +586,7 @@ func (g Game) start(ctx context.Context, i Instance, settings Settings, server s
 		return Running{}, err
 	}
 	m, cp, err := g.verifyInstalled(ctx, i)
+	libraryDir, launchVersion := filepath.Join(g.Cache, "libraries"), m.ID
 	if err == nil && i.Fabric() {
 		var profile fabricRuntime
 		var libs []string
@@ -579,6 +596,22 @@ func (g Game) start(ctx context.Context, i Instance, settings Settings, server s
 			m.MainClass = profile.MainClass
 			m.Arguments.JVM = append(m.Arguments.JVM, profile.Arguments.JVM...)
 			m.Arguments.Game = append(m.Arguments.Game, profile.Arguments.Game...)
+		}
+	}
+	if err == nil && i.patched() {
+		var profile forgeProfile
+		profile, err = g.readForge(i)
+		if err == nil {
+			var libs []string
+			libs, err = g.verifyForge(ctx, i, profile)
+			if err == nil {
+				cp = g.mergeForgeClasspath(m, profile, cp, libs)
+				m.MainClass = profile.MainClass
+				m.Arguments.JVM = append(m.Arguments.JVM, profile.Arguments.JVM...)
+				m.Arguments.Game = append(m.Arguments.Game, profile.Arguments.Game...)
+				launchVersion = profile.ID
+				libraryDir = filepath.Join(g.forgeDir(i), "libraries")
+			}
 		}
 	}
 	if err != nil {
@@ -609,8 +642,8 @@ func (g Game) start(ctx context.Context, i Instance, settings Settings, server s
 	values := map[string]string{
 		"natives_directory": natives, "launcher_name": "LXMCL", "launcher_version": "0.2",
 		"classpath": strings.Join(cp, string(os.PathListSeparator)), "classpath_separator": string(os.PathListSeparator),
-		"library_directory": filepath.Join(g.Cache, "libraries"), "auth_player_name": identity.name,
-		"version_name": m.ID, "game_directory": i.GameDir, "assets_root": filepath.Join(g.Cache, "assets"),
+		"library_directory": libraryDir, "auth_player_name": identity.name,
+		"version_name": launchVersion, "game_directory": i.GameDir, "assets_root": filepath.Join(g.Cache, "assets"),
 		"assets_index_name": m.AssetIndex.ID, "auth_uuid": identity.uuid, "auth_access_token": identity.token,
 		"clientid": identity.clientID, "auth_xuid": identity.xuid, "user_type": identity.kind, "version_type": m.Type,
 		"user_properties": "{}",
@@ -618,6 +651,9 @@ func (g Game) start(ctx context.Context, i Instance, settings Settings, server s
 	jvm, err := gameArgs(m.Arguments.JVM, values, nil)
 	if err != nil {
 		return Running{}, fmt.Errorf("无法生成 Java 参数：%w", err)
+	}
+	if i.patched() {
+		ignoreCachedVanillaJar(jvm, launchVersion)
 	}
 	game, err := clientArgs(m, values, i.Launch, server)
 	if err != nil {
@@ -651,6 +687,7 @@ func (g Game) start(ctx context.Context, i Instance, settings Settings, server s
 	cmd := exec.Command(j.Path, args...)
 	hideConsole(cmd)
 	cmd.Dir, cmd.Stdout, cmd.Stderr = i.GameDir, log, log
+	cmd.Env = javaEnvironment(false)
 	if err := ctx.Err(); err != nil {
 		log.Close()
 		return Running{}, err

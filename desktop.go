@@ -463,13 +463,7 @@ func (a *desktop) instanceList(c *ui.Context) {
 }
 
 func loaderName(i launcher.Instance) string {
-	if i.Vanilla() {
-		return "原版"
-	}
-	if i.Fabric() && i.LoaderVersion != "" {
-		return "Fabric " + i.LoaderVersion
-	}
-	return i.Loader
+	return i.LoaderName()
 }
 
 func (a *desktop) instanceStatus(i launcher.Instance) (string, display.TagColor) {
