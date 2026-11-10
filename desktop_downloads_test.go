@@ -140,14 +140,14 @@ func TestDownloadPageSelectsVersionAndLoader(t *testing.T) {
 
 func TestResourceDownloadsKeepInstallTargetSeparate(t *testing.T) {
 	a, tt := testDesktop(t)
-	a.state.Instances[1].Loader, a.state.Instances[1].LoaderVersion = "Fabric", "0.16.14"
+	a.state.Instances[1].Loader, a.state.Instances[1].LoaderVersion = launcher.LoaderNeoForge, "21.4.120"
 	tt.SetSize(820, 530)
 	for _, label := range []string{"下载", "模组"} {
 		if err := tt.Click(label); err != nil {
 			t.Fatal(err)
 		}
 	}
-	p := a.browserFor(launcher.FabricMods)
+	p := a.browserFor(launcher.Mods)
 	if p.target.ID != 0 {
 		t.Fatal("the browser silently selected a different instance")
 	}
@@ -155,9 +155,9 @@ func TestResourceDownloadsKeepInstallTargetSeparate(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, ok := tt.Find("生存世界 · 1.21.1"); ok {
-		t.Fatal("a vanilla instance was offered as a Fabric mod target")
+		t.Fatal("a vanilla instance was offered as a mod target")
 	}
-	if err := tt.Click("建筑测试 · 1.21.4"); err != nil {
+	if err := tt.Click("建筑测试 · 1.21.4 · NeoForge"); err != nil {
 		t.Fatal(err)
 	}
 	if p.target.ID != 2 || a.state.Selected != 1 {
@@ -167,7 +167,7 @@ func TestResourceDownloadsKeepInstallTargetSeparate(t *testing.T) {
 		Description: "Minecraft 客户端渲染优化。"}
 	p.project, p.searched = project, true
 	p.result = launcher.PackSearch{Hits: []launcher.PackProject{
-		project, {ID: "lithium", Title: "Lithium", Author: "CaffeineMC"}, {ID: "fabric-api", Title: "Fabric API", Author: "FabricMC"},
+		project, {ID: "lithium", Title: "Lithium", Author: "CaffeineMC"}, {ID: "balm", Title: "Balm", Author: "BlayTheNinth"},
 	}, Total: 48}
 	p.versions = []launcher.PackVersion{
 		{ID: "build1", ProjectID: project.ID, Number: "0.6.13", Type: "release", Files: []launcher.PackFile{{Filename: "sodium-0.6.13.jar", Size: 1200000}}},
@@ -183,8 +183,17 @@ func TestResourceDownloadsKeepInstallTargetSeparate(t *testing.T) {
 	if err := tt.Click("管理已安装"); err != nil {
 		t.Fatal(err)
 	}
-	if a.page != pageLibrary || a.inspected != 2 || a.content.kind() != launcher.FabricMods || a.state.Selected != 1 {
+	if a.page != pageLibrary || a.inspected != 2 || a.content.kind() != launcher.Mods || a.state.Selected != 1 {
 		t.Fatal("returning to installed mods navigated to the wrong instance")
+	}
+	if err := tt.Click("下载模组…"); err != nil {
+		t.Fatal(err)
+	}
+	i := &a.state.Instances[1]
+	i.Loader, i.LoaderVersion, i.Revision = launcher.LoaderQuilt, "0.30.2", i.Revision+1
+	tt.Frame()
+	if p.target.ID != i.ID || p.target.Loader != launcher.LoaderQuilt || p.project.ID != "" || len(p.versions) != 0 || a.state.Selected != 1 {
+		t.Fatal("changing the target loader retained incompatible results or changed the launch target")
 	}
 }
 

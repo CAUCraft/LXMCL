@@ -91,7 +91,7 @@ func (a *desktop) searchPacks(p *packBrowser, page int) {
 	request, target, kind, query, order := p.request, p.target, p.kind, p.applied, p.order
 	go func() {
 		defer cancel()
-		result, err := launcher.SearchModrinth(ctx, target.Version, kind, query, order, page)
+		result, err := launcher.SearchModrinth(ctx, target, kind, query, order, page)
 		a.post(func() {
 			if p.request != request {
 				return
@@ -117,10 +117,10 @@ func (a *desktop) browsePack(p *packBrowser, project launcher.PackProject) {
 	ctx, cancel := context.WithTimeout(a.ctx, 15*time.Second)
 	p.cancel = cancel
 	p.project, p.version, p.versions, p.versionErr, p.versionBusy = project, "", nil, "", true
-	request, game, kind := p.request, p.target.Version, p.kind
+	request, target, kind := p.request, p.target, p.kind
 	go func() {
 		defer cancel()
-		versions, err := launcher.ModrinthVersions(ctx, project.ID, game, kind)
+		versions, err := launcher.ModrinthVersions(ctx, project.ID, target, kind)
 		a.post(func() {
 			if p.request != request {
 				return
@@ -140,23 +140,17 @@ func (a *desktop) browsePack(p *packBrowser, project launcher.PackProject) {
 }
 
 func (a *desktop) resourceDownloads(c *ui.Context, p *packBrowser) {
-	if p.target.ID != 0 {
-		if current, ok := a.state.Find(p.target.ID); ok && p.kind.Supports(current) {
-			// Renames and configuration changes refresh the captured target;
-			// only a different revision or version invalidates the listing.
-			if current.Revision != p.target.Revision || current.Version != p.target.Version {
-				p.setTarget(current)
-			} else {
-				p.target = current
-			}
+	if !p.targetChosen {
+		if current, ok := a.state.Find(a.state.Selected); ok && p.kind.Supports(current) {
+			p.refreshTarget(current)
 		} else {
-			p.targetChosen = true
 			p.setTarget(launcher.Instance{})
 		}
-	}
-	if p.target.ID == 0 && !p.targetChosen {
-		if current, ok := a.state.Find(a.state.Selected); ok && p.kind.Supports(current) {
-			p.setTarget(current)
+	} else if p.target.ID != 0 {
+		if current, ok := a.state.Find(p.target.ID); ok && p.kind.Supports(current) {
+			p.refreshTarget(current)
+		} else {
+			p.setTarget(launcher.Instance{})
 		}
 	}
 	label := contentLabel(p.kind)
@@ -178,11 +172,25 @@ func (a *desktop) resourceDownloads(c *ui.Context, p *packBrowser) {
 	})
 }
 
+func (p *packBrowser) refreshTarget(current launcher.Instance) {
+	old := p.target
+	if current.ID != old.ID || current.Revision != old.Revision || current.Version != old.Version ||
+		current.Loader != old.Loader || current.LoaderVersion != old.LoaderVersion {
+		p.setTarget(current)
+	} else {
+		p.target = current
+	}
+}
+
 func (a *desktop) resourceTargetBar(c *ui.Context, p *packBrowser) {
 	options := make([]field.SelectOption, 0, len(a.state.Instances))
 	for _, i := range a.state.Instances {
 		if p.kind.Supports(i) {
-			options = append(options, field.SelectOption{Value: strconv.Itoa(i.ID), Label: i.Name + " · " + i.Version})
+			label := i.Name + " · " + i.Version
+			if p.kind == launcher.Mods {
+				label += " · " + i.Loader
+			}
+			options = append(options, field.SelectOption{Value: strconv.Itoa(i.ID), Label: label})
 		}
 	}
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
@@ -207,7 +215,7 @@ func (a *desktop) resourceTargetBar(c *ui.Context, p *packBrowser) {
 			a.detailPage = detailContent
 			tab := 0
 			switch p.kind {
-			case launcher.FabricMods:
+			case launcher.Mods:
 				tab = 1
 			case launcher.ShaderPacks:
 				tab = 2
@@ -220,13 +228,15 @@ func (a *desktop) resourceTargetBar(c *ui.Context, p *packBrowser) {
 }
 
 func (a *desktop) resourceWithoutTarget(c *ui.Context, p *packBrowser, label string) {
-	fabric := p.kind == launcher.FabricMods || p.kind == launcher.ShaderPacks
+	fabric := p.kind == launcher.ShaderPacks
 	compatible := slices.ContainsFunc(a.state.Instances, p.kind.Supports)
 	title, description, install := "选择下载目标", "在上方选择要安装"+label+"的实例。", "安装实例…"
 	if !compatible {
 		title, description = "没有可用实例", "安装实例后才能下载"+label+"。"
 		if fabric {
 			title, description, install = "没有 Fabric 实例", label+"需要 Fabric 实例。", "安装 Fabric 实例…"
+		} else if p.kind == launcher.Mods {
+			title, description = "没有可安装模组的实例", "先安装带 Fabric、Forge、NeoForge 或 Quilt 的实例。"
 		}
 	}
 	ui.Column(c).Grow(1).Center().Children(func() {
@@ -371,7 +381,7 @@ func (a *desktop) packVersions(c *ui.Context, p *packBrowser, label string) {
 	layout.Divider(c, layout.DividerProps{})
 	ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 		note := "下载到 " + p.target.Name
-		if p.kind == launcher.FabricMods {
+		if p.kind == launcher.Mods {
 			note += " · 自动下载必要依赖"
 		}
 		muted(c, note).FontSize(12).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")

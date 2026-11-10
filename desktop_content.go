@@ -29,7 +29,7 @@ type contentView struct {
 func (v contentView) kind() launcher.ContentKind {
 	switch v.tab {
 	case 1:
-		return launcher.FabricMods
+		return launcher.Mods
 	case 2:
 		return launcher.ShaderPacks
 	default:
@@ -59,15 +59,19 @@ func (a *desktop) refreshContent(i launcher.Instance) {
 
 func (a *desktop) instanceContent(c *ui.Context, i launcher.Instance) {
 	v := &a.content
-	if v.id != i.ID || v.revision != i.Revision {
+	if v.id != i.ID || v.revision != i.Revision || v.tab != 0 && !v.kind().Supports(i) {
 		*v = contentView{id: i.ID, revision: i.Revision}
 		a.refreshContent(i)
 	}
 	disabled := a.busy || a.pickerBusy || a.running != nil
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-		if i.Fabric() {
+		if launcher.Mods.Supports(i) {
 			old := v.tab
-			action.Segmented(c, &v.tab, []string{"资源包", "模组", "光影包"}, action.SegmentedProps{Size: theme.Small}).Label("资源类型")
+			options := []string{"资源包", "模组"}
+			if launcher.ShaderPacks.Supports(i) {
+				options = append(options, "光影包")
+			}
+			action.Segmented(c, &v.tab, options, action.SegmentedProps{Size: theme.Small}).Label("资源类型")
 			if old != v.tab {
 				a.refreshContent(i)
 			}
@@ -81,7 +85,7 @@ func (a *desktop) instanceContent(c *ui.Context, i launcher.Instance) {
 		}
 		if button(c, "导入…", action.Default, disabled) {
 			ext := "zip"
-			if kind == launcher.FabricMods {
+			if kind == launcher.Mods {
 				ext = "jar"
 			}
 			a.pickPath(mygo.OpenDialogOptions{Title: "选择本地资源", Filters: []mygo.FileFilter{{Name: "游戏资源", Extensions: []string{ext}}}}, func(path string) {

@@ -19,6 +19,11 @@ import (
 
 const modrinthAPI = "https://api.modrinth.com/v2/"
 
+const (
+	fabricAPIProject  = "P7dR8mSH"
+	quiltedAPIProject = "qvIfYCYJ"
+)
+
 var modrinthID = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 
 type PackProject struct {
@@ -73,7 +78,7 @@ type PackSearch struct {
 
 func (k ContentKind) modrinthType() string {
 	switch k {
-	case FabricMods:
+	case Mods:
 		return "mod"
 	case ResourcePacks:
 		return "resourcepack"
@@ -83,13 +88,23 @@ func (k ContentKind) modrinthType() string {
 	return ""
 }
 
-func SearchModrinth(ctx context.Context, game string, kind ContentKind, query, order string, page int) (PackSearch, error) {
-	return searchModrinth(ctx, game, kind, query, order, page, &downloads{http: officialHTTP})
+func (i Instance) modrinthModLoader() string {
+	if i.knot() || i.patched() {
+		return strings.ToLower(i.Loader)
+	}
+	return ""
 }
 
-func searchModrinth(ctx context.Context, game string, kind ContentKind, query, order string, page int, d *downloads) (PackSearch, error) {
-	if !modernRelease(game) {
+func SearchModrinth(ctx context.Context, i Instance, kind ContentKind, query, order string, page int) (PackSearch, error) {
+	return searchModrinth(ctx, i, kind, query, order, page, &downloads{http: officialHTTP})
+}
+
+func searchModrinth(ctx context.Context, i Instance, kind ContentKind, query, order string, page int, d *downloads) (PackSearch, error) {
+	if !modernRelease(i.Version) {
 		return PackSearch{}, errors.New("请选择受支持的 Minecraft 正式版本")
+	}
+	if _, _, err := kind.format(i); err != nil {
+		return PackSearch{}, err
 	}
 	projectType := kind.modrinthType()
 	if projectType == "" || page < 0 || page > 500 || len(query) > 512 {
@@ -98,9 +113,9 @@ func searchModrinth(ctx context.Context, game string, kind ContentKind, query, o
 	if order != "downloads" && order != "updated" {
 		order = "relevance"
 	}
-	filter := [][]string{{"project_type:" + projectType}, {"versions:" + game}}
-	if kind == FabricMods {
-		filter = append(filter, []string{"categories:fabric"})
+	filter := [][]string{{"project_type:" + projectType}, {"versions:" + i.Version}}
+	if kind == Mods {
+		filter = append(filter, []string{"categories:" + i.modrinthModLoader()})
 	}
 	facets, _ := json.Marshal(filter)
 	params := url.Values{"query": {strings.TrimSpace(query)}, "facets": {string(facets)}, "index": {order},
@@ -113,27 +128,29 @@ func searchModrinth(ctx context.Context, game string, kind ContentKind, query, o
 	return result, err
 }
 
-func ModrinthVersions(ctx context.Context, project, game string, kind ContentKind) ([]PackVersion, error) {
-	versions, err := modrinthVersions(ctx, project, game, kind, &downloads{http: officialHTTP})
-	return slices.DeleteFunc(versions, func(v PackVersion) bool {
-		_, ok := v.DownloadFile(kind)
-		return v.ProjectID != project || !modrinthID.MatchString(v.ID) || !slices.Contains(v.GameVersions, game) ||
-			(kind == FabricMods && !v.fabricCompatible(game)) || !ok
-	}), err
+func ModrinthVersions(ctx context.Context, project string, i Instance, kind ContentKind) ([]PackVersion, error) {
+	return modrinthVersions(ctx, project, i, kind, &downloads{http: officialHTTP})
 }
 
-func modrinthVersions(ctx context.Context, project, game string, kind ContentKind, d *downloads) ([]PackVersion, error) {
-	if !modrinthID.MatchString(project) || !modernRelease(game) {
+func modrinthVersions(ctx context.Context, project string, i Instance, kind ContentKind, d *downloads) ([]PackVersion, error) {
+	if !modrinthID.MatchString(project) || !modernRelease(i.Version) {
 		return nil, errors.New("资源项目或 Minecraft 版本无效")
 	}
-	versions, _ := json.Marshal([]string{game})
+	if _, _, err := kind.format(i); err != nil {
+		return nil, err
+	}
+	versions, _ := json.Marshal([]string{i.Version})
 	params := url.Values{"game_versions": {string(versions)}, "include_changelog": {"false"}}
-	if kind == FabricMods {
-		params.Set("loaders", `["fabric"]`)
+	if kind == Mods {
+		loaders, _ := json.Marshal([]string{i.modrinthModLoader()})
+		params.Set("loaders", string(loaders))
 	}
 	var result []PackVersion
 	err := downloadJSON(ctx, d, modrinthAPI+"project/"+project+"/version?"+params.Encode(), &result)
-	return result, err
+	return slices.DeleteFunc(result, func(v PackVersion) bool {
+		_, ok := v.DownloadFile(kind)
+		return v.ProjectID != project || !modrinthID.MatchString(v.ID) || !v.compatible(i, kind) || !ok
+	}), err
 }
 
 func ModrinthVersion(ctx context.Context, project, id string) (PackVersion, error) {
@@ -162,10 +179,10 @@ func downloadModrinth(ctx context.Context, i Instance, kind ContentKind, version
 		report = func(Progress) {}
 	}
 	plan := []PackVersion{version}
-	if kind == FabricMods {
+	if kind == Mods {
 		report(Progress{Stage: "解析必要依赖"})
 		var err error
-		plan, err = fabricModPlan(ctx, i.Version, version, d)
+		plan, err = modPlan(ctx, i, version, d)
 		if err != nil {
 			return err
 		}
@@ -181,20 +198,38 @@ func downloadModrinth(ctx context.Context, i Instance, kind ContentKind, version
 	return nil
 }
 
-func (v PackVersion) fabricCompatible(game string) bool {
-	return slices.Contains(v.GameVersions, game) && slices.Contains(v.Loaders, "fabric")
+func (v PackVersion) compatible(i Instance, kind ContentKind) bool {
+	return slices.Contains(v.GameVersions, i.Version) && (kind != Mods || slices.Contains(v.Loaders, i.modrinthModLoader()))
 }
 
-func fabricModPlan(ctx context.Context, game string, primary PackVersion, d *downloads) ([]PackVersion, error) {
-	chosen := make(map[string]string)
+func (v PackVersion) compatibleModDependency(i Instance) bool {
+	if i.Quilt() && v.ProjectID == fabricAPIProject && slices.Contains(v.Loaders, "fabric") {
+		return slices.Contains(v.GameVersions, i.Version)
+	}
+	return v.compatible(i, Mods)
+}
+
+func modDependencyKey(i Instance, project string) string {
+	if i.Quilt() && project == quiltedAPIProject {
+		return fabricAPIProject
+	}
+	return project
+}
+
+func modPlan(ctx context.Context, i Instance, primary PackVersion, d *downloads) ([]PackVersion, error) {
+	if !primary.compatible(i, Mods) {
+		return nil, errors.New("此模组版本与当前实例不兼容")
+	}
+	chosen := make(map[string]PackVersion)
 	var plan []PackVersion
 	var add func(PackVersion) error
 	add = func(v PackVersion) error {
-		if !modrinthID.MatchString(v.ProjectID) || !modrinthID.MatchString(v.ID) || !v.fabricCompatible(game) {
-			return errors.New("模组或必要依赖不兼容此 Minecraft / Fabric 版本")
+		if !modrinthID.MatchString(v.ProjectID) || !modrinthID.MatchString(v.ID) || !v.compatibleModDependency(i) {
+			return fmt.Errorf("模组或必要依赖 %s 不兼容 Minecraft %s / %s", v.ProjectID, i.Version, i.LoaderName())
 		}
-		if prior, ok := chosen[v.ProjectID]; ok {
-			if prior != v.ID {
+		key := modDependencyKey(i, v.ProjectID)
+		if prior, ok := chosen[key]; ok {
+			if prior.ID != v.ID {
 				return fmt.Errorf("模组依赖需要同一项目的不同版本：%s", v.ProjectID)
 			}
 			return nil
@@ -202,15 +237,16 @@ func fabricModPlan(ctx context.Context, game string, primary PackVersion, d *dow
 		if len(chosen) >= 32 {
 			return errors.New("模组依赖超过 32 项，请分开安装")
 		}
-		chosen[v.ProjectID] = v.ID
+		chosen[key] = v
 		for _, dep := range v.Dependencies {
 			if dep.Type != "required" {
 				continue
 			}
-			if dep.VersionID == "" && chosen[dep.ProjectID] != "" {
+			prior, exists := chosen[modDependencyKey(i, dep.ProjectID)]
+			if dep.VersionID == "" && exists && (dep.ProjectID == prior.ProjectID || dep.ProjectID == fabricAPIProject) {
 				continue
 			}
-			resolved, err := resolveModDependency(ctx, game, dep, d)
+			resolved, err := resolveModDependency(ctx, i, dep, d)
 			if err != nil {
 				return err
 			}
@@ -227,7 +263,7 @@ func fabricModPlan(ctx context.Context, game string, primary PackVersion, d *dow
 	return plan, nil
 }
 
-func resolveModDependency(ctx context.Context, game string, dep ModDependency, d *downloads) (PackVersion, error) {
+func resolveModDependency(ctx context.Context, i Instance, dep ModDependency, d *downloads) (PackVersion, error) {
 	var result PackVersion
 	if dep.VersionID != "" {
 		if !modrinthID.MatchString(dep.VersionID) {
@@ -244,26 +280,38 @@ func resolveModDependency(ctx context.Context, game string, dep ModDependency, d
 	if !modrinthID.MatchString(dep.ProjectID) {
 		return result, errors.New("此模组有无法自动解析的必要依赖")
 	}
-	versions, err := modrinthVersions(ctx, dep.ProjectID, game, FabricMods, d)
+	versions, err := modrinthVersions(ctx, dep.ProjectID, i, Mods, d)
 	if err != nil {
 		return result, err
 	}
-	for _, v := range versions {
-		if v.ProjectID == dep.ProjectID && v.fabricCompatible(game) {
-			if v.Type == "release" {
-				return v, nil
-			}
-			if result.ID == "" {
-				result = v
+	if len(versions) == 0 && i.Quilt() && dep.ProjectID == fabricAPIProject {
+		// Quilt's API bundle provides Fabric API on older Minecraft versions.
+		// Where no bundle was released, use upstream Fabric API for the same game.
+		versions, err = modrinthVersions(ctx, quiltedAPIProject, i, Mods, d)
+		if err != nil {
+			return result, err
+		}
+		if len(versions) == 0 {
+			fabric := i
+			fabric.Loader = LoaderFabric
+			versions, err = modrinthVersions(ctx, fabricAPIProject, fabric, Mods, d)
+			if err != nil {
+				return result, err
 			}
 		}
 	}
-	return result, nil
+	if len(versions) == 0 {
+		return result, fmt.Errorf("必要依赖 %s 没有兼容 Minecraft %s / %s 的版本", dep.ProjectID, i.Version, i.LoaderName())
+	}
+	if n := slices.IndexFunc(versions, func(v PackVersion) bool { return v.Type == "release" }); n >= 0 {
+		return versions[n], nil
+	}
+	return versions[0], nil
 }
 
 func (v PackVersion) DownloadFile(kind ContentKind) (PackFile, bool) {
 	ext := ".zip"
-	if kind == FabricMods {
+	if kind == Mods {
 		ext = ".jar"
 	}
 	valid := func(f PackFile) bool { return contentName(f.Filename, ext) }
@@ -278,7 +326,11 @@ func (v PackVersion) DownloadFile(kind ContentKind) (PackFile, bool) {
 }
 
 func downloadModrinthFile(ctx context.Context, i Instance, kind ContentKind, v PackVersion, d *downloads) error {
-	if !slices.Contains(v.GameVersions, i.Version) || kind == FabricMods && !v.fabricCompatible(i.Version) {
+	compatible := v.compatible(i, kind)
+	if kind == Mods {
+		compatible = v.compatibleModDependency(i)
+	}
+	if !compatible {
 		return errors.New("此资源版本与当前实例不兼容")
 	}
 	file, ok := v.DownloadFile(kind)

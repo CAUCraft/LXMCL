@@ -29,7 +29,7 @@ NeoForge 官方 Maven 请求失败时，启动器会尝试 NeoForge CDN。NeoFor
 
 CurseForge 在线查询和下载依赖需要 [CurseForge API Key](https://console.curseforge.com/)。可从页面输入（只保留到本次退出），也可在启动前设置 `LXMCL_CURSEFORGE_API_KEY` 或 `CURSEFORGE_API_KEY`。如果作者未开放某个必需文件的第三方下载，安装会报告文件并停止。
 
-Modrinth 按目标实例的游戏版本搜索，模组另按 Fabric 筛选。资源下载按 SHA-512 校验，重试绑定原实例、配置修订和资源版本。模组 JAR、资源包 ZIP 和光影 ZIP 分别需要 `fabric.mod.json`、`pack.mcmeta` 和 `shaders/` 内容。使用光影需要 Iris 等兼容模组。Fabric 加载器与库来自 Fabric Meta 和 Maven。
+Modrinth 按目标实例的游戏版本搜索，模组同时按 Fabric、Forge、NeoForge 或 Quilt 筛选。选择文件和解析必要依赖时，都会再次核对 Minecraft 版本与加载器。Quilt 模组声明的 Fabric API 依赖可用同游戏版本的 Quilted Fabric API 或上游 Fabric API。资源下载按 SHA-512 校验，重试绑定原实例、配置修订和资源版本。模组 JAR 要有对应的加载器描述文件，资源包 ZIP 要有 `pack.mcmeta`，光影 ZIP 要有 `shaders/` 内容。使用光影需要 Iris 等兼容模组。
 
 存档备份位于数据目录的 `backups/`，恢复支持包含 `世界名/level.dat` 的 ZIP，不覆盖已有世界。
 

@@ -17,7 +17,7 @@ type ContentKind string
 
 const (
 	ResourcePacks  ContentKind = "resourcepacks"
-	FabricMods     ContentKind = "mods"
+	Mods           ContentKind = "mods"
 	ShaderPacks    ContentKind = "shaderpacks"
 	maxContentSize             = 512 << 20
 )
@@ -28,20 +28,32 @@ type ContentFile struct {
 	Enabled bool
 }
 
-func (k ContentKind) format(i Instance) (ext, marker string, err error) {
+func (k ContentKind) format(i Instance) (ext string, markers []string, err error) {
 	switch k {
 	case ResourcePacks:
-		return ".zip", "pack.mcmeta", nil
-	case FabricMods:
-		if i.Fabric() {
-			return ".jar", "fabric.mod.json", nil
+		return ".zip", []string{"pack.mcmeta"}, nil
+	case Mods:
+		switch {
+		case i.Fabric():
+			return ".jar", []string{"fabric.mod.json"}, nil
+		case i.Forge():
+			return ".jar", []string{"META-INF/mods.toml"}, nil
+		case i.NeoForge():
+			switch i.Version {
+			case "1.20.1", "1.20.2", "1.20.3", "1.20.4":
+				return ".jar", []string{"META-INF/mods.toml"}, nil
+			default:
+				return ".jar", []string{"META-INF/neoforge.mods.toml"}, nil
+			}
+		case i.Quilt():
+			return ".jar", []string{"quilt.mod.json", "fabric.mod.json"}, nil
 		}
 	case ShaderPacks:
 		if i.Fabric() {
-			return ".zip", "shaders/", nil
+			return ".zip", []string{"shaders/"}, nil
 		}
 	}
-	return "", "", errors.New("此实例不支持该资源类型")
+	return "", nil, errors.New("此实例不支持该资源类型")
 }
 
 func (k ContentKind) Supports(i Instance) bool {
@@ -161,7 +173,7 @@ func ImportContent(ctx context.Context, i Instance, kind ContentKind, source str
 }
 
 func writeContent(ctx context.Context, i Instance, kind ContentKind, name string, in io.Reader, size int64, digest hash.Hash, expected string) (err error) {
-	ext, marker, err := kind.format(i)
+	ext, markers, err := kind.format(i)
 	if err != nil {
 		return err
 	}
@@ -205,10 +217,13 @@ func writeContent(ctx context.Context, i Instance, kind ContentKind, name string
 		return fmt.Errorf("资源不是有效的 ZIP/JAR：%w", err)
 	}
 	for _, entry := range z.File {
-		if !entry.FileInfo().IsDir() && (entry.Name == marker ||
-			kind == ShaderPacks && strings.HasPrefix(entry.Name, marker)) {
-			return ctx.Err()
+		if !entry.FileInfo().IsDir() {
+			for _, marker := range markers {
+				if entry.Name == marker || kind == ShaderPacks && strings.HasPrefix(entry.Name, marker) {
+					return ctx.Err()
+				}
+			}
 		}
 	}
-	return fmt.Errorf("资源文件缺少 %s", marker)
+	return fmt.Errorf("资源文件缺少 %s", strings.Join(markers, " 或 "))
 }

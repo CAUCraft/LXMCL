@@ -14,7 +14,7 @@ func TestResourceRetryKeepsOriginalInstanceRevision(t *testing.T) {
 	i := launcher.Instance{ID: 3, Revision: 1, Version: "1.21.1", Loader: "Fabric", LoaderVersion: "0.16.14", GameDir: t.TempDir()}
 	state := launcher.State{Instances: []launcher.Instance{i}, Selected: 4}
 	row := taskRecord{InstanceID: i.ID, Revision: i.Revision, Version: i.Version, Status: taskCanceled,
-		Resource: &resourceTask{Kind: launcher.FabricMods, Project: "modA", Version: "releaseA"}}
+		Resource: &resourceTask{Kind: launcher.Mods, Project: "modA", Version: "releaseA"}}
 	if target, ok := row.retryTarget(state); !ok || target.ID != i.ID {
 		t.Fatal("resource retry did not use its original instance")
 	}

@@ -42,7 +42,7 @@ var downloadTabs = []nav.TabItem{
 func downloadKind(tab int) launcher.ContentKind {
 	switch tab {
 	case downloadMods:
-		return launcher.FabricMods
+		return launcher.Mods
 	case downloadShaders:
 		return launcher.ShaderPacks
 	default:
@@ -52,7 +52,7 @@ func downloadKind(tab int) launcher.ContentKind {
 
 func downloadTab(kind launcher.ContentKind) int {
 	switch kind {
-	case launcher.FabricMods:
+	case launcher.Mods:
 		return downloadMods
 	case launcher.ShaderPacks:
 		return downloadShaders

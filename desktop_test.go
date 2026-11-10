@@ -379,7 +379,7 @@ func TestResourceAndServerEntrypoints(t *testing.T) {
 	if err := tt.Click("下载模组…"); err != nil {
 		t.Fatal(err)
 	}
-	p := a.browserFor(launcher.FabricMods)
+	p := a.browserFor(launcher.Mods)
 	if a.page != pageDownloads || a.downloadPage != downloadMods || p.target.ID != i.ID || a.state.Selected != 1 {
 		t.Fatal("mod download did not capture the inspected Fabric instance")
 	}
