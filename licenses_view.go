@@ -37,7 +37,7 @@ func (a *desktop) licensesDialog(c *ui.Context) {
 			a.licenseFile = licenseOptions[0].Value
 		}
 		ui.Column(c).Gap(8).Children(func() {
-			field.Select(c, &a.licenseFile, field.SelectProps{Options: licenseOptions}).Label("许可文件")
+			catalogPicker(c, &a.licenseFile, licenseOptions, "许可文件", "", false)
 			b, err := licenseFiles.ReadFile(a.licenseFile)
 			if err != nil {
 				feedback.Alert(c, "无法读取许可证", feedback.AlertProps{Type: feedback.Error})

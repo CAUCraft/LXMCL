@@ -56,7 +56,7 @@ func TestAppearanceStaysWithBrowsedAccount(t *testing.T) {
 	tt.SetDark(true)
 	tt.Advance(500 * time.Millisecond)
 	tt.Frame()
-	list, leftOK := tt.Find("添加离线账号")
+	list, leftOK := tt.Find("添加账号")
 	skin, rightOK := tt.Find("选择 PNG…")
 	if !leftOK || !rightOK || list.X+list.W >= skin.X || skin.X+skin.W > 820 || skin.Y+skin.H > 530 {
 		t.Fatalf("account list and preview do not fit the compact window: %+v %+v", list, skin)

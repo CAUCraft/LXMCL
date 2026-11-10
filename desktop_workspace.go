@@ -67,7 +67,7 @@ func (a *desktop) details(c *ui.Context, i launcher.Instance) {
 
 func (a *desktop) instanceOverview(c *ui.Context, i launcher.Instance) {
 	layout.ScrollArea(c, layout.ScrollAreaProps{}, func() {
-		surface(c).Padding(12, 16).Gap(8).Children(func() {
+		sectionPane(c).Padding(12, 16).Gap(8).Children(func() {
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 				ui.Column(c).Grow(1).MinWidth(0).Children(func() { property(c, "版本", i.Version+" · "+loaderName(i)) })
 				if (i.Vanilla() || i.Fabric()) &&
@@ -155,7 +155,7 @@ func settingsInput(c *ui.Context, label string, value *string, placeholder strin
 }
 
 func (a *desktop) gameSettings(c *ui.Context, disabled bool) {
-	surface(c).Padding(8, 14).Gap(5).Children(func() {
+	sectionPane(c).Padding(8, 14).Gap(5).Children(func() {
 		settingsRow(c, "新实例目录", func() {
 			settingsInput(c, "新实例目录", &a.draft.GameRoot, "选择目录", 0, disabled)
 			if button(c, "浏览…", action.Default, disabled) {
@@ -173,7 +173,7 @@ func (a *desktop) gameSettings(c *ui.Context, disabled bool) {
 }
 
 func (a *desktop) javaSettings(c *ui.Context, disabled bool) {
-	surface(c).Padding(8, 14).Gap(5).Children(func() {
+	sectionPane(c).Padding(8, 14).Gap(5).Children(func() {
 		settingsRow(c, "Java 路径", func() {
 			previous := a.draft.JavaPath
 			settingsInput(c, "Java 路径", &a.draft.JavaPath, "自动选择", 0, disabled)
@@ -264,7 +264,7 @@ func settingsActions(c *ui.Context, disabled bool, reset, apply func()) {
 
 func (a *desktop) help(c *ui.Context) {
 	heading(c, "关于 LXMCL")
-	surface(c).Padding(8, 14).Gap(5).Children(func() {
+	sectionPane(c).Padding(8, 14).Gap(5).Children(func() {
 		settingsRow(c, "许可证", func() {
 			display.Tag(c, "GPLv3", display.TagProps{Color: display.TagGreen, Size: theme.Small})
 			if button(c, "查看许可证", action.Default, false) {
@@ -293,7 +293,7 @@ func (a *desktop) openTasks() {
 func (a *desktop) tasks(c *ui.Context) {
 	ui.Column(c).Grow(1).Basis(0).MinHeight(0).Gap(8).Children(func() {
 		if a.task.Stage != "" {
-			surface(c).Padding(10, 14).Gap(6).Children(func() {
+			sectionPane(c).Padding(10, 14).Gap(6).Children(func() {
 				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 					ui.Column(c).Grow(1).MinWidth(0).Children(func() {
 						display.Text(c, a.taskName, display.TextProps{Strong: true, FontSize: 15})
@@ -307,7 +307,7 @@ func (a *desktop) tasks(c *ui.Context) {
 			})
 		}
 		if a.running != nil {
-			surface(c).Padding(10, 14).Gap(6).Children(func() {
+			sectionPane(c).Padding(10, 14).Gap(6).Children(func() {
 				name := "Minecraft"
 				if i, ok := a.state.Find(a.runningID); ok {
 					name = i.Name
@@ -343,7 +343,7 @@ func (a *desktop) tasks(c *ui.Context) {
 			}
 			a.taskHistoryPane(c, visible)
 		} else if a.lastLog != "" && a.running == nil {
-			surface(c).Padding(16).Gap(8).Children(func() {
+			sectionPane(c).Padding(16).Gap(8).Children(func() {
 				property(c, "最近日志", a.lastLog)
 				if button(c, "查看日志", action.Default, false) {
 					a.showLog(a.lastLog)
@@ -383,7 +383,7 @@ func (a *desktop) taskHistoryPane(c *ui.Context, rows []taskRecord) {
 	}, func() {
 		detailPane(c.Key(taskKey(selected)), func() {
 			layout.ScrollArea(c, layout.ScrollAreaProps{}, func() {
-				surface(c).Padding(8, 14).Children(func() { a.taskRow(c, selected) })
+				sectionPane(c).Padding(8, 14).Children(func() { a.taskRow(c, selected) })
 			}).Grow(1).MinHeight(0)
 		})
 	})

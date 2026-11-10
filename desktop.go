@@ -33,22 +33,7 @@ var mainTabs = []nav.TabItem{
 }
 
 func button(c *ui.Context, label string, variant action.ButtonVariant, disabled bool) bool {
-	b := action.Button(c, label, action.ButtonProps{Variant: variant}).Disabled(disabled)
-	if variant == action.Primary && !disabled {
-		tintPrimary(b)
-	}
-	return b.Clicked()
-}
-
-func tintPrimary(b ui.Element) {
-	bg := ui.Hex("#1762ba")
-	switch {
-	case b.Pressed():
-		bg = ui.Hex("#134d91")
-	case b.Hovered():
-		bg = ui.Hex("#2070cb")
-	}
-	b.Background(bg).Border(1, bg).TextColor(ui.Hex("#ffffff"))
+	return action.Button(c, label, action.ButtonProps{Variant: variant}).Disabled(disabled).Clicked()
 }
 
 func icon(c *ui.Context, svg *ui.SVG, label string, disabled bool) bool {
@@ -66,13 +51,6 @@ func brand(c *ui.Context) (ink, wash ui.Color) {
 	return ui.Hex("#175ca7"), ui.Hex("#e6f1ff")
 }
 
-func workspaceColor(c *ui.Context) ui.Color {
-	if c.Theme().Dark {
-		return ui.Hex("#151c27")
-	}
-	return ui.Hex("#edf3fb")
-}
-
 func leadIcon(c *ui.Context, svg *ui.SVG, size float32) {
 	ink, wash := brand(c)
 	ui.Box(c).Size(size, size).Shrink(0).Radius(10).Center().Background(wash).Children(func() {
@@ -81,7 +59,11 @@ func leadIcon(c *ui.Context, svg *ui.SVG, size float32) {
 }
 
 func surface(c *ui.Context) ui.Element {
-	return layout.Block(c, layout.BlockProps{Variant: layout.BlockOutlined}).Radius(12)
+	return layout.Block(c, layout.BlockProps{Variant: layout.BlockOutlined})
+}
+
+func sectionPane(c *ui.Context) ui.Element {
+	return layout.Block(c, layout.BlockProps{Variant: layout.BlockBorderless})
 }
 
 func heading(c *ui.Context, title string, controls ...func()) {
@@ -102,6 +84,7 @@ const (
 func (a *desktop) view(c *ui.Context) {
 	theme.Apply(c)
 	if a.ready && !a.form.open && !a.logOpen && !a.licensesOpen && (a.pack == nil || !a.pack.open) &&
+		(a.stationLogin == nil || !a.stationLogin.open) &&
 		(a.microsoft == nil || !a.microsoft.open) {
 		if mods, key, ok := display.HotkeyBinding(searchHotkey, display.HotkeyAuto); ok && c.Shortcut(mods, key) {
 			a.page, a.libraryPage, a.inspected = pageLibrary, 0, 0
@@ -127,7 +110,7 @@ func (a *desktop) view(c *ui.Context) {
 			a.page, a.settingsPage = pageSettings, 2
 		}
 	}
-	ui.Column(c).Fill().Background(workspaceColor(c)).Children(func() {
+	ui.Column(c).Fill().Background(theme.TokensOf(c).BgContainer).Children(func() {
 		a.topBar(c)
 		switch {
 		case a.loadErr != "":
@@ -163,6 +146,7 @@ func (a *desktop) view(c *ui.Context) {
 		a.licensesDialog(c.Key("third-party-licenses"))
 		a.packDialog(c.Key("modrinth-packs"))
 		a.microsoftLoginDialog(c.Key("microsoft-login"))
+		a.stationLoginDialog(c.Key("station-login"))
 	})
 }
 
@@ -177,7 +161,7 @@ func (a *desktop) noticeBar(c *ui.Context) {
 		feedback.Alert(c, a.notice, feedback.AlertProps{Type: tone, Variant: feedback.Plain}).Grow(1).MinWidth(0)
 		if a.noticeAccount {
 			if button(c, "打开账号页", action.Text, false) {
-				a.openAccounts(true)
+				a.openAccounts(a.state.StationKey == "")
 			}
 		} else if a.noticeJava {
 			if button(c, "Java 设置", action.Text, false) {
@@ -240,7 +224,11 @@ func (a *desktop) topBar(c *ui.Context) {
 				account.Background(wash)
 			}
 			account.Children(func() {
-				a.accountAvatar(c, name, a.state.MicrosoftProfile != "", 24)
+				if profile, ok := a.state.Station(a.state.StationKey); ok {
+					a.stationAvatar(c, profile, 24)
+				} else {
+					a.accountAvatar(c, name, a.state.MicrosoftProfile != "", 24)
+				}
 				ink, _ := brand(c)
 				if w >= 920 {
 					display.Text(c, name, display.TextProps{FontSize: 12, Rows: 1}).MaxWidth(88).Ellipsis("…").TextColor(ink)
@@ -315,11 +303,7 @@ func (a *desktop) launchCard(c *ui.Context) {
 	for _, item := range a.state.Instances {
 		options = append(options, field.SelectOption{Value: strconv.Itoa(item.ID), Label: item.Name + " · " + item.Version})
 	}
-	selectBox := field.Select(c, &selection, field.SelectProps{Options: options, Placeholder: "选择实例", Disabled: a.busy}).
-		Label("启动实例")
-	if a.busy {
-		selectBox.TextColor(theme.TokensOf(c).TextSecondary)
-	}
+	catalogPicker(c, &selection, options, "切换启动实例", "", a.busy)
 	if selection != previous {
 		id, _ := strconv.Atoi(selection)
 		a.choose(id)
@@ -353,16 +337,9 @@ func (a *desktop) playButton(c *ui.Context, i launcher.Instance, disabled bool) 
 	return launchButton(c, label, glyph, disabled || a.busy || a.running != nil)
 }
 
-// Keep Lobe's button focus, hit testing and transition.
 func launchButton(c *ui.Context, label string, glyph *ui.SVG, disabled bool) bool {
-	b := action.StyleButton(c, ui.ButtonBase(c).Label(label), "", action.ButtonProps{Variant: action.Primary, Size: theme.Large}).
-		Height(36).FillWidth().Disabled(disabled)
-	if !disabled {
-		tintPrimary(b)
-	} else {
-		tk := theme.TokensOf(c)
-		b.Background(tk.FillSecondary).Border(1, tk.BorderSecondary).TextColor(tk.TextSecondary)
-	}
+	b := action.StyleButton(c, ui.ButtonBase(c).Label(label), "", action.ButtonProps{Variant: action.Primary}).
+		FillWidth().Disabled(disabled)
 	b.Children(func() {
 		ui.Icon(c, glyph).FontSize(17)
 		ui.Text(c, label).SingleLine()
@@ -376,12 +353,7 @@ func contextTabs(c *ui.Context, selected *int, items []nav.TabItem) {
 }
 
 func workspace(c *ui.Context, content func()) {
-	w, _ := c.Size()
-	padding := float32(24)
-	if w > 1060 {
-		padding = max(34, (w-1160)/2)
-	}
-	ui.Column(c).Grow(1).MinHeight(0).Padding(12, padding).Gap(10).Children(content)
+	ui.Column(c).Grow(1).MinHeight(0).Padding(12, 18).Gap(10).Children(content)
 }
 
 var libraryTabs = []nav.TabItem{
@@ -396,27 +368,35 @@ func (a *desktop) library(c *ui.Context) {
 			a.tasks(c)
 			return
 		}
+		if len(a.state.Instances) == 0 {
+			ui.Column(c).Grow(1).Center().Children(func() {
+				display.Empty(c, display.EmptyProps{Icon: lucide.PackageOpen(), Title: "暂无实例",
+					Description: "新建一个实例，选择要运行的 Minecraft 版本。",
+					Action: func() {
+						if button(c, "新建实例", action.Primary, a.busy) {
+							a.create()
+						}
+					}})
+			})
+			return
+		}
 		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-			if len(a.state.Instances) > 0 {
-				ui.Column(c).Grow(1).MinWidth(0).MaxWidth(340).Children(func() {
-					hotkey := searchHotkey
-					if a.form.open || a.logOpen || a.licensesOpen {
-						hotkey = ""
-					}
-					search := field.SearchBar(c, &a.query, field.SearchBarProps{
-						Placeholder: "搜索实例", ShortKey: hotkey,
-					}).Label("搜索实例")
-					if a.focusSearch {
-						search.Focus()
-						a.focusSearch = false
-					}
-				})
-			}
+			ui.Column(c).Grow(1).MinWidth(0).MaxWidth(340).Children(func() {
+				hotkey := searchHotkey
+				if a.form.open || a.logOpen || a.licensesOpen {
+					hotkey = ""
+				}
+				search := field.SearchBar(c, &a.query, field.SearchBarProps{
+					Placeholder: "搜索实例", ShortKey: hotkey,
+				}).Label("搜索实例")
+				if a.focusSearch {
+					search.Focus()
+					a.focusSearch = false
+				}
+			})
 			ui.Spacer(c).Grow(1)
-			if len(a.state.Instances) > 0 {
-				action.Segmented(c, &a.instanceFilter, []string{"全部", "已缓存", "待下载"},
-					action.SegmentedProps{Size: theme.Small}).Label("实例筛选")
-			}
+			action.Segmented(c, &a.instanceFilter, []string{"全部", "已缓存", "待下载"},
+				action.SegmentedProps{Size: theme.Small}).Label("实例筛选")
 			if button(c, "新建实例", action.Primary, a.busy) {
 				a.create()
 			}
@@ -433,10 +413,8 @@ func (a *desktop) library(c *ui.Context) {
 				switch {
 				case ok:
 					a.details(c, i)
-				case len(a.state.Instances) == 0:
-					emptyPanel(c, lucide.PackageOpen(), "暂无实例")
 				default:
-					surface(c).Grow(1).Center().Children(func() {
+					ui.Column(c).Grow(1).Center().Children(func() {
 						display.Empty(c, display.EmptyProps{Icon: lucide.Package(), Title: "选择一个实例查看详情"})
 					})
 				}
@@ -509,7 +487,7 @@ func (a *desktop) instanceStatus(i launcher.Instance) (string, display.TagColor)
 }
 
 func emptyPanel(c *ui.Context, glyph *ui.SVG, title string) {
-	surface(c).Padding(12).Children(func() {
+	sectionPane(c).Padding(12).Children(func() {
 		display.Empty(c, display.EmptyProps{Icon: glyph, Title: title})
 	})
 }
@@ -570,13 +548,15 @@ func (a *desktop) editor(c *ui.Context) {
 			if a.form.mode == "create" || a.form.mode == "version" {
 				ui.Column(c).Gap(5).Children(func() {
 					display.Text(c, "游戏版本", display.TextProps{Strong: true})
-					opts := make([]field.AutoCompleteOption, 0, len(a.releases))
+					opts := make([]field.SelectOption, 0, len(a.releases))
 					for _, v := range a.releases {
-						opts = append(opts, field.AutoCompleteOption{Value: v.ID})
+						opts = append(opts, field.SelectOption{Value: v.ID, Label: v.ID})
 					}
-					field.AutoComplete(c, &a.form.version, field.AutoCompleteProps{
-						Options: opts, Prefix: lucide.Package(), Placeholder: "例如 1.21.1",
-					}).Label("游戏版本").Disabled(a.busy)
+					ui.Row(c).Gap(6).Children(func() {
+						field.Input(c, &a.form.version, field.InputProps{Placeholder: "例如 1.21.1"}).
+							Label("游戏版本").Disabled(a.busy).Grow(1).MinWidth(0)
+						catalogPicker(c.Key("versions"), &a.form.version, opts, "选择游戏版本", "浏览版本", a.busy)
+					})
 				})
 				switch {
 				case a.catalogBusy:
@@ -609,7 +589,7 @@ func (a *desktop) loaderForm(c *ui.Context) {
 	for _, version := range f.loaderVersions {
 		options = append(options, field.SelectOption{Value: version, Label: "Fabric " + version})
 	}
-	field.Select(c, &f.version, field.SelectProps{Options: options, Disabled: a.busy}).Label("加载器")
+	catalogPicker(c, &f.version, options, "加载器", "", a.busy)
 	switch {
 	case f.loaderLoading:
 		flightLoading(c, "正在读取 Fabric 版本…")

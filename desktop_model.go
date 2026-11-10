@@ -8,6 +8,7 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/lobehub/lobe-mygo/pkg/action"
 	"github.com/lobehub/lobe-mygo/pkg/display"
+	"github.com/lobehub/lobe-mygo/pkg/layout"
 	"github.com/lobehub/lobe-mygo/pkg/lucide"
 	"github.com/lobehub/lobe-mygo/pkg/theme"
 )
@@ -84,7 +85,7 @@ func (f *modelFrame) image(skin, cape *image.NRGBA, slim bool, angle modelAngle)
 }
 
 func modelPreview(c *ui.Context, skin skinPreview, cape *image.NRGBA, slim bool, orbit *modelOrbit, caption string) {
-	surface(c).Grow(1).Basis(0).MinWidth(0).MinHeight(0).Padding(8).Gap(7).Children(func() {
+	sectionPane(c).Grow(1).Basis(0).MinWidth(0).MinHeight(0).Gap(7).Children(func() {
 		tk := theme.TokensOf(c)
 		ui.Row(c).Padding(2, 4).Gap(6).AlignItems(ui.Center).Children(func() {
 			ui.Icon(c, lucide.Box()).FontSize(14).TextColor(tk.TextSecondary)
@@ -116,8 +117,9 @@ func modelPreview(c *ui.Context, skin skinPreview, cape *image.NRGBA, slim bool,
 func modelStage(c *ui.Context, skin, cape *image.NRGBA, slim bool, orbit *modelOrbit) {
 	// The only custom surface is the viewport. Lobe supplies the surrounding
 	// controls and MyGo handles pointer capture and the texture display.
-	stage := ui.Box(c).Grow(1).Basis(0).MinHeight(0).FillWidth().Radius(8).Clip().
-		Gradient(ui.Hex("#233e5f"), ui.Hex("#101d31"), 155).
+	_, wash := brand(c)
+	stage := layout.Block(c, layout.BlockProps{Variant: layout.BlockFilled}).
+		Grow(1).Basis(0).MinHeight(0).FillWidth().Clip().Background(wash).
 		Label("角色模型").Focusable().Cursor(ui.CursorGrab)
 	if c.Preferences().ReduceMotion {
 		orbit.start = time.Time{}

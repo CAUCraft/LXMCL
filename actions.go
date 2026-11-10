@@ -56,6 +56,9 @@ func (a *desktop) load() {
 			if s.MicrosoftProfile != "" && s.MicrosoftProfile == account.Profile.ID {
 				a.startAppearance()
 			}
+			if p, ok := s.Station(s.StationKey); ok {
+				a.loadStationPreview(p, false)
+			}
 		})
 	}()
 }
@@ -287,6 +290,7 @@ func (a *desktop) saveSettings() {
 	next.Settings.Player = previousPlayer
 	_ = next.UseOfflinePlayer(player)
 	next.MicrosoftProfile = a.state.MicrosoftProfile
+	next.StationKey = a.state.StationKey
 	a.save(next, 0, func(err error) {
 		if err == nil {
 			a.draft = next.Settings
@@ -388,6 +392,10 @@ func (a *desktop) playOnServer(i launcher.Instance, installOnly bool, server str
 	a.cancelTask = cancel
 	settings, g := a.state.Settings, a.game
 	onlineID, account, session := a.state.MicrosoftProfile, a.microsoftAccount, a.minecraftSession
+	stationKey := a.state.StationKey
+	station, _ := a.state.Station(stationKey)
+	stationSession := a.stationSessions[stationKey]
+	stationState := a.state
 	instances := a.state.Instances
 	record := taskRecord{InstanceID: i.ID, Revision: i.Revision, Name: i.Name, Version: i.Version, Action: taskLaunch, Server: server, At: time.Now()}
 	if installOnly {
@@ -417,7 +425,31 @@ func (a *desktop) playOnServer(i launcher.Instance, installOnly bool, server str
 		var err error
 		var activeSession *launcher.MinecraftSession
 		var refreshed bool
-		if !installOnly && onlineID != "" {
+		var stationStateChanged bool
+		if !installOnly && stationKey != "" {
+			report(launcher.Progress{Stage: "验证皮肤站登录"})
+			if station.Key == "" {
+				err = launcher.ErrSkinStationLogin
+			} else if stationSession.Profile.Key != stationKey {
+				stationSession, err = a.store.LoadStationSession(station)
+			}
+			if err == nil {
+				original := stationSession
+				stationSession, err = original.Verify(ctx)
+				if err == nil && original != stationSession {
+					err = a.store.SaveStationSession(stationSession)
+					if err != nil {
+						stationSession = original
+					}
+				}
+				if err == nil && stationSession.Profile.Name != station.Name {
+					stationState = stationState.Clone()
+					stationState.UseStation(stationSession.Profile)
+					err = a.store.Save(stationState)
+					stationStateChanged = err == nil
+				}
+			}
+		} else if !installOnly && onlineID != "" {
 			if !session.ValidFor(onlineID) {
 				report(launcher.Progress{Stage: "验证 Microsoft 登录"})
 				if account.Profile.ID != onlineID {
@@ -446,14 +478,20 @@ func (a *desktop) playOnServer(i launcher.Instance, installOnly bool, server str
 		}
 		var run launcher.Running
 		if err == nil && !installOnly {
+			start := func() (launcher.Running, error) {
+				if stationKey != "" {
+					return g.StartWithStation(ctx, i, settings, server, stationSession)
+				}
+				return g.StartWithSession(ctx, i, settings, server, activeSession)
+			}
 			report(launcher.Progress{Stage: "检查 Java 并启动游戏"})
-			run, err = g.StartWithSession(ctx, i, settings, server, activeSession)
+			run, err = start()
 			if !needsInstall && errors.Is(err, launcher.ErrRepairRequired) && ctx.Err() == nil {
 				report(launcher.Progress{Stage: "修复游戏文件"})
 				err = g.Install(ctx, i, report)
 				if err == nil {
 					report(launcher.Progress{Stage: "检查 Java 并启动游戏"})
-					run, err = g.StartWithSession(ctx, i, settings, server, activeSession)
+					run, err = start()
 				}
 			}
 		}
@@ -479,6 +517,12 @@ func (a *desktop) playOnServer(i launcher.Instance, installOnly bool, server str
 			if refreshed {
 				a.microsoftAccount, a.minecraftSession = account, session
 			}
+			if stationStateChanged {
+				a.state = stationState
+			}
+			if stationSession.Profile.Key != "" {
+				a.rememberStation(stationSession)
+			}
 			for id, ok := range installed {
 				a.installed[id] = ok
 			}
@@ -488,7 +532,7 @@ func (a *desktop) playOnServer(i launcher.Instance, installOnly bool, server str
 			case err != nil:
 				a.message("任务失败 · "+i.Name, err)
 				a.noticeJava = errors.Is(err, launcher.ErrJavaRequired)
-				a.noticeAccount = authFailed || errors.Is(err, launcher.ErrMicrosoftRequired)
+				a.noticeAccount = authFailed || errors.Is(err, launcher.ErrMicrosoftRequired) || errors.Is(err, launcher.ErrSkinStationLogin)
 				if a.noticeJava && i.Launch.JavaMode != launcher.JavaInherit {
 					a.noticeJavaTarget = i
 				}

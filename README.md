@@ -11,7 +11,7 @@ Windows x64：从 [GitHub Actions](https://github.com/CAUCraft/LXMCL/actions/wor
 - **实例**：原版与 Fabric、版本切换、文件校验、独立启动设置。
 - **资源**：从 Modrinth 下载兼容模组和资源包，解析必要的模组依赖；也可导入本地文件、停用或恢复。
 - **存档**：备份为 ZIP，恢复时保留已有同名世界。
-- **账号与服务器**：独立账号中心、Microsoft 登录与 Java 版权益验证、皮肤头像、可旋转的 3D 角色与披风预览、PNG 皮肤上传，以及服务器收藏、状态查询和直连。离线账号使用孪枭预览，仅能加入允许离线登录的服务器。
+- **账号与服务器**：Microsoft、兼容 Yggdrasil 的第三方皮肤站与离线账号，支持皮肤头像、可旋转的 3D 预览、服务器收藏和直连。Microsoft 账号可上传 PNG 皮肤；皮肤站账号在站内修改外观。
 - **诊断**：Java 检测、下载进度、任务历史和游戏日志。
 
 Forge／NeoForge／Quilt、整合包导入和 Java 自动安装尚未接入。

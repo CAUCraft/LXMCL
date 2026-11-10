@@ -120,6 +120,9 @@ type desktop struct {
 	browsedAccount   string
 	newOfflinePlayer string
 	accountReturn    int
+	stationLogin     *stationLoginView
+	stationSessions  map[string]launcher.StationSession
+	stationPreviews  map[string]*stationPreview
 	browsedServer    string
 
 	page, settingsPage, libraryPage        int

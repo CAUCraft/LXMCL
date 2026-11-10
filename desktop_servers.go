@@ -83,7 +83,9 @@ func (a *desktop) network(c *ui.Context) {
 		}
 		i, selected := a.state.Find(a.state.Selected)
 		note := "离线账号仅能加入允许离线登录的服务器。"
-		if a.state.MicrosoftProfile != "" {
+		if a.state.StationKey != "" {
+			note = "皮肤站账号：" + a.accountName() + "。请加入同一认证体系的服务器。"
+		} else if a.state.MicrosoftProfile != "" {
 			note = "Microsoft 账号：" + a.accountName() + "。"
 		}
 		if selected {
@@ -123,7 +125,7 @@ func (a *desktop) network(c *ui.Context) {
 			}).Grow(1).MinHeight(0)
 		}, func() {
 			detailPane(c.Key(server.Address), func() {
-				surface(c).Padding(14).Gap(10).Children(func() {
+				sectionPane(c).Padding(14).Gap(10).Children(func() {
 					panelHeading(c, lucide.Server(), server.Name, server.Address)
 					check := a.serverStatus[server.Address]
 					if check != nil && check.pending {

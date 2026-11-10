@@ -122,7 +122,7 @@ var instanceJavaModes = []field.SelectOption{
 }
 
 func (a *desktop) instanceRuntimeSettings(c *ui.Context, i launcher.Instance, d *instanceLaunchDraft, disabled bool) {
-	surface(c).Padding(10, 14).Gap(6).Children(func() {
+	sectionPane(c).Padding(10, 14).Gap(6).Children(func() {
 		panelHeading(c, lucide.Coffee(), "Java 与内存", "")
 		settingsRow(c, "Java 模式", func() {
 			mode := d.fields.javaMode
@@ -190,7 +190,7 @@ var instanceDisplayModes = []field.SelectOption{
 }
 
 func instanceDisplaySettings(c *ui.Context, f *instanceLaunchFields, disabled bool) {
-	surface(c).Padding(10, 14).Gap(6).Children(func() {
+	sectionPane(c).Padding(10, 14).Gap(6).Children(func() {
 		panelHeading(c, lucide.Monitor(), "游戏窗口", "")
 		settingsRow(c, "显示模式", func() {
 			prev := f.display
@@ -300,7 +300,7 @@ func (a *desktop) instanceFiles(c *ui.Context, i launcher.Instance) {
 		}
 	})
 	layout.ScrollArea(c, layout.ScrollAreaProps{}, func() {
-		surface(c).Padding(10, 14).Gap(5).Children(func() {
+		sectionPane(c).Padding(10, 14).Gap(5).Children(func() {
 			for idx, folder := range instanceFolders {
 				if idx != 0 {
 					layout.Divider(c, layout.DividerProps{})

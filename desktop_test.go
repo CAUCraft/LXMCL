@@ -18,6 +18,9 @@ func TestMicrosoftLoginDialogUsesSystemBrowserAndCancels(t *testing.T) {
 	if err := tt.Click("账号中心"); err != nil {
 		t.Fatal(err)
 	}
+	if err := tt.Click("Microsoft 账号"); err != nil {
+		t.Fatal(err)
+	}
 	if _, ok := tt.Find("登录 Microsoft"); !ok {
 		t.Fatal("Microsoft sign-in is missing from account settings")
 	}
@@ -63,6 +66,15 @@ func TestTaskRetryStaysWithCapturedAccount(t *testing.T) {
 	}
 	if _, ok := row.retryTarget(a.state); ok {
 		t.Fatal("Microsoft launch can be retried under an offline player")
+	}
+	a.state.UseStation(launcher.StationProfile{Key: "station-fixture"})
+	row.Account = ""
+	if _, ok := row.retryTarget(a.state); ok {
+		t.Fatal("a legacy launch without a captured account can be retried under a station identity")
+	}
+	row.Account = a.state.AccountKey()
+	if _, ok := row.retryTarget(a.state); !ok {
+		t.Fatal("retry did not retain the captured station account")
 	}
 }
 

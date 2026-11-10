@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"strings"
 
 	"github.com/CAUCraft/LXMCL/internal/launcher"
 	"github.com/egoist/mygo/ui"
@@ -22,6 +23,12 @@ type microsoftLoginView struct {
 }
 
 func (a *desktop) accountName() string {
+	if a.state.StationKey != "" {
+		if p, ok := a.state.Station(a.state.StationKey); ok {
+			return p.Name
+		}
+		return "皮肤站账号"
+	}
 	if id := a.state.MicrosoftProfile; id != "" {
 		if a.microsoftAccount.Profile.ID == id {
 			return a.microsoftAccount.Profile.Name
@@ -40,7 +47,11 @@ func (a *desktop) openAccounts(microsoft bool) {
 	}
 	a.page = pageAccount
 	a.browsedAccount = a.state.Settings.Player
-	if microsoft || a.state.MicrosoftProfile != "" {
+	if microsoft {
+		a.browsedAccount = ""
+	} else if _, ok := a.state.Station(a.state.StationKey); ok {
+		a.browsedAccount = stationAccountPrefix + a.state.StationKey
+	} else if a.state.MicrosoftProfile != "" {
 		a.browsedAccount = ""
 	}
 }
@@ -51,11 +62,15 @@ func (a *desktop) accounts(c *ui.Context) {
 			if icon(c, lucide.ArrowLeft(), "返回上一页", false) {
 				a.page = a.accountReturn
 			}
-			display.Text(c, "账号中心", display.TextProps{Strong: true, FontSize: 22})
+			display.Text(c, "账号", display.TextProps{Strong: true, FontSize: 19})
 		})
+		layout.Divider(c, layout.DividerProps{})
 		w, _ := c.Size()
 		splitWorkspace(c, min(214, max(158, w*0.19)), func() {
-			muted(c, "账号列表").Padding(4, 6)
+			ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+				muted(c, "账号列表").FontSize(12).Grow(1)
+				a.addAccountMenu(c)
+			})
 			a.accountList(c)
 		}, func() {
 			key := a.browsedAccount
@@ -67,6 +82,10 @@ func (a *desktop) accounts(c *ui.Context) {
 				if a.browsedAccount == "" {
 					a.startAppearance()
 					a.microsoftPage(c, disabled || a.busy)
+				} else if key, station := strings.CutPrefix(a.browsedAccount, stationAccountPrefix); station {
+					if p, ok := a.state.Station(key); ok {
+						a.stationPage(c, p, disabled)
+					}
 				} else {
 					a.offlineAccount(c, disabled)
 				}
@@ -80,7 +99,7 @@ func (a *desktop) microsoftPage(c *ui.Context, disabled bool) {
 	selected := a.state.MicrosoftProfile
 	syncing := a.appearance != nil && a.appearance.syncing
 	if profile.ID == "" {
-		surface(c).Grow(1).Basis(0).MinHeight(0).Center().Padding(18).Children(func() {
+		sectionPane(c).Grow(1).Basis(0).MinHeight(0).Center().Padding(18).Children(func() {
 			display.Empty(c, display.EmptyProps{Icon: lucide.ShieldCheck(), Title: "连接 Microsoft 账号",
 				Description: "登录 Minecraft Java 版账号，管理皮肤和披风。",
 				Action: func() {
@@ -113,7 +132,7 @@ func activeAccountTag(c *ui.Context) {
 }
 
 func accountHeader(c *ui.Context, avatar func(), name, detail string, controls func()) {
-	surface(c).Padding(10, 12).Shrink(0).Children(func() {
+	sectionPane(c).Padding(4, 0).Shrink(0).Children(func() {
 		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
 			avatar()
 			ui.Column(c).Gap(2).Grow(1).MinWidth(0).Children(func() {
@@ -123,6 +142,7 @@ func accountHeader(c *ui.Context, avatar func(), name, detail string, controls f
 			controls()
 		})
 	})
+	layout.Divider(c, layout.DividerProps{})
 }
 
 func (a *desktop) microsoftMenu(c *ui.Context, disabled bool) {
@@ -146,6 +166,30 @@ func (a *desktop) microsoftMenu(c *ui.Context, disabled bool) {
 
 const addOfflineAccount = ":add"
 
+func (a *desktop) addAccountMenu(c *ui.Context) {
+	root := ui.Row(c).Shrink(0)
+	open := ui.Local(root, "open", func() bool { return false })
+	root.Children(func() {
+		switch overlay.DropdownMenu(c, open, overlay.DropdownMenuProps{Items: []overlay.MenuItem{
+			{Key: "microsoft", Label: "Microsoft 登录", Icon: lucide.ShieldCheck()},
+			{Key: "station", Label: "第三方皮肤站", Icon: lucide.Globe(), Disabled: a.busy},
+			{Key: "offline", Label: "添加离线账号", Icon: lucide.UserRound(), Disabled: a.busy},
+		}}, func(t ui.Element) {
+			action.StyleActionIcon(c, t, lucide.Plus(), action.ActionIconProps{Title: "添加账号"})
+		}) {
+		case "microsoft":
+			a.browsedAccount = ""
+			if a.microsoftAccount.Profile.ID == "" {
+				a.beginMicrosoftLogin()
+			}
+		case "station":
+			a.beginStationLogin(launcher.StationProfile{})
+		case "offline":
+			a.browsedAccount = addOfflineAccount
+		}
+	})
+}
+
 func (a *desktop) accountList(c *ui.Context) {
 	profile := a.microsoftAccount.Profile
 	name, description := "Microsoft 账号", "Java 版 · 未登录"
@@ -160,9 +204,17 @@ func (a *desktop) accountList(c *ui.Context) {
 		microsoft.Avatar = func() { a.accountAvatar(c, name, true, 28) }
 	}
 	items := []display.ListItem{microsoft}
+	for _, p := range a.state.StationProfiles {
+		detail := stationHost(p)
+		if a.state.StationKey == p.Key {
+			detail += " · 启动"
+		}
+		items = append(items, display.ListItem{Key: stationAccountPrefix + p.Key, Label: p.Name, Description: detail,
+			Avatar: func() { a.stationAvatar(c, p, 28) }})
+	}
 	for _, player := range a.state.Players() {
 		description := "离线"
-		if a.state.MicrosoftProfile == "" && a.state.Settings.Player == player {
+		if a.state.MicrosoftProfile == "" && a.state.StationKey == "" && a.state.Settings.Player == player {
 			description = "当前启动账号"
 		}
 		items = append(items, display.ListItem{Key: player, Label: player, Description: description,
@@ -181,16 +233,12 @@ func (a *desktop) accountList(c *ui.Context) {
 			c.Invalidate()
 		}
 	}).Grow(1).MinHeight(0)
-	layout.Divider(c, layout.DividerProps{})
-	if button(c, "添加离线账号", action.Default, a.busy) {
-		a.browsedAccount = addOfflineAccount
-	}
 }
 
 func (a *desktop) offlineAccount(c *ui.Context, disabled bool) {
 	name := a.browsedAccount
 	if name == addOfflineAccount {
-		surface(c).Padding(12, 14).Gap(10).Children(func() {
+		sectionPane(c).Padding(8, 0).Gap(10).Children(func() {
 			heading(c, "添加离线账号")
 			settingsRow(c, "离线玩家名", func() {
 				settingsInput(c, "离线玩家名", &a.newOfflinePlayer, "3–16 位字母、数字或下划线", 0, disabled)
@@ -204,7 +252,7 @@ func (a *desktop) offlineAccount(c *ui.Context, disabled bool) {
 	}
 	accountHeader(c, func() { a.accountAvatar(c, name, false, 42) },
 		name, "离线账号", func() {
-			if name == a.state.Settings.Player && a.state.MicrosoftProfile == "" {
+			if name == a.state.Settings.Player && a.state.MicrosoftProfile == "" && a.state.StationKey == "" {
 				activeAccountTag(c)
 			} else if button(c, "设为启动账号", action.Primary, disabled) {
 				a.selectOfflinePlayer(name)
@@ -217,18 +265,6 @@ func (a *desktop) offlineAccount(c *ui.Context, disabled bool) {
 	orbit := ui.Local(root, "orbit", frontOrbit)
 	root.Children(func() {
 		modelPreview(c, clubSkin, nil, false, orbit, "孪枭 · 离线预览")
-		accountInspector(c, func() {
-			heading(c, "外观")
-			muted(c, "孪枭用作启动器内的离线预览。登录 Microsoft 后可更换 Java 版皮肤和披风。").FontSize(13)
-			if a.microsoftAccount.Profile.ID == "" {
-				if button(c, "登录 Microsoft", action.Default, disabled) {
-					a.browsedAccount = ""
-					a.beginMicrosoftLogin()
-				}
-			} else if button(c, "查看 Microsoft 账号", action.Default, false) {
-				a.browsedAccount = ""
-			}
-		})
 	})
 }
 
@@ -238,6 +274,7 @@ func (a *desktop) selectMicrosoft(id string) {
 	}
 	next := a.state.Clone()
 	next.MicrosoftProfile = id
+	next.StationKey = ""
 	a.save(next, 0, func(err error) { a.message("切换 Microsoft 账号", err) })
 }
 
@@ -314,6 +351,7 @@ func (a *desktop) loginError(p *microsoftLoginView, err error) {
 func (a *desktop) saveMicrosoftLogin(p *microsoftLoginView, account launcher.MicrosoftAccount, session launcher.MinecraftSession) {
 	next := a.state.Clone()
 	next.MicrosoftProfile = account.Profile.ID
+	next.StationKey = ""
 	p.code, p.saving, a.busy = launcher.MicrosoftDeviceCode{}, true, true
 	a.writes.Go(func() {
 		err := a.store.SaveMicrosoftAccount(account)

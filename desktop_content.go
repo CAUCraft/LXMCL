@@ -96,7 +96,7 @@ func (a *desktop) instanceContent(c *ui.Context, i launcher.Instance) {
 		emptyPanel(c, lucide.PackageOpen(), "暂无本地资源")
 	default:
 		layout.ScrollArea(c, layout.ScrollAreaProps{}, func() {
-			surface(c).Padding(5, 12).Gap(4).Children(func() {
+			sectionPane(c).Padding(5, 12).Gap(4).Children(func() {
 				for idx, file := range v.files {
 					if idx > 0 {
 						layout.Divider(c, layout.DividerProps{})
@@ -274,7 +274,7 @@ func (a *desktop) packDetails(c *ui.Context, p *packBrowser, label string) {
 		for _, v := range p.versions {
 			options = append(options, field.SelectOption{Value: v.ID, Label: v.Number})
 		}
-		field.Select(c, &p.version, field.SelectProps{Options: options}).Label(label + "版本")
+		catalogPicker(c, &p.version, options, label+"版本", "", false)
 		if p.kind == launcher.FabricMods {
 			muted(c, "会同时下载必要依赖。换版本前请停用旧模组。")
 		} else {

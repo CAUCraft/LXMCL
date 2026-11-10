@@ -48,7 +48,7 @@ func (r taskRecord) retryTarget(s launcher.State) (launcher.Instance, bool) {
 		return launcher.Instance{}, false
 	}
 	if r.Action == taskLaunch && (r.Account != "" && r.Account != s.AccountKey() ||
-		r.Account == "" && s.MicrosoftProfile != "") {
+		r.Account == "" && (s.MicrosoftProfile != "" || s.StationKey != "")) {
 		return launcher.Instance{}, false
 	}
 	i, ok := s.Find(r.InstanceID)

@@ -44,7 +44,6 @@ type appearanceChange struct {
 }
 
 func (a *desktop) accountAvatar(c *ui.Context, name string, online bool, size float32) {
-	_, wash := brand(c)
 	var img ui.ImageSource = clubSkin.head
 	if online {
 		img = placeholderSkin.head
@@ -52,8 +51,12 @@ func (a *desktop) accountAvatar(c *ui.Context, name string, online bool, size fl
 			img = p.skin.head
 		}
 	}
+	skinAvatar(c, name, img, size)
+}
+
+func skinAvatar(c *ui.Context, name string, img ui.ImageSource, size float32) {
 	display.Avatar(c, name, display.AvatarProps{
-		Size: size, Image: img, Shape: display.AvatarSquare, Fallback: display.AvatarText, Background: wash,
+		Size: size, Image: img, Shape: display.AvatarSquare, Fallback: display.AvatarText,
 	})
 }
 
@@ -329,9 +332,10 @@ func (a *desktop) appearancePanel(c *ui.Context, p *appearanceView, disabled boo
 
 func accountInspector(c *ui.Context, content func()) {
 	w, _ := c.Size()
-	surface(c).Width(min(272, max(220, w*0.245))).Shrink(0).MinHeight(0).Children(func() {
+	layout.Divider(c, layout.DividerProps{Vertical: true}).FillHeight().AlignSelf(ui.Stretch)
+	sectionPane(c).Width(min(268, max(210, w*0.235))).Shrink(0).MinHeight(0).Children(func() {
 		layout.ScrollArea(c, layout.ScrollAreaProps{}, func() {
-			ui.Column(c).Padding(12).Gap(9).FillWidth().Children(content)
+			ui.Column(c).Padding(3, 4, 6, 2).Gap(9).FillWidth().Children(content)
 		}).Grow(1).MinHeight(0)
 	})
 }
@@ -393,7 +397,11 @@ func (a *desktop) capeEditor(c *ui.Context, p *appearanceView, orbit *modelOrbit
 		if selected == "" {
 			selected = "none"
 		}
-		field.Select(c, &selected, field.SelectProps{Options: options, Disabled: disabled}).Label("选择披风")
+		if len(options) > 5 {
+			catalogPicker(c, &selected, options, "选择披风", "", disabled)
+		} else {
+			field.Select(c, &selected, field.SelectProps{Options: options, Disabled: disabled}).Label("选择披风")
+		}
 		if selected == "none" {
 			selected = ""
 		}

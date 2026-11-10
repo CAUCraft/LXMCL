@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/lobehub/lobe-mygo/pkg/layout"
 	"github.com/lobehub/lobe-mygo/pkg/lucide"
-	"github.com/lobehub/lobe-mygo/pkg/motion"
 )
 
 func flightLoading(c *ui.Context, label string) {
@@ -36,7 +36,8 @@ func flightIndicator(c *ui.Context) {
 
 func splitWorkspace(c *ui.Context, width float32, left, right func()) {
 	ui.Row(c).Gap(12).Grow(1).Basis(0).MinHeight(0).AlignItems(ui.Stretch).Children(func() {
-		surface(c).Width(width).Shrink(0).MinHeight(0).Padding(8).Gap(8).Children(left)
+		sectionPane(c).Width(width).Shrink(0).MinHeight(0).Padding(0, 2).Gap(8).Children(left)
+		layout.Divider(c, layout.DividerProps{Vertical: true}).FillHeight().AlignSelf(ui.Stretch)
 		ui.Column(c).Grow(1).Basis(0).MinWidth(0).MinHeight(0).Gap(10).Children(right)
 	})
 }
@@ -46,12 +47,5 @@ func listWidth(window float32) float32 {
 }
 
 func detailPane(c *ui.Context, content func()) {
-	pane := ui.Column(c).Grow(1).Basis(0).MinHeight(0).MinWidth(0).Gap(10)
-	if !c.Preferences().ReduceMotion {
-		k := pane.Keyframes("detail", []ui.Keyframe{
-			{Value: 0}, {At: 200 * time.Millisecond, Value: 1, Ease: motion.EaseOut},
-		})
-		pane.Opacity(0.65+0.35*k).Translate(5*(1-k), 0)
-	}
-	pane.Children(content)
+	ui.Column(c).Grow(1).Basis(0).MinHeight(0).MinWidth(0).Gap(10).Children(content)
 }
