@@ -316,6 +316,7 @@
   "station.vault_encrypt_failed": "无法加密皮肤站凭据",
   "station.vault_too_large": "皮肤站凭据过大",
   "storage.json_read_failed": "无法读取 %s：%w",
+  "tasks.history_too_large": "任务历史超过 2 MiB，无法读取或保存",
   "tasks.journal_root_changed": "任务记录目录在运行中发生变化",
   "version.catalog_empty": "官方版本目录为空",
   "version.modern_required": "需要 Minecraft 1.20.1 或之后的正式版",

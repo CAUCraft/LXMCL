@@ -316,6 +316,7 @@
   "station.vault_encrypt_failed": "Could not encrypt the skin site credentials",
   "station.vault_too_large": "The skin site credentials are too large",
   "storage.json_read_failed": "Could not read %s: %w",
+  "tasks.history_too_large": "Task history exceeds 2 MiB and cannot be loaded or saved",
   "tasks.journal_root_changed": "The task history directory changed during operation",
   "version.catalog_empty": "The official version catalog is empty",
   "version.modern_required": "Minecraft 1.20.1 or a later release is required",

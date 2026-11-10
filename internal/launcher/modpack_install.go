@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/CAUCraft/LXMCL/internal/i18n"
+	"github.com/CAUCraft/LXMCL/internal/tasks"
 	"github.com/CAUCraft/LXMCL/internal/transfer"
 )
 
@@ -20,7 +21,9 @@ func (g Game) InstallModpack(ctx context.Context, store Store, next State, i Ins
 	install := func(ctx context.Context, work Instance, report func(Progress)) error {
 		return g.InstallWithJava(ctx, work, next.Settings.JavaPath, report)
 	}
-	return g.installModpack(ctx, store, next, i, pack, newCurseForge(key), modpackHTTP, install, report)
+	return tasks.Run(ctx, func(ctx context.Context, progress func(Progress)) error {
+		return g.installModpack(ctx, store, next, i, pack, newCurseForge(key), modpackHTTP, install, progress)
+	}, report)
 }
 
 func (g Game) installModpack(ctx context.Context, store Store, next State, i Instance, pack PreparedModpack, cf curseForge,

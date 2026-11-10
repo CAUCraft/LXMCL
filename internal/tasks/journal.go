@@ -2,6 +2,7 @@ package tasks
 
 import (
 	"sync"
+	"sync/atomic"
 
 	"github.com/CAUCraft/LXMCL/internal/i18n"
 )
@@ -9,11 +10,14 @@ import (
 // Journal serializes history updates so an old task finishing cannot replace
 // newer records. Use one Journal for each application data directory.
 type Journal struct {
-	mu      sync.Mutex
-	root    string
-	loaded  bool
-	records []Record
+	mu       sync.Mutex
+	root     string
+	loaded   bool
+	snapshot atomic.Pointer[historySnapshot]
 }
+
+// Published records are immutable. Readers never wait for a writer's disk I/O.
+type historySnapshot struct{ records []Record }
 
 func (j *Journal) load(root string) error {
 	if j.loaded {
@@ -23,31 +27,47 @@ func (j *Journal) load(root string) error {
 		return nil
 	}
 	records, err := Load(root)
-	j.root, j.loaded, j.records = root, true, records
-	return err
+	if err != nil {
+		return err
+	}
+	j.root, j.loaded = root, true
+	j.publish(records)
+	return nil
 }
 
 func (j *Journal) Load(root string) ([]Record, error) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	err := j.load(root)
-	return clone(j.records), err
+	return j.Snapshot(), err
 }
 
 func (j *Journal) Record(root string, record Record) ([]Record, error) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	if err := j.load(root); err != nil {
-		return clone(j.records), err
+		return j.Snapshot(), err
 	}
-	j.records = Update(j.records, record)
-	return clone(j.records), Save(root, j.records)
+	records := clone(Update(j.current(), record))
+	j.publish(records)
+	return clone(records), Save(root, records)
 }
 
+// Snapshot returns an independent in-memory view, including results whose disk
+// write failed. Persistence errors are reported separately by Record.
 func (j *Journal) Snapshot() []Record {
-	j.mu.Lock()
-	defer j.mu.Unlock()
-	return clone(j.records)
+	return clone(j.current())
+}
+
+func (j *Journal) current() []Record {
+	if snapshot := j.snapshot.Load(); snapshot != nil {
+		return snapshot.records
+	}
+	return nil
+}
+
+func (j *Journal) publish(records []Record) {
+	j.snapshot.Store(&historySnapshot{records: records})
 }
 
 func clone(records []Record) []Record {
