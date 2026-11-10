@@ -2,8 +2,8 @@
 
 package launcher
 
-import "errors"
+import "github.com/CAUCraft/LXMCL/internal/i18n"
 
 func windowsCredentials([]byte, bool) ([]byte, error) {
-	return nil, errors.New("Windows 凭据保护仅在 Windows 可用")
+	return nil, i18n.Error("credentials.windows_only")
 }

@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/CAUCraft/LXMCL/internal/i18n"
 )
 
 func packArchive(t *testing.T, entries map[string]string) []byte {
@@ -121,14 +123,14 @@ func TestModpackInstallIsIndependentAndVerified(t *testing.T) {
 		}
 	}
 	err = g.installModpack(ctx, store, next, i, pack, curseForge{}, client, install, nil)
-	if err == nil || !strings.Contains(err.Error(), "校验值") {
+	if err == nil || !strings.Contains(err.Error(), i18n.Text("modpack.asset_integrity_failed")) {
 		t.Fatalf("corrupt dependency accepted: %v", err)
 	}
 	verifyNoInstance()
 	data = dependency
 	canceled, cancel := context.WithCancel(ctx)
 	err = g.installModpack(canceled, store, next, i, pack, curseForge{}, client, install, func(p Progress) {
-		if p.Stage == "解压整合包配置" {
+		if p.Stage == i18n.Text("progress.extract_modpack_overrides") {
 			cancel()
 		}
 	})
@@ -270,7 +272,7 @@ func TestCurseForgeCatalogAndImport(t *testing.T) {
 		}
 		return nil
 	}
-	if err := g.installModpack(ctx, store, next, i, local, cf, client, verifyGame, nil); err == nil || !strings.Contains(err.Error(), "未开放") {
+	if err := g.installModpack(ctx, store, next, i, local, cf, client, verifyGame, nil); err == nil || !strings.Contains(err.Error(), i18n.Text("curseforge.dependency_unavailable", "Example", 40)) {
 		t.Fatalf("distribution restriction ignored: %v", err)
 	}
 	allow = true

@@ -13,6 +13,8 @@ go tool mygo build -platform windows/amd64
 
 `go tool mygo dev` 会在 Go 文件改动后重启应用，默认使用单独的开发数据目录。用 `go run . -data-dir .local/mygo-check` 可指定测试目录。代码分层见[架构](architecture.md)，界面约定见 [UI Skill](../.agents/skills/lxmcl-ui/SKILL.md)。
 
+后端文案集中在 [简体中文](../internal/i18n/locales/zh-CN.json)和[英文](../internal/i18n/locales/en.json) JSON。新增文案时在两份文件中使用同一个 `模块.含义` 键，保持格式占位符一致；需要保留错误原因时使用 `i18n.Error` 和 `%w`，进度与标签使用 `i18n.Text`。默认使用简体中文。启动前设置 `$env:LXMCL_LOCALE = 'en'` 可查看英文后端消息，桌面界面标签仍使用中文。缺少译文时回退到简体中文。
+
 ## 数据
 
 默认根目录为 `%LOCALAPPDATA%\org.caucraft.lxmcl`：`launcher.json` 保存设置和实例，`tasks.json` 保存最近 24 条任务，`cache` 保存共享的客户端、库和资源。首次迁移会读取旧版配置。存档、游戏设置和 `launcher-logs` 位于各实例目录；移除实例配置不会删除这些文件。

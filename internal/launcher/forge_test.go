@@ -12,6 +12,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/CAUCraft/LXMCL/internal/storage"
 )
 
 const (
@@ -79,13 +81,13 @@ func shimForgeInstall(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := writeFile(filepath.Join(dir, "versions", p.ID, p.ID+".json"), b); err != nil {
+	if err := storage.WriteFile(filepath.Join(dir, "versions", p.ID, p.ID+".json"), b); err != nil {
 		return err
 	}
-	if err := writeFile(filepath.Join(dir, "libraries", filepath.FromSlash(shimLibrary)), []byte(shimOutput)); err != nil {
+	if err := storage.WriteFile(filepath.Join(dir, "libraries", filepath.FromSlash(shimLibrary)), []byte(shimOutput)); err != nil {
 		return err
 	}
-	return writeFile(filepath.Join(dir, "libraries", filepath.FromSlash(shimAux)), []byte(shimOutput))
+	return storage.WriteFile(filepath.Join(dir, "libraries", filepath.FromSlash(shimAux)), []byte(shimOutput))
 }
 
 func TestPatchedModpackInstallAndLaunch(t *testing.T) {

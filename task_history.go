@@ -8,15 +8,14 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/CAUCraft/LXMCL/internal/launcher"
+	launcherlog "github.com/CAUCraft/LXMCL/internal/log"
 )
 
 const (
 	historyLimit = 24
-	logTailLimit = 64 << 10
 
 	taskCompleted = "已完成"
 	taskStarted   = "已启动"
@@ -118,7 +117,7 @@ func saveTaskHistory(root string, records []taskRecord) error {
 func (a *desktop) restoreTaskHistory(records []taskRecord) {
 	a.history = records
 	for _, r := range records {
-		if isGameLog(r.Log) {
+		if launcherlog.IsGame(r.Log) {
 			a.lastLog = r.Log
 			break
 		}
@@ -142,60 +141,15 @@ func (a *desktop) saveTask(records []taskRecord, record taskRecord, render func(
 
 func (a *desktop) taskSnapshot() []taskRecord { return slices.Clone(a.history) }
 
-func isGameLog(path string) bool {
-	base := filepath.Base(path)
-	return filepath.IsAbs(path) && filepath.Base(filepath.Dir(path)) == "launcher-logs" &&
-		strings.HasPrefix(base, "game-") && filepath.Ext(base) == ".log"
-}
-
-func readGameLog(path string) (string, error) {
-	if !isGameLog(path) {
-		return "", errors.New("无效的游戏日志路径")
-	}
-	f, err := os.Open(path)
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-	st, err := f.Stat()
-	if err != nil {
-		return "", err
-	}
-	if !st.Mode().IsRegular() {
-		return "", errors.New("日志不是普通文件")
-	}
-	offset := max(st.Size()-logTailLimit, 0)
-	if _, err := f.Seek(offset, io.SeekStart); err != nil {
-		return "", err
-	}
-	b, err := io.ReadAll(io.LimitReader(f, logTailLimit))
-	if err != nil {
-		return "", err
-	}
-	if offset != 0 {
-		if _, tail, ok := strings.Cut(string(b), "\n"); ok {
-			b = []byte(tail)
-		}
-	}
-	log := strings.ToValidUTF8(string(b), "\uFFFD")
-	if log == "" {
-		return "日志暂时为空。", nil
-	}
-	if offset != 0 {
-		return "仅显示日志末尾 64 KiB。\n\n" + log, nil
-	}
-	return log, nil
-}
-
 func (a *desktop) showLog(path string) {
-	if !isGameLog(path) {
+	if !launcherlog.IsGame(path) {
 		return
 	}
 	a.logRequest++
 	request := a.logRequest
 	a.logPath, a.logText, a.logOpen = path, "正在读取游戏日志…", true
 	go func() {
-		log, err := readGameLog(path)
+		log, err := launcherlog.ReadGame(path)
 		a.post(func() {
 			if a.logRequest != request {
 				return
@@ -210,7 +164,7 @@ func (a *desktop) showLog(path string) {
 }
 
 func (a *desktop) openLog(path string) {
-	if isGameLog(path) {
+	if launcherlog.IsGame(path) {
 		a.openPath(path, false)
 	}
 }

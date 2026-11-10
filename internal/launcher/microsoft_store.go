@@ -7,6 +7,10 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+
+	"github.com/CAUCraft/LXMCL/internal/i18n"
+	"github.com/CAUCraft/LXMCL/internal/instance"
+	"github.com/CAUCraft/LXMCL/internal/storage"
 )
 
 const microsoftVault = "microsoft-account.dat"
@@ -36,17 +40,17 @@ func (s Store) LoadMicrosoftAccount() (MicrosoftAccount, error) {
 		return MicrosoftAccount{}, err
 	}
 	if len(encrypted) == 0 || len(encrypted) > maxVaultSize {
-		return MicrosoftAccount{}, errors.New("Microsoft 凭据文件无效")
+		return MicrosoftAccount{}, i18n.Error("microsoft.vault_invalid")
 	}
 	data, err := windowsCredentials(encrypted, false)
 	if err != nil {
-		return MicrosoftAccount{}, errors.New("无法解密本机 Microsoft 凭据")
+		return MicrosoftAccount{}, i18n.Error("microsoft.vault_decrypt_failed")
 	}
 	defer clear(data)
 	var record microsoftRecord
 	if err := json.Unmarshal(data, &record); err != nil || !profileID.MatchString(record.Profile.ID) ||
-		!playerID.MatchString(record.Profile.Name) || record.Refresh == "" {
-		return MicrosoftAccount{}, errors.New("Microsoft 凭据已损坏，请重新登录")
+		!instance.ValidPlayerName(record.Profile.Name) || record.Refresh == "" {
+		return MicrosoftAccount{}, i18n.Error("microsoft.vault_corrupt")
 	}
 	return MicrosoftAccount{Profile: record.Profile, refreshToken: record.Refresh}, nil
 }
@@ -55,7 +59,7 @@ func (s Store) SaveMicrosoftAccount(account MicrosoftAccount) error {
 	if !MicrosoftCredentialsPersist() {
 		return nil
 	}
-	if account.refreshToken == "" || !profileID.MatchString(account.Profile.ID) || !playerID.MatchString(account.Profile.Name) {
+	if account.refreshToken == "" || !profileID.MatchString(account.Profile.ID) || !instance.ValidPlayerName(account.Profile.Name) {
 		return ErrMicrosoftRequired
 	}
 	plain, err := json.Marshal(microsoftRecord{Profile: account.Profile, Refresh: account.refreshToken})
@@ -65,9 +69,9 @@ func (s Store) SaveMicrosoftAccount(account MicrosoftAccount) error {
 	defer clear(plain)
 	encrypted, err := windowsCredentials(plain, true)
 	if err != nil {
-		return errors.New("无法加密本机 Microsoft 凭据")
+		return i18n.Error("microsoft.vault_encrypt_failed")
 	}
-	return writeFile(filepath.Join(s.Root, microsoftVault), encrypted)
+	return storage.WriteFile(filepath.Join(s.Root, microsoftVault), encrypted)
 }
 
 func (s Store) DeleteMicrosoftAccount() error {

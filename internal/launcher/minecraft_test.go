@@ -17,6 +17,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/CAUCraft/LXMCL/internal/storage"
 )
 
 type transportFunc func(*http.Request) (*http.Response, error)
@@ -129,7 +131,7 @@ func TestInstallRepairsSameSizeCorruption(t *testing.T) {
 	if b, err := os.ReadFile(object); err != nil || string(b) != "texture" {
 		t.Fatalf("repair did not replace corrupt asset: %q, %v", b, err)
 	}
-	if err := writeFile(filepath.Join(g.versionDir(i.Version), "verified"), []byte("1\n")); err != nil {
+	if err := storage.WriteFile(filepath.Join(g.versionDir(i.Version), "verified"), []byte("1\n")); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := g.verifyInstalled(ctx, i); err != nil {

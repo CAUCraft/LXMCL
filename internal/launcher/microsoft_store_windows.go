@@ -1,12 +1,13 @@
 package launcher
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
 	"syscall"
 	"unsafe"
+
+	"github.com/CAUCraft/LXMCL/internal/i18n"
 )
 
 type credentialBlob struct {
@@ -23,7 +24,7 @@ var (
 
 func windowsCredentials(input []byte, protect bool) ([]byte, error) {
 	if len(input) == 0 || len(input) > maxVaultSize {
-		return nil, errors.New("Microsoft 凭据大小无效")
+		return nil, i18n.Error("microsoft.vault_size_invalid")
 	}
 	in, out := credentialBlob{uint32(len(input)), &input[0]}, credentialBlob{}
 	proc := unprotectCredential
@@ -41,7 +42,7 @@ func windowsCredentials(input []byte, protect bool) ([]byte, error) {
 	}
 	defer freeCredential.Call(uintptr(unsafe.Pointer(out.data)))
 	if out.data == nil || out.size == 0 || out.size > maxVaultSize {
-		return nil, errors.New("Windows 返回了无效的凭据数据")
+		return nil, i18n.Error("credentials.windows_data_invalid")
 	}
 	data := unsafe.Slice(out.data, int(out.size))
 	result := append([]byte(nil), data...)

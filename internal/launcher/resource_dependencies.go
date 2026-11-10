@@ -3,9 +3,10 @@ package launcher
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"net/url"
 	"strings"
+
+	"github.com/CAUCraft/LXMCL/internal/i18n"
 )
 
 func (v PackVersion) RequiredDependencies() []ModDependency {
@@ -98,7 +99,7 @@ func OpenResourceDependency(ctx context.Context, dep ModDependency, target Insta
 func openResourceDependency(ctx context.Context, dep ModDependency, target Instance, filter ResourceFilter, d *downloads) (DependencyCatalog, error) {
 	var result DependencyCatalog
 	if !dep.Linkable() {
-		return result, errors.New("来源没有提供可打开的前置项目")
+		return result, i18n.Error("modrinth.dependency_link_missing")
 	}
 	projectID := dep.ProjectID
 	var pinned PackVersion
@@ -113,7 +114,7 @@ func openResourceDependency(ctx context.Context, dep ModDependency, target Insta
 		var p modrinthProjectDetails
 		err := downloadJSON(ctx, d, modrinthAPI+"project/"+id, &p)
 		if err == nil && (p.ID != id || p.Title == "" || p.kind() == "") {
-			err = errors.New("此类前置项目暂不支持在启动器中下载")
+			err = i18n.Error("modrinth.dependency_kind_unsupported")
 		}
 		return p, err
 	}
@@ -124,7 +125,7 @@ func openResourceDependency(ctx context.Context, dep ModDependency, target Insta
 	result.Project, result.Kind = p.project(), p.kind()
 	if target.ID != 0 {
 		if !result.Kind.Supports(target) {
-			return result, errors.New("当前实例不能安装这类前置资源")
+			return result, i18n.Error("modrinth.dependency_instance_unsupported")
 		}
 		filter = instanceResourceFilter(target, result.Kind)
 	} else if result.Kind != Mods {
@@ -132,7 +133,7 @@ func openResourceDependency(ctx context.Context, dep ModDependency, target Insta
 	}
 	if pinned.ID != "" {
 		if _, ok := pinned.DownloadFile(result.Kind); !ok || target.ID != 0 && !pinned.compatible(target, result.Kind) {
-			return result, errors.New("作者指定的前置版本不适用于当前实例，或没有可下载的文件")
+			return result, i18n.Error("modrinth.dependency_pinned_unavailable")
 		}
 		result.Versions = []PackVersion{pinned}
 		return result, nil

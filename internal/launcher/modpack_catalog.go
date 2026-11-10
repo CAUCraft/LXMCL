@@ -3,12 +3,14 @@ package launcher
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"net/url"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/CAUCraft/LXMCL/internal/i18n"
+	"github.com/CAUCraft/LXMCL/internal/instance"
 )
 
 type ModpackSource string
@@ -41,14 +43,14 @@ type ModpackResults struct {
 }
 
 func SearchModpacks(ctx context.Context, source ModpackSource, key, query, game string, page int) (ModpackResults, error) {
-	if len(query) > 512 || page < 0 || page >= 10000/PackPageSize || (game != "" && !modernRelease(game)) {
-		return ModpackResults{}, errors.New("整合包搜索条件无效")
+	if len(query) > 512 || page < 0 || page >= 10000/PackPageSize || (game != "" && !instance.SupportedRelease(game)) {
+		return ModpackResults{}, i18n.Error("modpack.search_invalid")
 	}
 	if source == CurseForgeModpacks {
 		return newCurseForge(key).search(ctx, query, game, page)
 	}
 	if source != ModrinthModpacks {
-		return ModpackResults{}, errors.New("未知整合包来源")
+		return ModpackResults{}, i18n.Error("modpack.source_unknown")
 	}
 	facets := [][]string{{"project_type:modpack"}}
 	if game != "" {
@@ -75,21 +77,21 @@ func SearchModpacks(ctx context.Context, source ModpackSource, key, query, game 
 }
 
 func ListModpackReleases(ctx context.Context, project ModpackProject, key, game string, page int) ([]ModpackRelease, bool, error) {
-	if page < 0 || page >= 10000/PackPageSize || (game != "" && !modernRelease(game)) {
-		return nil, false, errors.New("整合包版本查询条件无效")
+	if page < 0 || page >= 10000/PackPageSize || (game != "" && !instance.SupportedRelease(game)) {
+		return nil, false, i18n.Error("modpack.version_query_invalid")
 	}
 	if project.Source == CurseForgeModpacks {
 		releases, more, err := newCurseForge(key).releases(ctx, project.ID, game, page)
 		if project.distributionRestricted {
 			for n := range releases {
-				releases[n].Unavailable = "此整合包未开放给第三方启动器下载"
+				releases[n].Unavailable = i18n.Text("modpack.third_party_unavailable")
 				releases[n].downloadBlocked = true
 			}
 		}
 		return releases, more, err
 	}
 	if project.Source != ModrinthModpacks || !modrinthID.MatchString(project.ID) {
-		return nil, false, errors.New("整合包项目无效")
+		return nil, false, i18n.Error("modpack.project_invalid")
 	}
 	params := url.Values{"include_changelog": {"false"}}
 	if game != "" {
@@ -119,7 +121,7 @@ func ListModpackReleases(ctx context.Context, project ModpackProject, key, game 
 			source: ModrinthModpacks, asset: modpackAsset{URLs: []string{f.URL}, Size: f.Size, Algorithm: "sha512", Digest: f.Hashes.SHA512}}
 		r.Unavailable = unsupportedPackTags(r.Games, r.Loaders)
 		if r.Unavailable == "" && !r.asset.valid(maxModpackArchive) {
-			r.Unavailable = "缺少有效的整合包下载地址或校验值"
+			r.Unavailable = i18n.Text("modpack.download_metadata_missing")
 		}
 		releases = append(releases, r)
 	}
@@ -129,8 +131,8 @@ func ListModpackReleases(ctx context.Context, project ModpackProject, key, game 
 }
 
 func unsupportedPackTags(games, loaders []string) string {
-	if slices.ContainsFunc(games, releaseID.MatchString) && !slices.ContainsFunc(games, modernRelease) {
-		return "需要 Minecraft 1.20.1 或之后的正式版"
+	if slices.ContainsFunc(games, instance.IsReleaseID) && !slices.ContainsFunc(games, instance.SupportedRelease) {
+		return i18n.Text("version.modern_required")
 	}
 	if len(loaders) > 0 && !slices.ContainsFunc(loaders, func(s string) bool {
 		switch strings.ToLower(s) {
@@ -139,7 +141,7 @@ func unsupportedPackTags(games, loaders []string) string {
 		}
 		return false
 	}) {
-		return "不支持此整合包的加载器"
+		return i18n.Text("modpack.loader_unsupported")
 	}
 	return ""
 }

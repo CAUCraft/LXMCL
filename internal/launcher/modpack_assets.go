@@ -7,7 +7,6 @@ import (
 	"crypto/sha512"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"hash"
 	"io"
 	"net/http"
@@ -17,6 +16,9 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/CAUCraft/LXMCL/internal/i18n"
+	"github.com/CAUCraft/LXMCL/internal/transfer"
 )
 
 const (
@@ -69,39 +71,27 @@ var modpackHTTP = &http.Client{
 	Timeout: 5 * time.Minute,
 	CheckRedirect: func(req *http.Request, via []*http.Request) error {
 		if len(via) >= 6 || !modpackURL(req.URL) || (curseCDN(via[0].URL) && !curseCDN(req.URL)) {
-			return errors.New("整合包重定向超出允许的下载来源")
+			return i18n.Error("modpack.asset_redirect_denied")
 		}
 		return nil
 	},
 }
 
-type packReader struct {
-	ctx context.Context
-	r   io.Reader
-}
-
-func (r packReader) Read(b []byte) (int, error) {
-	if err := r.ctx.Err(); err != nil {
-		return 0, err
-	}
-	return r.r.Read(b)
-}
-
 func (a modpackAsset) copyVerified(ctx context.Context, dst io.Writer, src io.Reader) error {
 	h := a.hash()
-	n, err := io.Copy(io.MultiWriter(dst, h), io.LimitReader(packReader{ctx, src}, a.Size+1))
+	n, err := io.Copy(io.MultiWriter(dst, h), io.LimitReader(transfer.Reader(ctx, src), a.Size+1))
 	if err != nil {
 		return err
 	}
 	if n != a.Size || !strings.EqualFold(hex.EncodeToString(h.Sum(nil)), a.Digest) {
-		return errors.New("下载文件的大小或校验值不匹配")
+		return i18n.Error("modpack.asset_integrity_failed")
 	}
 	return nil
 }
 
 func (g Game) modpackAsset(ctx context.Context, a modpackAsset, client *http.Client) (string, error) {
 	if !a.valid(maxModpackFile) {
-		return "", errors.New("下载文件缺少有效的来源、大小或校验值")
+		return "", i18n.Error("modpack.asset_metadata_invalid")
 	}
 	dir := filepath.Join(g.Cache, "modpacks", a.Algorithm)
 	path := filepath.Join(dir, strings.ToLower(a.Digest))
@@ -118,7 +108,7 @@ func (g Game) modpackAsset(ctx context.Context, a modpackAsset, client *http.Cli
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return "", err
 	}
-	last := errors.New("没有可用的下载来源")
+	last := i18n.Error("modpack.asset_no_source")
 	for _, raw := range a.URLs {
 		u, err := url.Parse(raw)
 		if err != nil || !modpackURL(u) {
@@ -143,7 +133,7 @@ func (g Game) modpackAsset(ctx context.Context, a modpackAsset, client *http.Cli
 				return &responseError{status: resp.StatusCode, src: u.Hostname(), delay: retryAfter(resp.Header.Get("Retry-After"), time.Now())}
 			}
 			if resp.ContentLength >= 0 && resp.ContentLength != a.Size {
-				return errors.New("下载文件大小与清单不匹配")
+				return i18n.Error("modpack.asset_size_mismatch")
 			}
 			f, err := os.CreateTemp(dir, ".download-*")
 			if err != nil {
@@ -162,5 +152,5 @@ func (g Game) modpackAsset(ctx context.Context, a modpackAsset, client *http.Cli
 			return "", ctx.Err()
 		}
 	}
-	return "", fmt.Errorf("无法获取整合包文件：%w", last)
+	return "", i18n.Error("modpack.asset_fetch_failed", last)
 }

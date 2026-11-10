@@ -2,8 +2,6 @@ package launcher
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/CAUCraft/LXMCL/internal/i18n"
 )
 
 type Java struct {
@@ -29,7 +29,7 @@ func ProbeJava(ctx context.Context, path string) (Java, error) {
 	}
 	path, err := exec.LookPath(path)
 	if err != nil {
-		return Java{}, fmt.Errorf("找不到 Java：%w", err)
+		return Java{}, i18n.Error("java.lookup_failed", err)
 	}
 	path, err = filepath.Abs(path)
 	if err != nil {
@@ -48,11 +48,11 @@ func ProbeJava(ctx context.Context, path string) (Java, error) {
 		if ctx.Err() != nil {
 			err = ctx.Err()
 		}
-		return Java{}, fmt.Errorf("Java 检测失败：%w", err)
+		return Java{}, i18n.Error("java.probe_failed", err)
 	}
 	m := javaVersion.FindSubmatch(out)
 	if len(m) == 0 {
-		return Java{}, errors.New("无法识别 Java 版本")
+		return Java{}, i18n.Error("java.version_unknown")
 	}
 	major, err := strconv.Atoi(string(m[1]))
 	return Java{Path: path, Major: major}, err
@@ -86,7 +86,7 @@ func FindJava(ctx context.Context, preferred string, minimum int) (Java, error) 
 	if strings.TrimSpace(preferred) != "" {
 		j, err := ProbeJava(ctx, preferred)
 		if err == nil && j.Major < minimum {
-			err = fmt.Errorf("当前是 Java %d，需要 Java %d 或以上", j.Major, minimum)
+			err = i18n.Error("java.version_too_old", j.Major, minimum)
 		}
 		return j, err
 	}
@@ -124,13 +124,13 @@ func FindJava(ctx context.Context, preferred string, minimum int) (Java, error) 
 	if err := ctx.Err(); err != nil {
 		return Java{}, err
 	}
-	return Java{}, fmt.Errorf("未找到 Java %d 或以上，请在设置中指定 Java 路径", minimum)
+	return Java{}, i18n.Error("java.compatible_not_found", minimum)
 }
 
 // CheckJava resolves the same runtime as Start without downloading the game.
 // A new instance only needs the official version metadata.
 func (g Game) CheckJava(ctx context.Context, i Instance, globalPath string) (Java, int, error) {
-	if err := supported(i); err != nil {
+	if err := i.Validate(); err != nil {
 		return Java{}, 0, err
 	}
 	if err := i.Launch.Validate(); err != nil {
@@ -144,7 +144,7 @@ func (g Game) CheckJava(ctx context.Context, i Instance, globalPath string) (Jav
 	if err != nil {
 		m, _, err = g.downloadVersion(ctx, i.Version, &downloads{http: officialHTTP})
 		if err != nil {
-			return Java{}, 0, fmt.Errorf("无法读取 Java 版本要求：%w", err)
+			return Java{}, 0, i18n.Error("java.requirement_read_failed", err)
 		}
 	}
 	minimum := m.JavaVersion.MajorVersion

@@ -1,8 +1,9 @@
-package launcher
+package instance
 
 import (
-	"errors"
 	"path/filepath"
+
+	"github.com/CAUCraft/LXMCL/internal/i18n"
 )
 
 const (
@@ -31,13 +32,13 @@ func (o LaunchOptions) Validate() error {
 	case JavaInherit, JavaAuto:
 	case JavaCustom:
 		if !filepath.IsAbs(o.JavaPath) {
-			return errors.New("自选 Java 须填写可执行文件的绝对路径")
+			return i18n.Error("launch.java_path_required")
 		}
 	default:
-		return errors.New("请选择有效的 Java 模式")
+		return i18n.Error("launch.java_mode_invalid")
 	}
 	if o.Memory != 0 {
-		if err := validateMemory(o.Memory); err != nil {
+		if err := ValidateMemory(o.Memory); err != nil {
 			return err
 		}
 	}
@@ -45,10 +46,10 @@ func (o LaunchOptions) Validate() error {
 	case DisplayDefault, DisplayFullscreen:
 	case DisplayResolution:
 		if o.Width < 320 || o.Width > 8192 || o.Height < 240 || o.Height > 8192 {
-			return errors.New("窗口宽度须为 320–8192，高度须为 240–8192 像素")
+			return i18n.Error("launch.resolution_invalid")
 		}
 	default:
-		return errors.New("请选择有效的窗口模式")
+		return i18n.Error("launch.display_mode_invalid")
 	}
 	return nil
 }

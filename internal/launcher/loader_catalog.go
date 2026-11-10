@@ -3,13 +3,16 @@ package launcher
 import (
 	"context"
 	"encoding/xml"
-	"errors"
 	"io"
 	"net/http"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/CAUCraft/LXMCL/internal/i18n"
+	"github.com/CAUCraft/LXMCL/internal/instance"
+	"github.com/CAUCraft/LXMCL/internal/transfer"
 )
 
 type LoaderRelease struct {
@@ -22,8 +25,8 @@ func LoaderVersions(ctx context.Context, game, kind string) ([]LoaderRelease, er
 }
 
 func loaderVersions(ctx context.Context, game, kind string, d *downloads) ([]LoaderRelease, error) {
-	if !modernRelease(game) {
-		return nil, errors.New("请选择受支持的 Minecraft 正式版本")
+	if !instance.SupportedRelease(game) {
+		return nil, i18n.Error("version.select_supported")
 	}
 	var versions []string
 	previews := make(map[string]bool)
@@ -68,12 +71,12 @@ func loaderVersions(ctx context.Context, game, kind string, d *downloads) ([]Loa
 		}
 		query, stop := context.WithTimeout(ctx, budget)
 		err := d.fetch(query, source+"maven-metadata.xml", func(ctx context.Context, resp *http.Response) error {
-			body, err := io.ReadAll(io.LimitReader(cancelReader{ctx, resp.Body}, maxMetadata+1))
+			body, err := io.ReadAll(io.LimitReader(transfer.Reader(ctx, resp.Body), maxMetadata+1))
 			if err != nil {
 				return err
 			}
 			if len(body) > maxMetadata {
-				return errors.New("加载器目录过大")
+				return i18n.Error("loader.catalog_too_large")
 			}
 			return xml.Unmarshal(body, &doc)
 		})
@@ -99,12 +102,12 @@ func loaderVersions(ctx context.Context, game, kind string, d *downloads) ([]Loa
 			versions = append(versions, version)
 		}
 	default:
-		return nil, errors.New("不支持此加载器")
+		return nil, i18n.Error("loader.catalog_kind_unsupported")
 	}
 	var result []LoaderRelease
 	seen := make(map[string]bool)
 	for _, version := range versions {
-		_, v, err := normalizeLoader(game, kind, version)
+		_, v, err := instance.NormalizeLoader(game, kind, version)
 		if err != nil || seen[v] {
 			continue
 		}

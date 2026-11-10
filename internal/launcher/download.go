@@ -1,37 +1,32 @@
 package launcher
 
 import (
-	"bytes"
 	"context"
-	"crypto/sha1"
-	"encoding/hex"
 	"errors"
-	"fmt"
 	"io"
-	"math"
 	"net"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
 	"slices"
 	"strconv"
 	"sync"
-	"sync/atomic"
 	"time"
+
+	"github.com/CAUCraft/LXMCL/internal/i18n"
+	"github.com/CAUCraft/LXMCL/internal/transfer"
 )
 
 const (
 	maxMetadata = 8 << 20
 	// Verified metadata and small libraries may omit the expected size.
-	unknownSize = -1
+	unknownSize = transfer.UnknownSize
 )
 
 var officialHTTP = &http.Client{
 	Timeout: 2 * time.Minute,
 	CheckRedirect: func(req *http.Request, via []*http.Request) error {
 		if len(via) >= 5 || !officialURL(req.URL) {
-			return errors.New("下载重定向超出官方来源")
+			return i18n.Error("download.redirect_denied")
 		}
 		return nil
 	},
@@ -63,9 +58,9 @@ type responseError struct {
 
 func (e *responseError) Error() string {
 	if e.status == http.StatusTooManyRequests {
-		return "官方下载服务繁忙（HTTP 429），请稍后重试"
+		return i18n.Text("download.rate_limited")
 	}
-	return fmt.Sprintf("下载返回 HTTP %d：%s", e.status, e.src)
+	return i18n.Text("download.http_status", e.status, e.src)
 }
 
 func retryAfter(value string, now time.Time) time.Duration {
@@ -89,7 +84,7 @@ func (d *downloads) getFrom(ctx context.Context, src string, client *http.Client
 		return nil, err
 	}
 	if !allowed(req.URL) {
-		return nil, fmt.Errorf("下载来源不受支持：%s", src)
+		return nil, i18n.Error("download.source_invalid", src)
 	}
 	req.Header.Set("User-Agent", "CAUCraft/LXMCL (https://github.com/CAUCraft/LXMCL)")
 	host := req.URL.Hostname()
@@ -150,7 +145,7 @@ func retryable(err error) bool {
 	}
 	var operation *net.OpError
 	var timeout net.Error
-	return errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, errDownloadMismatch) ||
+	return errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, transfer.ErrMismatch) ||
 		errors.As(err, &operation) || (errors.As(err, &timeout) && timeout.Timeout())
 }
 
@@ -172,154 +167,4 @@ func retry(ctx context.Context, fn func() error) error {
 		}
 	}
 	return err
-}
-
-func (a artifact) checksum() ([]byte, error) {
-	sum, err := hex.DecodeString(a.SHA)
-	if err != nil || len(sum) != sha1.Size {
-		return nil, errors.New("缺少有效 SHA-1")
-	}
-	if a.Size < unknownSize || a.Size == math.MaxInt64 {
-		return nil, errors.New("文件大小无效")
-	}
-	return sum, nil
-}
-
-type cancelReader struct {
-	ctx context.Context
-	r   io.Reader
-}
-
-func (r cancelReader) Read(p []byte) (int, error) {
-	if err := r.ctx.Err(); err != nil {
-		return 0, err
-	}
-	return r.r.Read(p)
-}
-
-func checkFile(ctx context.Context, file string, a artifact, digest []byte) (bool, error) {
-	return checkFileBound(ctx, file, a, digest, maxMetadata)
-}
-
-func checkFileBound(ctx context.Context, file string, a artifact, digest []byte, unknownLimit int64) (bool, error) {
-	if err := ctx.Err(); err != nil {
-		return false, err
-	}
-	st, err := os.Stat(file)
-	if errors.Is(err, os.ErrNotExist) {
-		return false, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	if !st.Mode().IsRegular() {
-		return false, fmt.Errorf("%s 不是普通文件", file)
-	}
-	if a.Size == unknownSize && st.Size() > unknownLimit || a.Size != unknownSize && a.Size != st.Size() {
-		return false, nil
-	}
-	f, err := os.Open(file)
-	if errors.Is(err, os.ErrNotExist) {
-		return false, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	defer f.Close()
-	h := sha1.New()
-	n, err := io.Copy(h, io.LimitReader(cancelReader{ctx, f}, st.Size()+1))
-	return err == nil && n == st.Size() && bytes.Equal(h.Sum(nil), digest), err
-}
-
-var errDownloadMismatch = errors.New("下载文件校验失败")
-
-func (d *downloads) file(ctx context.Context, file string, a artifact) error {
-	return d.fileBound(ctx, file, a, maxMetadata)
-}
-
-func (d *downloads) fileBound(ctx context.Context, file string, a artifact, unknownLimit int64) error {
-	digest, err := a.checksum()
-	if err != nil {
-		return fmt.Errorf("%s：%w", filepath.Base(file), err)
-	}
-	ok, err := checkFileBound(ctx, file, a, digest, unknownLimit)
-	if ok || err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(file), 0755); err != nil {
-		return err
-	}
-	return d.fetch(ctx, a.URL, func(ctx context.Context, resp *http.Response) error {
-		f, err := os.CreateTemp(filepath.Dir(file), ".download-*")
-		if err != nil {
-			return err
-		}
-		defer os.Remove(f.Name())
-		h := sha1.New()
-		limit := a.Size + 1
-		if a.Size == unknownSize {
-			limit = unknownLimit + 1
-		}
-		n, err := io.Copy(io.MultiWriter(f, h), io.LimitReader(cancelReader{ctx, resp.Body}, limit))
-		if err = errors.Join(err, f.Close()); err != nil {
-			return err
-		}
-		if n >= limit || (a.Size != unknownSize && n != a.Size) || !bytes.Equal(h.Sum(nil), digest) {
-			return fmt.Errorf("%s：%w", filepath.Base(file), errDownloadMismatch)
-		}
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		return os.Rename(f.Name(), file)
-	})
-}
-
-type fileDownload struct {
-	path string
-	file artifact
-}
-
-func batch[T any](ctx context.Context, files []T, work func(context.Context, T) error, progress func(int)) error {
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	var wg sync.WaitGroup
-	var next atomic.Int32
-	var first error
-	var once sync.Once
-	var progressMu sync.Mutex
-	done := 0
-	for range min(12, len(files)) {
-		wg.Go(func() {
-			for ctx.Err() == nil {
-				index := int(next.Add(1)) - 1
-				if index >= len(files) {
-					return
-				}
-				if err := work(ctx, files[index]); err != nil {
-					once.Do(func() { first = err; cancel() })
-					return
-				}
-				if progress != nil {
-					progressMu.Lock()
-					done++
-					progress(done)
-					progressMu.Unlock()
-				}
-			}
-		})
-	}
-	wg.Wait()
-	if first != nil {
-		return first
-	}
-	return ctx.Err()
-}
-
-func (d *downloads) batch(ctx context.Context, stage string, files []fileDownload, report func(Progress)) error {
-	report(Progress{Stage: stage, Total: len(files)})
-	return batch(ctx, files, func(ctx context.Context, file fileDownload) error {
-		return d.file(ctx, file.path, file.file)
-	}, func(done int) {
-		report(Progress{Stage: stage, Done: done, Total: len(files)})
-	})
 }

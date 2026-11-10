@@ -3,25 +3,24 @@ package launcher
 import (
 	"context"
 	"encoding/json"
-	"errors"
-	"fmt"
 	"io"
 	"net/url"
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/CAUCraft/LXMCL/internal/i18n"
+	"github.com/CAUCraft/LXMCL/internal/instance"
+	"github.com/CAUCraft/LXMCL/internal/storage"
+	"github.com/CAUCraft/LXMCL/internal/transfer"
 )
 
 const fabricMeta = "https://meta.fabricmc.net/v2/versions/loader/"
 const quiltMeta = "https://meta.quiltmc.org/v3/versions/loader/"
 
 var (
-	fabricVersionID = regexp.MustCompile(`^[0-9][0-9A-Za-z.+_-]{0,63}$`)
-	mavenPart       = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9.+_-]{0,127}$`)
+	mavenPart = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9.+_-]{0,127}$`)
 )
-
-func (i Instance) Vanilla() bool { return i.Loader == "" || strings.EqualFold(i.Loader, "vanilla") }
-func (i Instance) Fabric() bool  { return strings.EqualFold(i.Loader, "fabric") }
 
 func downloadJSON(ctx context.Context, d *downloads, source string, out any) error {
 	return retry(ctx, func() error {
@@ -35,15 +34,15 @@ func downloadJSON(ctx context.Context, d *downloads, source string, out any) err
 			return err
 		}
 		if len(body) > maxMetadata {
-			return errors.New("服务返回的元数据过大")
+			return i18n.Error("metadata.response_too_large")
 		}
 		return json.Unmarshal(body, out)
 	})
 }
 
 func FabricVersions(ctx context.Context, gameVersion string) ([]string, error) {
-	if !modernRelease(gameVersion) {
-		return nil, errors.New("请选择受支持的 Minecraft 正式版本")
+	if !instance.SupportedRelease(gameVersion) {
+		return nil, i18n.Error("version.select_supported")
 	}
 	var entries []struct {
 		Loader struct {
@@ -56,7 +55,7 @@ func FabricVersions(ctx context.Context, gameVersion string) ([]string, error) {
 	}
 	var stable []string
 	for _, entry := range entries {
-		if entry.Loader.Stable && fabricVersionID.MatchString(entry.Loader.Version) {
+		if entry.Loader.Stable && instance.ValidKnotVersion(entry.Loader.Version) {
 			stable = append(stable, entry.Loader.Version)
 		}
 	}
@@ -98,13 +97,13 @@ func knotName(i Instance) string {
 func (g Game) readKnot(i Instance) (knotRuntime, error) {
 	_, _, main := knotSource(i)
 	var profile knotRuntime
-	ok, err := readJSON(filepath.Join(g.knotDir(i), "verified.json"), &profile)
+	ok, err := storage.ReadJSON(filepath.Join(g.knotDir(i), "verified.json"), &profile)
 	if err != nil {
 		return profile, err
 	}
 	if !ok || profile.GameVersion != i.Version || profile.LoaderVersion != i.LoaderVersion ||
 		profile.MainClass != main || len(profile.Libraries) == 0 {
-		return profile, fmt.Errorf("%s 文件尚未校验", knotName(i))
+		return profile, i18n.Error("loader.files_unverified", knotName(i))
 	}
 	return profile, nil
 }
@@ -112,12 +111,12 @@ func (g Game) readKnot(i Instance) (knotRuntime, error) {
 func knotLibraryPath(name string) (string, error) {
 	parts := strings.Split(name, ":")
 	if len(parts) != 3 || !mavenPart.MatchString(parts[1]) || !mavenPart.MatchString(parts[2]) {
-		return "", fmt.Errorf("不支持的加载器运行库：%s", name)
+		return "", i18n.Error("loader.library_unsupported", name)
 	}
 	group := strings.Split(parts[0], ".")
 	for _, part := range group {
 		if !mavenPart.MatchString(part) {
-			return "", fmt.Errorf("无效的加载器运行库坐标：%s", name)
+			return "", i18n.Error("loader.library_coordinates_invalid", name)
 		}
 	}
 	return strings.Join(group, "/") + "/" + parts[1] + "/" + parts[2] + "/" + parts[1] + "-" + parts[2] + ".jar", nil
@@ -128,7 +127,7 @@ func (g Game) knotFiles(i Instance, libs []artifact) ([]fileDownload, []string, 
 	var classpath []string
 	for _, lib := range libs {
 		if !filepath.IsLocal(lib.Path) || strings.ContainsAny(lib.Path, ":\\") || filepath.Ext(lib.Path) != ".jar" {
-			return nil, nil, fmt.Errorf("无效的 %s 运行库路径：%s", knotName(i), lib.Path)
+			return nil, nil, i18n.Error("loader.library_path_invalid", knotName(i), lib.Path)
 		}
 		path := filepath.Join(g.knotDir(i), "libraries", filepath.FromSlash(lib.Path))
 		files = append(files, fileDownload{path, lib})
@@ -142,7 +141,7 @@ func (g Game) installKnot(ctx context.Context, i Instance, d *downloads, report 
 	if _, _, err := g.verifyKnot(ctx, i); err == nil {
 		return nil
 	}
-	report(Progress{Stage: "获取 " + loader + " 加载器"})
+	report(Progress{Stage: i18n.Text("progress.fetch_loader", loader)})
 	var remote struct {
 		ID           string
 		InheritsFrom string
@@ -160,7 +159,7 @@ func (g Game) installKnot(ctx context.Context, i Instance, d *downloads, report 
 	}
 	if remote.InheritsFrom != i.Version || remote.ID != prefix+i.LoaderVersion+"-"+i.Version ||
 		remote.MainClass != main || len(remote.Libraries) == 0 {
-		return fmt.Errorf("%s 配置不匹配当前 Minecraft 与加载器版本", loader)
+		return i18n.Error("loader.profile_mismatch", loader)
 	}
 	p := knotRuntime{GameVersion: i.Version, LoaderVersion: i.LoaderVersion, MainClass: remote.MainClass, Arguments: remote.Arguments}
 	var checksums []int
@@ -171,7 +170,7 @@ func (g Game) installKnot(ctx context.Context, i Instance, d *downloads, report 
 		}
 		if lib.URL != fabricMaven && lib.URL != "https://libraries.minecraft.net/" &&
 			!(i.Quilt() && lib.URL == "https://maven.quiltmc.org/repository/release/") {
-			return fmt.Errorf("%s 运行库来源不受支持：%s", loader, lib.URL)
+			return i18n.Error("loader.library_source_invalid", loader, lib.URL)
 		}
 		a := artifact{Path: path, URL: lib.URL + path, SHA: lib.SHA1, Size: lib.Size}
 		if a.Size == 0 {
@@ -179,19 +178,19 @@ func (g Game) installKnot(ctx context.Context, i Instance, d *downloads, report 
 		}
 		if a.SHA == "" {
 			checksums = append(checksums, len(p.Libraries))
-		} else if _, err := a.checksum(); err != nil {
+		} else if _, err := a.Checksum(); err != nil {
 			return err
 		}
 		p.Libraries = append(p.Libraries, a)
 	}
-	if err := batch(ctx, checksums, func(ctx context.Context, index int) error {
+	if err := transfer.Batch(ctx, checksums, func(ctx context.Context, index int) error {
 		lib := &p.Libraries[index]
 		sha, err := d.fetchSHA1(ctx, lib.URL)
 		if err != nil {
-			return fmt.Errorf("无法获取 %s 运行库的校验值：%w", filepath.Base(lib.Path), err)
+			return i18n.Error("loader.library_checksum_failed", filepath.Base(lib.Path), err)
 		}
 		lib.SHA = sha
-		_, err = lib.checksum()
+		_, err = lib.Checksum()
 		return err
 	}, nil); err != nil {
 		return err
@@ -200,14 +199,14 @@ func (g Game) installKnot(ctx context.Context, i Instance, d *downloads, report 
 	if err != nil {
 		return err
 	}
-	if err := d.batch(ctx, "下载并校验 "+loader, files, report); err != nil {
+	if err := d.batch(ctx, i18n.Text("progress.download_and_verify", loader), files, report); err != nil {
 		return err
 	}
 	data, err := json.Marshal(p)
 	if err != nil {
 		return err
 	}
-	return writeFile(filepath.Join(g.knotDir(i), "verified.json"), data)
+	return storage.WriteFile(filepath.Join(g.knotDir(i), "verified.json"), data)
 }
 
 func (g Game) verifyKnot(ctx context.Context, i Instance) (knotRuntime, []string, error) {
@@ -217,7 +216,7 @@ func (g Game) verifyKnot(ctx context.Context, i Instance) (knotRuntime, []string
 	}
 	files, cp, err := g.knotFiles(i, p.Libraries)
 	if err == nil {
-		err = batch(ctx, files, func(ctx context.Context, f fileDownload) error { return verifyArtifact(ctx, f) }, nil)
+		err = transfer.Batch(ctx, files, func(ctx context.Context, f fileDownload) error { return verifyArtifact(ctx, f) }, nil)
 	}
 	return p, cp, err
 }

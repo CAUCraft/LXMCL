@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"image"
 	"image/png"
 	"io"
@@ -16,6 +15,8 @@ import (
 	"os"
 	"regexp"
 	"strings"
+
+	"github.com/CAUCraft/LXMCL/internal/i18n"
 )
 
 const (
@@ -58,7 +59,7 @@ func (c authClient) appearance(ctx context.Context, s MinecraftSession) (Appeara
 		return result, err
 	}
 	if !strings.EqualFold(profile.ID, s.Profile.ID) {
-		return result, errors.New("Minecraft 返回了不同的 Java 版档案")
+		return result, i18n.Error("appearance.profile_mismatch")
 	}
 	for _, skin := range profile.Skins {
 		if skin.State == "ACTIVE" {
@@ -80,14 +81,14 @@ func (s MinecraftSession) UploadSkin(ctx context.Context, data []byte, variant s
 
 func (c authClient) uploadSkin(ctx context.Context, s MinecraftSession, data []byte, variant string) error {
 	if variant != "classic" && variant != "slim" {
-		return errors.New("请选择有效的皮肤模型")
+		return i18n.Error("appearance.skin_model_invalid")
 	}
 	img, err := decodeTexture(data, true)
 	if err != nil {
 		return err
 	}
 	if variant == "slim" && img.Bounds().Dy() == 32 {
-		return errors.New("64 × 32 皮肤只支持经典模型")
+		return i18n.Error("appearance.skin_model_classic_only")
 	}
 	var body bytes.Buffer
 	form := multipart.NewWriter(&body)
@@ -120,7 +121,7 @@ func (c authClient) setCape(ctx context.Context, s MinecraftSession, id string) 
 		return c.appearanceRequest(ctx, s, endpoint, http.MethodDelete, "", nil, nil)
 	}
 	if !capeID.MatchString(id) {
-		return errors.New("披风标识无效")
+		return i18n.Error("appearance.cape_id_invalid")
 	}
 	body, _ := json.Marshal(map[string]string{"capeId": id})
 	return c.appearanceRequest(ctx, s, endpoint, http.MethodPut, "application/json", bytes.NewReader(body), nil)
@@ -130,7 +131,7 @@ func (c authClient) appearanceRequest(ctx context.Context, s MinecraftSession, p
 	if !s.ValidFor(s.Profile.ID) {
 		return ErrMicrosoftRequired
 	}
-	err := c.request(ctx, "Minecraft 外观", profileEndpoint+path, method, contentType, body, s.accessToken, out)
+	err := c.request(ctx, i18n.Text("appearance.service"), profileEndpoint+path, method, contentType, body, s.accessToken, out)
 	var failure *authResponseError
 	if errors.As(err, &failure) && failure.status == http.StatusUnauthorized {
 		return ErrMicrosoftRequired
@@ -149,7 +150,7 @@ func (c authClient) texture(ctx context.Context, raw string, skin bool) (image.I
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") ||
 		u.Host != "textures.minecraft.net" || u.User != nil || u.RawQuery != "" ||
 		u.Fragment != "" || !strings.HasPrefix(u.Path, "/texture/") {
-		return nil, errors.New("Minecraft 返回了无效的贴图地址")
+		return nil, i18n.Error("appearance.texture_url_invalid")
 	}
 	u.Scheme = "https"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
@@ -162,7 +163,7 @@ func (c authClient) texture(ctx context.Context, raw string, skin bool) (image.I
 	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("Minecraft 贴图返回 HTTP %d", res.StatusCode)
+		return nil, i18n.Error("appearance.texture_http_status", res.StatusCode)
 	}
 	data, err := io.ReadAll(io.LimitReader(res.Body, maxTextureBytes+1))
 	if err != nil {
@@ -190,21 +191,21 @@ func ReadSkinFile(path string) ([]byte, image.Image, error) {
 
 func decodeTexture(data []byte, skin bool) (image.Image, error) {
 	if len(data) > maxTextureBytes {
-		return nil, errors.New("PNG 贴图超过 1 MiB")
+		return nil, i18n.Error("appearance.png_too_large")
 	}
 	cfg, err := png.DecodeConfig(bytes.NewReader(data))
 	if err != nil {
-		return nil, errors.New("请选择有效的 PNG 贴图")
+		return nil, i18n.Error("appearance.png_invalid")
 	}
 	if skin && (cfg.Width != 64 || (cfg.Height != 64 && cfg.Height != 32)) {
-		return nil, errors.New("皮肤须为 64 × 64 或 64 × 32 像素的 PNG")
+		return nil, i18n.Error("appearance.skin_dimensions_invalid")
 	}
 	if !skin && (cfg.Width < 22 || cfg.Height < 17 || cfg.Width > 1024 || cfg.Height > 1024) {
-		return nil, errors.New("Minecraft 返回了不支持的披风贴图尺寸")
+		return nil, i18n.Error("appearance.cape_dimensions_invalid")
 	}
 	img, err := png.Decode(bytes.NewReader(data))
 	if err != nil {
-		return nil, errors.New("PNG 贴图不完整")
+		return nil, i18n.Error("appearance.png_incomplete")
 	}
 	return img, nil
 }

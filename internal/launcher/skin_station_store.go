@@ -1,10 +1,17 @@
 package launcher
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
 	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/CAUCraft/LXMCL/internal/i18n"
+	"github.com/CAUCraft/LXMCL/internal/storage"
 )
 
 type stationRecord struct {
@@ -71,12 +78,12 @@ func (s Store) SaveStationSession(session StationSession) error {
 	defer clear(data)
 	encrypted, err := windowsCredentials(data, true)
 	if err != nil {
-		return errors.New("无法加密皮肤站凭据")
+		return i18n.Error("station.vault_encrypt_failed")
 	}
 	if len(encrypted) > maxVaultSize {
-		return errors.New("皮肤站凭据过大")
+		return i18n.Error("station.vault_too_large")
 	}
-	return writeFile(path, encrypted)
+	return storage.WriteFile(path, encrypted)
 }
 
 func (s Store) DeleteStationSession(key string) error {
@@ -94,34 +101,9 @@ func (s Store) DeleteStationSession(key string) error {
 	return err
 }
 
-func (s State) Station(key string) (StationProfile, bool) {
-	for _, p := range s.StationProfiles {
-		if p.Key == key {
-			return p, true
-		}
+func stationVaultPath(root, key string) (string, error) {
+	if b, err := hex.DecodeString(key); err != nil || len(b) != sha256.Size {
+		return "", ErrSkinStationLogin
 	}
-	return StationProfile{}, false
-}
-
-func (s *State) UseStation(p StationProfile) {
-	s.MicrosoftProfile, s.StationKey = "", p.Key
-	for i, existing := range s.StationProfiles {
-		if existing.Key == p.Key {
-			s.StationProfiles[i] = p
-			return
-		}
-	}
-	s.StationProfiles = append(s.StationProfiles, p)
-}
-
-func (s *State) ForgetStation(key string) {
-	for i, p := range s.StationProfiles {
-		if p.Key == key {
-			s.StationProfiles = append(s.StationProfiles[:i], s.StationProfiles[i+1:]...)
-			break
-		}
-	}
-	if s.StationKey == key {
-		s.StationKey = ""
-	}
+	return filepath.Join(root, "skin-stations", strings.ToLower(key)+".dat"), nil
 }

@@ -11,6 +11,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/CAUCraft/LXMCL/internal/transfer"
 )
 
 func TestNeoForgeFallsBackWithoutAcceptingCorruptBytes(t *testing.T) {
@@ -75,7 +77,7 @@ func TestNeoForgeMirrorsCannotSupplyUntrustedChecksumOrPublishBadFile(t *testing
 	}
 	dir := t.TempDir()
 	a := artifact{URL: src, SHA: fmt.Sprintf("%x", sha1.Sum([]byte("correct"))), Size: 7}
-	if err := d.file(t.Context(), filepath.Join(dir, "installer.jar"), a); !errors.Is(err, errDownloadMismatch) {
+	if err := d.file(t.Context(), filepath.Join(dir, "installer.jar"), a); !errors.Is(err, transfer.ErrMismatch) {
 		t.Fatalf("expected a checksum failure: %v", err)
 	}
 	if entries, err := os.ReadDir(dir); err != nil || len(entries) != 0 {

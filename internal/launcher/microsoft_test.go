@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/CAUCraft/LXMCL/internal/i18n"
 )
 
 func TestMicrosoftDeviceLoginAndIdentity(t *testing.T) {
@@ -112,7 +114,7 @@ func TestMicrosoftDeviceLoginAndIdentity(t *testing.T) {
 		t.Fatal("refresh accepted a different Minecraft identity")
 	}
 	owned = false
-	if _, _, err := client.refresh(t.Context(), account); err == nil || !strings.Contains(err.Error(), "权益") ||
+	if _, _, err := client.refresh(t.Context(), account); err == nil || !strings.Contains(err.Error(), i18n.Text("microsoft.minecraft_license_missing")) ||
 		stages[len(stages)-1] != "/entitlements/mcstore" {
 		t.Fatalf("account without game ownership was accepted: %v", err)
 	}

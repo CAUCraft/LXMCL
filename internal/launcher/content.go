@@ -11,6 +11,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/CAUCraft/LXMCL/internal/i18n"
+	"github.com/CAUCraft/LXMCL/internal/transfer"
 )
 
 type ContentKind string
@@ -53,12 +56,12 @@ func (k ContentKind) format(i Instance) (ext string, markers []string, err error
 			return ".zip", []string{"shaders/"}, nil
 		}
 	}
-	return "", nil, errors.New("此实例不支持该资源类型")
+	return "", nil, i18n.Error("resource.kind_unsupported")
 }
 
 func (k ContentKind) Supports(i Instance) bool {
 	_, _, err := k.format(i)
-	return err == nil && supported(i) == nil
+	return err == nil && i.Validate() == nil
 }
 
 func contentDirectory(i Instance, kind ContentKind, create bool) (*os.Root, error) {
@@ -66,7 +69,7 @@ func contentDirectory(i Instance, kind ContentKind, create bool) (*os.Root, erro
 		return nil, err
 	}
 	if !filepath.IsAbs(i.GameDir) {
-		return nil, errors.New("实例需要绝对游戏目录")
+		return nil, i18n.Error("instance.game_dir_required")
 	}
 	if create {
 		if err := os.MkdirAll(i.GameDir, 0755); err != nil {
@@ -129,7 +132,7 @@ func SetContentEnabled(i Instance, kind ContentKind, name string, enabled bool) 
 		return err
 	}
 	if !contentName(name, ext) {
-		return errors.New("资源文件名无效")
+		return i18n.Error("resource.filename_invalid")
 	}
 	root, err := contentDirectory(i, kind, false)
 	if err != nil {
@@ -145,13 +148,13 @@ func SetContentEnabled(i Instance, kind ContentKind, name string, enabled bool) 
 		return err
 	}
 	if !info.Mode().IsRegular() {
-		return errors.New("资源不是普通文件")
+		return i18n.Error("resource.not_regular")
 	}
 	if _, err := root.Lstat(to); !errors.Is(err, fs.ErrNotExist) {
 		if err != nil {
 			return err
 		}
-		return errors.New("已有同名资源，请先整理目录")
+		return i18n.Error("resource.name_conflict")
 	}
 	return root.Rename(from, to)
 }
@@ -167,7 +170,7 @@ func ImportContent(ctx context.Context, i Instance, kind ContentKind, source str
 		return err
 	}
 	if !info.Mode().IsRegular() {
-		return errors.New("请选择普通资源文件")
+		return i18n.Error("resource.regular_file_required")
 	}
 	return writeContent(ctx, i, kind, filepath.Base(source), f, info.Size(), nil, "")
 }
@@ -178,7 +181,7 @@ func writeContent(ctx context.Context, i Instance, kind ContentKind, name string
 		return err
 	}
 	if !contentName(name, ext) || size <= 0 || size > maxContentSize {
-		return errors.New("资源文件名或大小不受支持")
+		return i18n.Error("resource.filename_or_size_invalid")
 	}
 	root, err := contentDirectory(i, kind, true)
 	if err != nil {
@@ -189,7 +192,7 @@ func writeContent(ctx context.Context, i Instance, kind ContentKind, name string
 		if err != nil {
 			return err
 		}
-		return errors.New("已有同名停用资源")
+		return i18n.Error("resource.disabled_conflict")
 	}
 	f, err := root.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0644)
 	if err != nil {
@@ -205,16 +208,16 @@ func writeContent(ctx context.Context, i Instance, kind ContentKind, name string
 	if digest != nil {
 		out = io.MultiWriter(f, digest)
 	}
-	n, err := io.Copy(out, io.LimitReader(cancelReader{ctx: ctx, r: in}, size+1))
+	n, err := io.Copy(out, io.LimitReader(transfer.Reader(ctx, in), size+1))
 	if err != nil {
 		return err
 	}
 	if n != size || digest != nil && !strings.EqualFold(fmt.Sprintf("%x", digest.Sum(nil)), expected) {
-		return errors.New("资源文件大小或哈希校验失败")
+		return i18n.Error("resource.checksum_failed")
 	}
 	z, err := zip.NewReader(f, n)
 	if err != nil {
-		return fmt.Errorf("资源不是有效的 ZIP/JAR：%w", err)
+		return i18n.Error("resource.archive_invalid", err)
 	}
 	for _, entry := range z.File {
 		if !entry.FileInfo().IsDir() {
@@ -225,5 +228,5 @@ func writeContent(ctx context.Context, i Instance, kind ContentKind, name string
 			}
 		}
 	}
-	return fmt.Errorf("资源文件缺少 %s", strings.Join(markers, " 或 "))
+	return i18n.Error("resource.archive_missing_marker", strings.Join(markers, i18n.Text("common.or_separator")))
 }

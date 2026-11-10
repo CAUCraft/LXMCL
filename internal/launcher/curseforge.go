@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -14,6 +12,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/CAUCraft/LXMCL/internal/i18n"
+	"github.com/CAUCraft/LXMCL/internal/storage"
 )
 
 const (
@@ -62,7 +63,7 @@ type cursePage[T any] struct {
 
 func (cf curseForge) call(ctx context.Context, endpoint string, payload any, dst any) error {
 	if cf.key == "" {
-		return errors.New("请先设置 CurseForge API Key")
+		return i18n.Error("curseforge.api_key_required")
 	}
 	var body []byte
 	method := http.MethodGet
@@ -87,17 +88,17 @@ func (cf curseForge) call(ctx context.Context, endpoint string, payload any, dst
 		defer resp.Body.Close()
 		switch resp.StatusCode {
 		case http.StatusUnauthorized, http.StatusForbidden:
-			return errors.New("CurseForge 拒绝了请求，请检查 API Key 和访问权限")
+			return i18n.Error("curseforge.access_denied")
 		case http.StatusOK:
 			b, err := io.ReadAll(io.LimitReader(resp.Body, maxMetadata+1))
 			if err != nil {
 				return err
 			}
 			if len(b) > maxMetadata {
-				return errors.New("CurseForge 响应超出大小限制")
+				return i18n.Error("curseforge.response_too_large")
 			}
 			if err := json.Unmarshal(b, dst); err != nil {
-				return fmt.Errorf("无法读取 CurseForge 响应：%w", err)
+				return i18n.Error("curseforge.read_failed", err)
 			}
 			return nil
 		default:
@@ -175,7 +176,7 @@ func (f curseFile) asset() modpackAsset {
 func (cf curseForge) releases(ctx context.Context, id, game string, page int) ([]ModpackRelease, bool, error) {
 	projectID, err := strconv.Atoi(id)
 	if err != nil || projectID <= 0 {
-		return nil, false, errors.New("CurseForge 项目编号无效")
+		return nil, false, i18n.Error("curseforge.project_id_invalid")
 	}
 	var data cursePage[curseFile]
 	if err := cf.call(ctx, "mods/"+strconv.Itoa(projectID)+"/files?"+curseParams(game, page).Encode(), nil, &data); err != nil {
@@ -202,9 +203,9 @@ func (cf curseForge) releases(ctx context.Context, id, game string, page int) ([
 		if r.Unavailable == "" {
 			switch {
 			case r.downloadBlocked:
-				r.Unavailable = "此文件未开放给第三方启动器下载"
+				r.Unavailable = i18n.Text("curseforge.file_unavailable")
 			case !r.asset.valid(maxModpackArchive):
-				r.Unavailable = "缺少有效的整合包下载地址或校验值"
+				r.Unavailable = i18n.Text("modpack.download_metadata_missing")
 			}
 		}
 		releases = append(releases, r)
@@ -222,7 +223,7 @@ func (cf curseForge) resolve(ctx context.Context, refs []curseReference) ([]modp
 	projects, files := make(map[int]curseProject), make(map[int]curseFile)
 	for _, ref := range refs {
 		if ref.ProjectID <= 0 || ref.FileID <= 0 {
-			return nil, errors.New("CurseForge 清单包含无效的项目或文件编号")
+			return nil, i18n.Error("curseforge.manifest_reference_invalid")
 		}
 		projectIDs = append(projectIDs, ref.ProjectID)
 		fileIDs = append(fileIDs, ref.FileID)
@@ -250,16 +251,16 @@ func (cf curseForge) resolve(ctx context.Context, refs []curseReference) ([]modp
 		p, f := projects[ref.ProjectID], files[ref.FileID]
 		name := p.Name
 		if name == "" {
-			name = fmt.Sprintf("项目 %d", ref.ProjectID)
+			name = i18n.Text("curseforge.project_label", ref.ProjectID)
 		}
 		if p.GameID != curseGameID || f.GameID != curseGameID || f.ModID != ref.ProjectID || !p.IsAvailable || !f.IsAvailable ||
 			f.IsEarlyAccessContent || f.IsServerPack || f.DownloadURL == "" || (p.AllowModDistribution != nil && !*p.AllowModDistribution) {
-			return nil, fmt.Errorf("CurseForge 依赖「%s」（文件 %d）未开放第三方下载", name, ref.FileID)
+			return nil, i18n.Error("curseforge.dependency_unavailable", name, ref.FileID)
 		}
 		dir := map[int]string{6: "mods", 12: "resourcepacks", 6552: "shaderpacks"}[p.ClassID]
 		a := f.asset()
-		if dir == "" || !safeModpackPath(f.FileName) || strings.Contains(f.FileName, "/") || !a.valid(maxModpackFile) {
-			return nil, fmt.Errorf("CurseForge 依赖「%s」（文件 %d）的类型、文件名或校验信息不受支持", name, ref.FileID)
+		if dir == "" || !storage.ValidPortablePath(f.FileName) || strings.Contains(f.FileName, "/") || !a.valid(maxModpackFile) {
+			return nil, i18n.Error("curseforge.dependency_invalid", name, ref.FileID)
 		}
 		result = append(result, modpackDownload{path.Join(dir, f.FileName), a})
 	}

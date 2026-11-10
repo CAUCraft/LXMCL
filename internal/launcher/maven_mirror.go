@@ -3,13 +3,15 @@ package launcher
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net"
 	"net/http"
 	"net/url"
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/CAUCraft/LXMCL/internal/i18n"
+	"github.com/CAUCraft/LXMCL/internal/storage"
 )
 
 const (
@@ -33,7 +35,7 @@ func neoMavenPath(src string) (string, bool) {
 	if !ok {
 		path, ok = strings.CutPrefix(src, neoCDN)
 	}
-	return path, ok && safeModpackPath(path) && !strings.ContainsAny(path, "%?#")
+	return path, ok && storage.ValidPortablePath(path) && !strings.ContainsAny(path, "%?#")
 }
 
 func mavenRouteURL(u *url.URL, path, origin string, neo bool) bool {
@@ -66,7 +68,7 @@ func (d *downloads) fetch(ctx context.Context, src string, consume func(context.
 		for _, base := range []string{fabricMaven, forgeMaven} {
 			name, ok := strings.CutPrefix(src, base)
 			artifactPath := strings.TrimSuffix(name, ".sha1")
-			if ok && safeModpackPath(name) && !strings.ContainsAny(name, "%?#") &&
+			if ok && storage.ValidPortablePath(name) && !strings.ContainsAny(name, "%?#") &&
 				(strings.HasSuffix(artifactPath, ".jar") || strings.HasSuffix(artifactPath, ".zip")) {
 				path, origin = name, base
 				break
@@ -96,7 +98,7 @@ func (d *downloads) fetch(ctx context.Context, src string, consume func(context.
 	}
 	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 		if len(via) >= 5 || !allowed(req.URL) {
-			return errors.New("Maven 下载重定向超出允许的镜像")
+			return i18n.Error("maven.redirect_denied")
 		}
 		return nil
 	}
@@ -159,23 +161,23 @@ func (d *downloads) fetch(ctx context.Context, src string, consume func(context.
 			d.mavenOriginDown[origin] = true
 			d.mu.Unlock()
 		}
-		failures = append(failures, fmt.Errorf("%s：%w", strings.TrimSuffix(base, "/"), err))
+		failures = append(failures, i18n.Error("common.context_error", strings.TrimSuffix(base, "/"), err))
 		// Try the next trusted checksum source before retrying a temporary failure.
 		if checksum && index < firstPass && retryable(err) {
 			routes = append(routes, base)
 		}
 	}
 	if checksum {
-		return fmt.Errorf("无法从可信来源读取 Maven 校验值：%w", errors.Join(failures...))
+		return i18n.Error("maven.checksum_unavailable", errors.Join(failures...))
 	}
-	return fmt.Errorf("Maven 仓库和镜像均未提供可校验的文件：%w", errors.Join(failures...))
+	return i18n.Error("maven.artifact_unavailable", errors.Join(failures...))
 }
 
 func (d *downloads) mirrorStage(stage string) string {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if d.mavenMirrorUsed {
-		return stage + " · 镜像"
+		return i18n.Text("progress.with_mirror", stage)
 	}
 	return stage
 }

@@ -3,18 +3,14 @@ package launcher
 import (
 	"bytes"
 	"context"
-	"errors"
+	"golang.org/x/image/draw"
 	"image"
-	_ "image/gif"
-	_ "image/jpeg"
-	_ "image/png"
 	"io"
 	"net/http"
 	"net/url"
 	"time"
 
-	"golang.org/x/image/draw"
-	_ "golang.org/x/image/webp"
+	"github.com/CAUCraft/LXMCL/internal/i18n"
 )
 
 func catalogIconURL(u *url.URL) bool {
@@ -26,7 +22,7 @@ var catalogIconHTTP = &http.Client{
 	Timeout: 8 * time.Second,
 	CheckRedirect: func(req *http.Request, via []*http.Request) error {
 		if len(via) >= 4 || !catalogIconURL(req.URL) {
-			return errors.New("图标重定向到不支持的来源")
+			return i18n.Error("icon.redirect_denied")
 		}
 		return nil
 	},
@@ -39,7 +35,7 @@ func LoadCatalogIcon(ctx context.Context, raw string) (image.Image, error) {
 func loadCatalogIcon(ctx context.Context, raw string, client *http.Client) (image.Image, error) {
 	u, err := url.Parse(raw)
 	if err != nil || !catalogIconURL(u) {
-		return nil, errors.New("不支持的项目图标来源")
+		return nil, i18n.Error("icon.source_invalid")
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, raw, nil)
 	if err != nil {
@@ -53,15 +49,15 @@ func loadCatalogIcon(ctx context.Context, raw string, client *http.Client) (imag
 	defer res.Body.Close()
 	const limit = 2 << 20
 	if res.StatusCode != http.StatusOK || res.ContentLength > limit {
-		return nil, errors.New("项目图标不可用")
+		return nil, i18n.Error("icon.unavailable")
 	}
 	data, err := io.ReadAll(io.LimitReader(res.Body, limit+1))
 	if err != nil || len(data) > limit {
-		return nil, errors.New("无法读取项目图标")
+		return nil, i18n.Error("icon.read_failed")
 	}
 	config, _, err := image.DecodeConfig(bytes.NewReader(data))
 	if err != nil || config.Width <= 0 || config.Height <= 0 || config.Width > 2048 || config.Height > 2048 {
-		return nil, errors.New("项目图标格式或尺寸不受支持")
+		return nil, i18n.Error("icon.format_invalid")
 	}
 	src, _, err := image.Decode(bytes.NewReader(data))
 	if err != nil {

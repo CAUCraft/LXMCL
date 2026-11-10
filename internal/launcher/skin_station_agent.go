@@ -12,6 +12,9 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/CAUCraft/LXMCL/internal/i18n"
+	"github.com/CAUCraft/LXMCL/internal/storage"
 )
 
 // Pinned to the official v1.2.8 release asset, not the provider's download.
@@ -27,7 +30,7 @@ var agentHTTP = &http.Client{
 	CheckRedirect: func(req *http.Request, via []*http.Request) error {
 		if len(via) >= 4 || req.URL.Scheme != "https" || req.URL.User != nil || req.URL.Port() != "" ||
 			(req.URL.Hostname() != "release-assets.githubusercontent.com" && req.URL.Hostname() != "objects.githubusercontent.com") {
-			return errors.New("authlib-injector 下载重定向超出官方发布来源")
+			return i18n.Error("station.agent_redirect_denied")
 		}
 		return nil
 	},
@@ -43,7 +46,7 @@ func stationAgent(ctx context.Context, cache string, client *http.Client) (strin
 		return "", err
 	}
 	if strings.ContainsRune(path, '=') {
-		return "", errors.New("皮肤站启动需要缓存目录路径不包含等号")
+		return "", i18n.Error("station.agent_cache_path_invalid")
 	}
 	if file, err := os.Open(path); err == nil {
 		data, readErr := io.ReadAll(io.LimitReader(file, stationAgentSize+1))
@@ -60,20 +63,20 @@ func stationAgent(ctx context.Context, cache string, client *http.Client) (strin
 	}
 	res, err := client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("无法下载 authlib-injector：%w", err)
+		return "", i18n.Error("station.agent_download_failed", err)
 	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("authlib-injector 下载返回 HTTP %d", res.StatusCode)
+		return "", i18n.Error("station.agent_http_status", res.StatusCode)
 	}
 	data, err := io.ReadAll(io.LimitReader(res.Body, stationAgentSize+1))
 	if err != nil {
 		return "", err
 	}
 	if !verifiedAgent(data) {
-		return "", errors.New("authlib-injector 下载未通过 SHA-256 校验")
+		return "", i18n.Error("station.agent_checksum_failed")
 	}
-	return path, writeFile(path, data)
+	return path, storage.WriteFile(path, data)
 }
 
 func (s StationSession) launchArgs(ctx context.Context, cache string) ([]string, error) {
