@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
@@ -114,19 +115,17 @@ func validateForgeProfile(i Instance, p forgeProfile) error {
 
 func (d *downloads) fetchSHA1(ctx context.Context, source string) (string, error) {
 	var sha string
-	err := retry(ctx, func() error {
-		resp, err := d.get(ctx, source+".sha1")
+	err := d.fetch(ctx, source+".sha1", func(ctx context.Context, resp *http.Response) error {
+		data, err := io.ReadAll(io.LimitReader(cancelReader{ctx, resp.Body}, 128))
 		if err != nil {
 			return err
 		}
-		defer resp.Body.Close()
-		data, err := io.ReadAll(io.LimitReader(resp.Body, 128))
-		if err != nil {
+		s := strings.ToLower(strings.TrimSpace(string(data)))
+		if _, err := (artifact{SHA: s, Size: unknownSize}).checksum(); err != nil {
 			return err
 		}
-		sha = strings.TrimSpace(string(data))
-		_, err = (artifact{SHA: sha, Size: unknownSize}).checksum()
-		return err
+		sha = s
+		return nil
 	})
 	return sha, err
 }
@@ -284,7 +283,8 @@ func (g Game) prefetchForgeLibraries(ctx context.Context, d *downloads, game str
 			continue // embedded in the installer or produced by a client processor
 		}
 		u, err := url.Parse(a.URL)
-		if err != nil || !officialURL(u) || !safeModpackPath(a.Path) || a.Size < 0 || a.Size > maxModpackFile {
+		_, neoAsset := neoMavenPath(a.URL)
+		if err != nil || (!officialURL(u) && !neoAsset) || !safeModpackPath(a.Path) || a.Size < 0 || a.Size > maxModpackFile {
 			return fmt.Errorf("无效的加载器运行库：%s", lib.Name)
 		}
 		if a.Size == 0 {
@@ -300,7 +300,7 @@ func (g Game) prefetchForgeLibraries(ctx context.Context, d *downloads, game str
 		files = append(files, fileDownload{filepath.Join(game, "libraries", filepath.FromSlash(a.Path)), a})
 	}
 	const stage = "下载并校验加载器运行库"
-	report(Progress{Stage: stage, Total: len(files)})
+	report(Progress{Stage: d.mirrorStage(stage), Total: len(files)})
 	return batch(ctx, files, func(ctx context.Context, f fileDownload) error {
 		sum, err := f.file.checksum()
 		if err != nil {
@@ -319,7 +319,7 @@ func (g Game) prefetchForgeLibraries(ctx context.Context, d *downloads, game str
 			return err
 		}
 		return copyForgeFile(ctx, f.path, cache)
-	}, func(done int) { report(Progress{Stage: stage, Done: done, Total: len(files)}) })
+	}, func(done int) { report(Progress{Stage: d.mirrorStage(stage), Done: done, Total: len(files)}) })
 }
 
 func copyForgeFile(ctx context.Context, dest, source string) error {

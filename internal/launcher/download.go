@@ -38,9 +38,11 @@ var officialHTTP = &http.Client{
 }
 
 type downloads struct {
-	http     *http.Client
-	mu       sync.Mutex
-	cooldown map[string]time.Time
+	http          *http.Client
+	mu            sync.Mutex
+	cooldown      map[string]time.Time
+	neoOriginDown bool
+	neoMirrorUsed bool
 }
 
 func officialURL(u *url.URL) bool {
@@ -77,11 +79,15 @@ func retryAfter(value string, now time.Time) time.Duration {
 }
 
 func (d *downloads) get(ctx context.Context, src string) (*http.Response, error) {
+	return d.getFrom(ctx, src, d.http, officialURL)
+}
+
+func (d *downloads) getFrom(ctx context.Context, src string, client *http.Client, allowed func(*url.URL) bool) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, src, nil)
 	if err != nil {
 		return nil, err
 	}
-	if !officialURL(req.URL) {
+	if !allowed(req.URL) {
 		return nil, fmt.Errorf("下载来源不受支持：%s", src)
 	}
 	req.Header.Set("User-Agent", "CAUCraft/LXMCL (https://github.com/CAUCraft/LXMCL)")
@@ -97,7 +103,7 @@ func (d *downloads) get(ctx context.Context, src string) (*http.Response, error)
 			return nil, err
 		}
 	}
-	resp, err := d.http.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -242,12 +248,7 @@ func (d *downloads) fileBound(ctx context.Context, file string, a artifact, unkn
 	if err := os.MkdirAll(filepath.Dir(file), 0755); err != nil {
 		return err
 	}
-	return retry(ctx, func() error {
-		resp, err := d.get(ctx, a.URL)
-		if err != nil {
-			return err
-		}
-		defer resp.Body.Close()
+	return d.fetch(ctx, a.URL, func(ctx context.Context, resp *http.Response) error {
 		f, err := os.CreateTemp(filepath.Dir(file), ".download-*")
 		if err != nil {
 			return err
