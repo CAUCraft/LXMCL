@@ -4,7 +4,6 @@ import (
 	"archive/zip"
 	"bytes"
 	"crypto/sha512"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -32,7 +31,7 @@ func testZIP(t *testing.T, entries map[string]string) []byte {
 	return b.Bytes()
 }
 
-func TestModrinthDownloadsCompatibleRequiredDependencies(t *testing.T) {
+func TestModrinthDownloadOnlyInstallsSelectedFile(t *testing.T) {
 	for _, tc := range []struct{ loader, version, marker string }{
 		{LoaderFabric, "0.16.14", "fabric.mod.json"},
 		{LoaderForge, "52.1.21", "META-INF/mods.toml"},
@@ -41,113 +40,31 @@ func TestModrinthDownloadsCompatibleRequiredDependencies(t *testing.T) {
 	} {
 		t.Run(tc.loader, func(t *testing.T) {
 			i := Instance{ID: 1, Version: "1.21.1", Loader: tc.loader, LoaderVersion: tc.version, GameDir: t.TempDir()}
-			testModrinthDependencies(t, i, tc.marker)
-		})
-	}
-}
-
-func testModrinthDependencies(t *testing.T, i Instance, marker string) {
-	t.Helper()
-	ctx := t.Context()
-	loader := strings.ToLower(i.Loader)
-	body := testZIP(t, map[string]string{marker: "test metadata"})
-	file := func(name string) PackFile {
-		f := PackFile{URL: "https://cdn.modrinth.com/data/" + name, Filename: name, Size: int64(len(body)), Primary: true}
-		f.Hashes.SHA512 = fmt.Sprintf("%x", sha512.Sum512(body))
-		return f
-	}
-	core := PackVersion{ID: "versionCore", ProjectID: "projectCore", GameVersions: []string{i.Version}, Loaders: []string{loader}, Files: []PackFile{file("core.jar")}}
-	dep := PackVersion{ID: "versionDep", ProjectID: "projectDep", Type: "release", GameVersions: []string{i.Version}, Loaders: []string{loader},
-		Files: []PackFile{file("dep.jar")}, Dependencies: []ModDependency{{VersionID: core.ID, Type: "required"}}}
-	mod := PackVersion{ID: "versionMod", ProjectID: "projectMod", GameVersions: []string{i.Version}, Loaders: []string{loader},
-		Files: []PackFile{file("mod.jar")}, Dependencies: []ModDependency{{ProjectID: dep.ProjectID, Type: "required"}, {ProjectID: "ignored", Type: "optional"}}}
-	wrongLoader, wrongGame := dep, dep
-	wrongLoader.ID, wrongLoader.Loaders = "wrongLoader", []string{"other"}
-	wrongGame.ID, wrongGame.GameVersions = "wrongGame", []string{"1.20.1"}
-	encoded, err := json.Marshal([]PackVersion{wrongLoader, wrongGame, dep})
-	if err != nil {
-		t.Fatal(err)
-	}
-	encodeCore := func() []byte {
-		b, err := json.Marshal(core)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return b
-	}
-	var downloadsSeen []string
-	d := &downloads{http: &http.Client{Transport: transportFunc(func(req *http.Request) (*http.Response, error) {
-		if req.URL.Path == "/v2/project/"+dep.ProjectID+"/version" {
-			q := req.URL.Query()
-			if q.Get("loaders") != fmt.Sprintf(`[%q]`, loader) || q.Get("game_versions") != `["1.21.1"]` {
-				t.Fatalf("dependencies used the wrong target filters: %s", req.URL)
-			}
-			return fixtureResponse(http.StatusOK, encoded), nil
-		}
-		if req.URL.String() == modrinthAPI+"version/"+core.ID {
-			return fixtureResponse(http.StatusOK, encodeCore()), nil
-		}
-		if req.URL.Hostname() == "cdn.modrinth.com" {
-			downloadsSeen = append(downloadsSeen, filepath.Base(req.URL.Path))
-			return fixtureResponse(http.StatusOK, body), nil
-		}
-		t.Fatalf("unexpected dependency request: %s", req.URL)
-		return nil, nil
-	})}}
-	valid := core.Loaders
-	core.Loaders = []string{"other"}
-	if err := downloadModrinth(ctx, i, Mods, mod, d, nil); err == nil || len(downloadsSeen) != 0 {
-		t.Fatalf("incompatible pinned dependency did not block the download: %v, %v", err, downloadsSeen)
-	}
-	core.Loaders = valid
-	var progress []Progress
-	if err := downloadModrinth(ctx, i, Mods, mod, d, func(p Progress) { progress = append(progress, p) }); err != nil {
-		t.Fatal(err)
-	}
-	if strings.Join(downloadsSeen, ",") != "core.jar,dep.jar,mod.jar" {
-		t.Fatalf("dependency was not installed first: %v", downloadsSeen)
-	}
-	if last := progress[len(progress)-1]; last.Done != 3 || last.Total != 3 {
-		t.Fatalf("verified mod download did not report all files: %+v", progress)
-	}
-	if err := downloadModrinth(ctx, i, Mods, mod, d, nil); err != nil || len(downloadsSeen) != 3 {
-		t.Fatalf("verified local files were not reused: %v, %v", downloadsSeen, err)
-	}
-}
-
-func TestQuiltChoosesOneFabricAPIProvider(t *testing.T) {
-	for _, tc := range []struct{ game, want string }{{"1.20.1", quiltedAPIProject}, {"1.21.1", fabricAPIProject}} {
-		t.Run(tc.game, func(t *testing.T) {
-			i := Instance{Version: tc.game, Loader: LoaderQuilt}
-			main := PackVersion{ID: "mainVersion", ProjectID: "mainProject", GameVersions: []string{i.Version}, Loaders: []string{"quilt"},
-				Dependencies: []ModDependency{{ProjectID: fabricAPIProject, Type: "required"}}}
-			if tc.want == quiltedAPIProject {
-				main.Dependencies = append(main.Dependencies, ModDependency{ProjectID: quiltedAPIProject, Type: "required"})
-			}
+			body := testZIP(t, map[string]string{tc.marker: "test metadata"})
+			const fileURL = "https://cdn.modrinth.com/data/selected.jar"
+			file := PackFile{URL: fileURL, Filename: "selected.jar", Size: int64(len(body)), Primary: true}
+			file.Hashes.SHA512 = fmt.Sprintf("%x", sha512.Sum512(body))
+			v := PackVersion{ID: "selectedVersion", ProjectID: "selectedProject", GameVersions: []string{i.Version},
+				Loaders: []string{strings.ToLower(i.Loader)}, Files: []PackFile{file},
+				Dependencies: []ModDependency{{ProjectID: "requiredProject", VersionID: "missingVersion", Type: "required"}}}
 			var calls int
 			d := &downloads{http: &http.Client{Transport: transportFunc(func(req *http.Request) (*http.Response, error) {
+				if req.URL.String() != fileURL {
+					t.Fatalf("install requested dependency metadata or files: %s", req.URL)
+				}
 				calls++
-				project := strings.Split(req.URL.Path, "/")[3]
-				loader := req.URL.Query().Get("loaders")
-				if req.URL.Query().Get("game_versions") != fmt.Sprintf(`[%q]`, i.Version) {
-					t.Fatalf("API dependency used a different Minecraft version: %s", req.URL)
-				}
-				if project == quiltedAPIProject && tc.want == quiltedAPIProject && loader == `["quilt"]` {
-					return fixtureResponse(200, []byte(fmt.Sprintf(`[{"id":"api","project_id":%q,"game_versions":[%q],"loaders":["quilt"],"files":[{"filename":"qfapi.jar"}]}]`, project, i.Version))), nil
-				}
-				if project == fabricAPIProject && tc.want == fabricAPIProject && loader == `["fabric"]` {
-					return fixtureResponse(200, []byte(fmt.Sprintf(`[{"id":"api","project_id":%q,"game_versions":[%q],"loaders":["fabric"],"files":[{"filename":"fapi.jar"}]}]`, project, i.Version))), nil
-				}
-				return fixtureResponse(200, []byte(`[]`)), nil
+				return fixtureResponse(http.StatusOK, body), nil
 			})}}
-			plan, err := modPlan(t.Context(), i, main, d)
-			wantCalls := 2
-			if tc.want == fabricAPIProject {
-				// Only Fabric API was requested on this version. QFAPI is unavailable.
-				wantCalls = 3
+			var progress Progress
+			if err := downloadModrinth(t.Context(), i, Mods, v, d, func(p Progress) { progress = p }); err != nil {
+				t.Fatal(err)
 			}
-			if err != nil || len(plan) != 2 || plan[0].ProjectID != tc.want || calls != wantCalls {
-				t.Fatalf("expected one compatible Fabric API provider: %v, %v (%d requests)", plan, err, calls)
+			files, err := ListContent(i, Mods)
+			if err != nil || len(files) != 1 || files[0].Name != file.Filename || progress.Done != 1 || progress.Total != 1 {
+				t.Fatalf("selected file was not installed alone: %v %v %+v", files, err, progress)
+			}
+			if err := downloadModrinth(t.Context(), i, Mods, v, d, nil); err != nil || calls != 1 {
+				t.Fatalf("retry did not reuse the verified file: %d requests, %v", calls, err)
 			}
 		})
 	}

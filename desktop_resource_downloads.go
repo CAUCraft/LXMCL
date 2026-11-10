@@ -26,13 +26,21 @@ type packBrowser struct {
 	result                launcher.PackSearch
 	searched, searchBusy  bool
 	err                   string
-	project               launcher.PackProject
-	versions              []launcher.PackVersion
-	version, versionErr   string
-	versionBusy           bool
-	request               uint64
-	cancel                context.CancelFunc
-	scroll                ui.ScrollState
+	packSelection
+	parents         []packSelection
+	dependencyNames *dependencyNames
+	request         uint64
+	cancel          context.CancelFunc
+	scroll          ui.ScrollState
+}
+
+type packSelection struct {
+	project             launcher.PackProject
+	versions            []launcher.PackVersion
+	version, versionErr string
+	versionBusy         bool
+	detailKind          launcher.ContentKind
+	dependency          *launcher.ModDependency
 }
 
 func (a *desktop) browserFor(kind launcher.ContentKind) *packBrowser {
@@ -71,7 +79,9 @@ func (p *packBrowser) abort() {
 }
 
 func (p *packBrowser) clearProject() {
-	p.project, p.versions, p.version, p.versionErr, p.versionBusy = launcher.PackProject{}, nil, "", "", false
+	p.packSelection = packSelection{}
+	p.parents = nil
+	p.stopDependencyNames()
 }
 
 func (a *desktop) openResourceDownloads(i launcher.Instance, kind launcher.ContentKind) {
@@ -124,6 +134,7 @@ func (a *desktop) browsePack(p *packBrowser, project launcher.PackProject) {
 		return
 	}
 	p.abort()
+	p.clearProject()
 	ctx, cancel := context.WithTimeout(a.ctx, 15*time.Second)
 	p.cancel = cancel
 	p.project, p.version, p.versions, p.versionErr, p.versionBusy = project, "", nil, "", true
@@ -144,15 +155,37 @@ func (a *desktop) browsePack(p *packBrowser, project launcher.PackProject) {
 			p.versionBusy, p.versions = false, versions
 			if err != nil {
 				p.versionErr = err.Error()
-			} else if len(versions) > 0 {
-				// Select the newest release when one exists; users can choose previews.
-				p.version = versions[0].ID
-				if n := slices.IndexFunc(versions, func(v launcher.PackVersion) bool { return v.Type == "release" }); n >= 0 {
-					p.version = versions[n].ID
-				}
+			} else {
+				p.selectDefaultVersion()
 			}
 		})
 	}()
+}
+
+func (p *packBrowser) selectDefaultVersion() {
+	if len(p.versions) == 0 {
+		return
+	}
+	p.version = p.versions[0].ID
+	if n := slices.IndexFunc(p.versions, func(v launcher.PackVersion) bool { return v.Type == "release" }); n >= 0 {
+		p.version = p.versions[n].ID
+	}
+}
+
+func (p *packBrowser) selectedVersion() launcher.PackVersion {
+	for _, v := range p.versions {
+		if v.ID == p.version {
+			return v
+		}
+	}
+	return launcher.PackVersion{}
+}
+
+func (p *packBrowser) selectionKind() launcher.ContentKind {
+	if p.detailKind != "" {
+		return p.detailKind
+	}
+	return p.kind
 }
 
 func (a *desktop) resourceDownloads(c *ui.Context, p *packBrowser) {
@@ -174,7 +207,7 @@ func (a *desktop) resourceDownloads(c *ui.Context, p *packBrowser) {
 	splitWorkspace(c, catalogListWidth(w), func() {
 		a.packResults(c, p)
 	}, func() {
-		a.packDetails(c.Key(p.project.ID), p, label)
+		a.packDetails(c.Key(p.project.ID), p)
 	})
 }
 
@@ -195,7 +228,10 @@ func (a *desktop) resourceTargetBar(c *ui.Context, p *packBrowser) {
 			muted(c, p.target.Version+" · "+p.target.LoaderName()).SingleLine().Ellipsis("…")
 			ui.Spacer(c).Grow(1)
 			if button(c, "管理已安装", action.Default, false) {
-				target, kind := p.target, p.kind
+				target, kind := p.target, p.selectionKind()
+				if !kind.Supports(target) {
+					kind = p.kind
+				}
 				a.inspect(target)
 				a.detailPage = detailContent
 				tab := 0
@@ -303,18 +339,29 @@ func (a *desktop) packResults(c *ui.Context, p *packBrowser) {
 	}
 }
 
-func (a *desktop) packDetails(c *ui.Context, p *packBrowser, label string) {
-	if p.project.ID == "" {
+func (a *desktop) packDetails(c *ui.Context, p *packBrowser) {
+	if p.project.ID == "" && p.dependency == nil {
 		ui.Column(c).Grow(1).Center().Children(func() {
 			muted(c, "选择一个项目查看可下载版本")
 		})
 		return
 	}
-	a.projectHeading(c, "resource-heading", p.project.Title, p.project.IconURL, downloadTabs[downloadTab(p.kind)].Icon, func() {
-		if site := p.project.PageURL(p.kind); site != "" && icon(c, lucide.ExternalLink(), "在 Modrinth 查看项目", false) {
+	kind := p.selectionKind()
+	back := false
+	a.projectHeading(c, "resource-heading", p.project.Title, p.project.IconURL, downloadTabs[downloadTab(kind)].Icon, func() {
+		if len(p.parents) > 0 && button(c, "返回上一级", action.Text, false) {
+			back = true
+		}
+		if site := p.project.PageURL(kind); site != "" && (p.dependency == nil || p.detailKind != "") &&
+			icon(c, lucide.ExternalLink(), "在 Modrinth 查看项目", false) {
 			c.OpenURL(site)
 		}
 	})
+	if back {
+		p.backDependency()
+		c.Invalidate()
+		return
+	}
 	if p.project.Author != "" || p.project.Downloads > 0 {
 		byline := p.project.Author
 		if p.project.Downloads > 0 {
@@ -336,20 +383,24 @@ func (a *desktop) packDetails(c *ui.Context, p *packBrowser, label string) {
 	case p.versionErr != "":
 		feedback.Alert(c, p.versionErr, feedback.AlertProps{Type: feedback.Error})
 		if button(c, "重试读取版本", action.Default, false) {
-			a.browsePack(p, p.project)
+			if p.dependency != nil {
+				a.loadPackDependency(p)
+			} else {
+				a.browsePack(p, p.project)
+			}
 		}
 	case len(p.versions) == 0:
 		muted(c, "没有符合当前筛选条件的文件")
 	default:
-		a.packVersions(c, p, label)
+		a.packVersions(c, p, kind)
 	}
 }
 
-func (a *desktop) packVersions(c *ui.Context, p *packBrowser, label string) {
+func (a *desktop) packVersions(c *ui.Context, p *packBrowser, kind launcher.ContentKind) {
 	display.Text(c, "文件版本", display.TextProps{Strong: true, FontSize: 13})
 	items := make([]display.ListItem, 0, len(p.versions))
 	for _, v := range p.versions {
-		file, _ := v.DownloadFile(p.kind)
+		file, _ := v.DownloadFile(kind)
 		var description []string
 		if !v.Published.IsZero() {
 			description = append(description, v.Published.Local().Format("2006-01-02"))
@@ -359,7 +410,7 @@ func (a *desktop) packVersions(c *ui.Context, p *packBrowser, label string) {
 			if len(v.GameVersions) > 0 {
 				description = append([]string{strings.Join(v.GameVersions[:min(3, len(v.GameVersions))], " / ")}, description...)
 			}
-			if p.kind == launcher.Mods && len(v.Loaders) > 0 {
+			if kind == launcher.Mods && len(v.Loaders) > 0 {
 				description = append([]string{strings.Join(v.Loaders, " / ")}, description...)
 			}
 		}
@@ -379,31 +430,27 @@ func (a *desktop) packVersions(c *ui.Context, p *packBrowser, label string) {
 		}
 	}).Grow(1).MinHeight(0)
 	layout.Divider(c, layout.DividerProps{})
+	version := p.selectedVersion()
+	if a.packDependencies(c.Key("dependencies-"+version.ID), p, version) {
+		return
+	}
 	ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 		note, labelAction := "保存所选文件", "保存到文件夹…"
-		locked := a.busy || a.running != nil || a.pickerBusy || p.version == ""
+		locked := a.busy || a.running != nil || a.pickerBusy || version.ID == ""
 		if p.target.ID != 0 {
-			note, labelAction = "安装到 "+p.target.Name, "安装"+label
-			if p.kind == launcher.Mods {
-				note += " · 包含必要依赖"
-			}
+			note, labelAction = "安装到 "+p.target.Name, "安装"+contentLabel(kind)
 		}
 		muted(c, note).FontSize(12).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 		if button(c, labelAction, action.Primary, locked) {
-			for _, version := range p.versions {
-				if version.ID == p.version {
-					r := resourceTask{Kind: p.kind, Project: p.project.ID, Version: version.ID, Title: p.project.Title}
-					if p.target.ID != 0 {
-						a.downloadResource(p.target, r, version)
-					} else {
-						a.pickDownloadFolder(func(folder string) { a.saveResourceFile(folder, r, version) })
-					}
-					break
-				}
+			r := resourceTask{Kind: kind, Project: p.project.ID, Version: version.ID, Title: p.project.Title}
+			if p.target.ID != 0 {
+				a.downloadResource(p.target, r, version)
+			} else {
+				a.pickDownloadFolder(func(folder string) { a.saveResourceFile(folder, r, version) })
 			}
 		}
 	})
-	if p.kind == launcher.ShaderPacks {
+	if kind == launcher.ShaderPacks {
 		muted(c, "在游戏中使用光影需要安装 Iris 等兼容模组。").FontSize(12)
 	}
 }
@@ -423,7 +470,7 @@ func (a *desktop) saveResourceFile(folder string, r resourceTask, version launch
 }
 
 func (a *desktop) downloadResource(i launcher.Instance, r resourceTask, version launcher.PackVersion) {
-	a.runContentTask(i, "下载"+contentLabel(r.Kind), &r, func(ctx context.Context, report func(launcher.Progress)) error {
+	a.runContentTask(i, "安装"+contentLabel(r.Kind), &r, func(ctx context.Context, report func(launcher.Progress)) error {
 		if version.ID == "" {
 			var err error
 			version, err = launcher.ModrinthVersion(ctx, r.Project, r.Version)

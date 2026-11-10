@@ -206,6 +206,49 @@ func TestResourceDownloadsKeepInstallTargetSeparate(t *testing.T) {
 	}
 }
 
+func TestResourcePrerequisiteNavigationKeepsSelectedInstance(t *testing.T) {
+	a, tt := testDesktop(t)
+	tt.SetSize(820, 530)
+	i := &a.state.Instances[1]
+	i.Loader, i.LoaderVersion = launcher.LoaderNeoForge, "21.4.120"
+	a.openResourceDownloads(*i, launcher.Mods)
+	p := a.browserFor(launcher.Mods)
+	dep := launcher.ModDependency{ProjectID: "balm", VersionID: "pinnedBalm", Type: "required"}
+	project := launcher.PackProject{ID: "waystones", Title: "Waystones"}
+	p.project, p.searched = project, true
+	p.result = launcher.PackSearch{Hits: []launcher.PackProject{project}, Total: 1}
+	p.versions = []launcher.PackVersion{
+		{ID: "withLibrary", Number: "需要前置的版本", Files: []launcher.PackFile{{Filename: "waystones.jar"}}, Dependencies: []launcher.ModDependency{dep, {ProjectID: "optional", Type: "optional"}}},
+		{ID: "noLibrary", Number: "独立版本", Files: []launcher.PackFile{{Filename: "standalone.jar"}}},
+	}
+	p.version = "withLibrary"
+	p.dependencyNames = &dependencyNames{version: p.version, projects: map[string]launcher.PackProject{"balm": {ID: "balm", Title: "Balm"}}}
+	tt.Frame()
+	if err := tt.Click("查看前置 (1)"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Advance(300 * time.Millisecond)
+	capture(t, tt, "download-prerequisites")
+	if err := tt.Click("Balm"); err != nil {
+		t.Fatal(err)
+	}
+	if p.dependency == nil || *p.dependency != dep || p.project.ID != "balm" || p.target.ID != i.ID || a.state.Selected != 1 || a.busy {
+		t.Fatal("opening a prerequisite did not preserve the target, or attempted to install files")
+	}
+	if err := tt.Click("返回上一级"); err != nil {
+		t.Fatal(err)
+	}
+	if p.project.ID != project.ID || p.version != "withLibrary" || p.dependency != nil {
+		t.Fatal("going back did not restore the original project and version")
+	}
+	if err := tt.Click("独立版本"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := tt.Find("查看前置 (1)"); ok {
+		t.Fatal("switching to a different version retained its predecessor's dependencies")
+	}
+}
+
 func TestInstanceListMenuStaysOpenOutsideRow(t *testing.T) {
 	_, tt := testDesktop(t)
 	if err := tt.Click("实例"); err != nil {

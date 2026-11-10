@@ -10,7 +10,7 @@ Windows x64：从 [GitHub Actions](https://github.com/CAUCraft/LXMCL/actions/wor
 
 - **实例**：从「下载 → 游戏版本」选择 Minecraft 版本和加载器，可直接安装原版、Fabric、Forge、NeoForge 或 Quilt。实例页可校验文件和配置启动设置。
 - **整合包**：从 Modrinth 或 CurseForge 保存整合包文件，也可直接安装为独立实例，或导入本地 `.mrpack` 和 CurseForge `.zip`。CurseForge 在线查询和依赖下载需要 API Key。
-- **资源**：「下载」可独立浏览 Modrinth 模组、资源包和光影包，并把选中文件保存到自选文件夹。从实例的资源页点「添加」会按该实例筛选并安装，模组的必要依赖也会一并下载。
+- **资源**：「下载」可浏览 Modrinth 模组、资源包和光影包，并把选中文件保存到自选文件夹。从实例的资源页点「添加」会按该实例筛选并安装选中文件。需要前置时，可从「查看前置」跳转并自行下载。
 - **存档**：备份为 ZIP，恢复时保留已有同名世界。
 - **账号与服务器**：Microsoft、兼容 Yggdrasil 的第三方皮肤站与离线账号，支持皮肤头像、可旋转的 3D 预览、服务器收藏和直连。Microsoft 账号可上传 PNG 皮肤；皮肤站账号在站内修改外观。
 - **诊断**：Java 检测、下载进度、任务历史和游戏日志。
