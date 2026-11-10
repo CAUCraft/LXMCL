@@ -1,7 +1,6 @@
 package content
 
 import (
-	"archive/zip"
 	"context"
 	"errors"
 	"fmt"
@@ -34,7 +33,7 @@ func Import(ctx context.Context, i instance.Instance, kind Kind, source string) 
 }
 
 func WriteVerified(ctx context.Context, i instance.Instance, kind Kind, name string, in io.Reader, size int64, digest hash.Hash, expected string) (err error) {
-	ext, markers, err := kind.Format(i)
+	ext, _, err := kind.Format(i)
 	if err != nil {
 		return err
 	}
@@ -73,18 +72,5 @@ func WriteVerified(ctx context.Context, i instance.Instance, kind Kind, name str
 	if n != size || digest != nil && !strings.EqualFold(fmt.Sprintf("%x", digest.Sum(nil)), expected) {
 		return i18n.Error("resource.checksum_failed")
 	}
-	z, err := zip.NewReader(f, n)
-	if err != nil {
-		return i18n.Error("resource.archive_invalid", err)
-	}
-	for _, entry := range z.File {
-		if !entry.FileInfo().IsDir() {
-			for _, marker := range markers {
-				if entry.Name == marker || kind == ShaderPacks && strings.HasPrefix(entry.Name, marker) {
-					return ctx.Err()
-				}
-			}
-		}
-	}
-	return i18n.Error("resource.archive_missing_marker", strings.Join(markers, i18n.Text("common.or_separator")))
+	return ValidateArchive(ctx, i, kind, f, n)
 }

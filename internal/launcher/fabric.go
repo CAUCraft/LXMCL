@@ -3,7 +3,6 @@ package launcher
 import (
 	"context"
 	"encoding/json"
-	"io"
 	"net/url"
 	"path/filepath"
 	"regexp"
@@ -21,24 +20,6 @@ const quiltMeta = "https://meta.quiltmc.org/v3/versions/loader/"
 var (
 	mavenPart = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9.+_-]{0,127}$`)
 )
-
-func downloadJSON(ctx context.Context, d *downloads, source string, out any) error {
-	return retry(ctx, func() error {
-		res, err := d.get(ctx, source)
-		if err != nil {
-			return err
-		}
-		defer res.Body.Close()
-		body, err := io.ReadAll(io.LimitReader(res.Body, maxMetadata+1))
-		if err != nil {
-			return err
-		}
-		if len(body) > maxMetadata {
-			return i18n.Error("metadata.response_too_large")
-		}
-		return json.Unmarshal(body, out)
-	})
-}
 
 func FabricVersions(ctx context.Context, gameVersion string) ([]string, error) {
 	if !instance.SupportedRelease(gameVersion) {

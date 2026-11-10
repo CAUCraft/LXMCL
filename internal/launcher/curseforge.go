@@ -14,7 +14,9 @@ import (
 	"time"
 
 	"github.com/CAUCraft/LXMCL/internal/content"
+	"github.com/CAUCraft/LXMCL/internal/distribution"
 	"github.com/CAUCraft/LXMCL/internal/i18n"
+	"github.com/CAUCraft/LXMCL/internal/modpack"
 	"github.com/CAUCraft/LXMCL/internal/storage"
 )
 
@@ -103,7 +105,7 @@ func (cf curseForge) call(ctx context.Context, endpoint string, payload any, dst
 			}
 			return nil
 		default:
-			return &responseError{status: resp.StatusCode, src: "CurseForge", delay: retryAfter(resp.Header.Get("Retry-After"), time.Now())}
+			return &responseError{Status: resp.StatusCode, Source: "CurseForge", Delay: retryAfter(resp.Header.Get("Retry-After"), time.Now())}
 		}
 	})
 }
@@ -151,11 +153,11 @@ func (cf curseForge) search(ctx context.Context, query, game string, page int) (
 	return result, nil
 }
 
-func (f curseFile) asset() modpackAsset {
-	a := modpackAsset{URLs: []string{f.DownloadURL}, Size: f.FileLength}
+func (f curseFile) asset() distribution.Asset {
+	a := distribution.Asset{URLs: []string{f.DownloadURL}, Size: f.FileLength}
 	u, err := url.Parse(f.DownloadURL)
-	if err != nil || !curseCDN(u) || f.FileLength <= 0 {
-		return modpackAsset{}
+	if err != nil || !distribution.CurseCDN(u) || f.FileLength <= 0 {
+		return distribution.Asset{}
 	}
 	for _, algo := range []int{1, 2} {
 		for _, h := range f.Hashes {
@@ -166,12 +168,12 @@ func (f curseFile) asset() modpackAsset {
 			if algo == 2 {
 				a.Algorithm = "md5"
 			}
-			if a.valid(maxModpackFile) {
+			if a.Valid(distribution.MaxFileSize) {
 				return a
 			}
 		}
 	}
-	return modpackAsset{}
+	return distribution.Asset{}
 }
 
 func (cf curseForge) releases(ctx context.Context, id, game string, page int) ([]ModpackRelease, bool, error) {
@@ -205,7 +207,7 @@ func (cf curseForge) releases(ctx context.Context, id, game string, page int) ([
 			switch {
 			case r.downloadBlocked:
 				r.Unavailable = i18n.Text("curseforge.file_unavailable")
-			case !r.asset.valid(maxModpackArchive):
+			case !r.asset.Valid(modpack.MaxArchiveSize):
 				r.Unavailable = i18n.Text("modpack.download_metadata_missing")
 			}
 		}
@@ -214,12 +216,7 @@ func (cf curseForge) releases(ctx context.Context, id, game string, page int) ([
 	return releases, data.Pagination.ResultCount > 0 && data.Pagination.Index+data.Pagination.ResultCount < data.Pagination.TotalCount, nil
 }
 
-type curseReference struct {
-	ProjectID, FileID int
-	Required          *bool
-}
-
-func (cf curseForge) resolve(ctx context.Context, refs []curseReference) ([]modpackDownload, error) {
+func (cf curseForge) Resolve(ctx context.Context, refs []modpack.Reference) ([]modpack.Download, error) {
 	var projectIDs, fileIDs []int
 	projects, files := make(map[int]curseProject), make(map[int]curseFile)
 	for _, ref := range refs {
@@ -247,7 +244,7 @@ func (cf curseForge) resolve(ctx context.Context, refs []curseReference) ([]modp
 			files[f.ID] = f
 		}
 	}
-	var result []modpackDownload
+	var result []modpack.Download
 	for _, ref := range refs {
 		p, f := projects[ref.ProjectID], files[ref.FileID]
 		name := p.Name
@@ -260,10 +257,10 @@ func (cf curseForge) resolve(ctx context.Context, refs []curseReference) ([]modp
 		}
 		dir := map[int]string{6: "mods", 12: "resourcepacks", 6552: "shaderpacks"}[p.ClassID]
 		a := f.asset()
-		if dir == "" || !storage.ValidPortablePath(f.FileName) || strings.Contains(f.FileName, "/") || !a.valid(maxModpackFile) {
+		if dir == "" || !storage.ValidPortablePath(f.FileName) || strings.Contains(f.FileName, "/") || !a.Valid(distribution.MaxFileSize) {
 			return nil, i18n.Error("curseforge.dependency_invalid", name, ref.FileID)
 		}
-		result = append(result, modpackDownload{path.Join(dir, f.FileName), a})
+		result = append(result, modpack.Download{Path: path.Join(dir, f.FileName), Asset: a})
 	}
 	return result, nil
 }

@@ -128,5 +128,8 @@ func alreadyDownloaded(ctx context.Context, i Instance, kind ContentKind, file P
 	if n != file.Size || !strings.EqualFold(fmt.Sprintf("%x", h.Sum(nil)), file.Hashes.SHA512) {
 		return false, i18n.Error("modrinth.file_content_conflict", file.Filename)
 	}
+	if err := content.ValidateArchive(ctx, i, kind, src, n); err != nil {
+		return false, err
+	}
 	return true, nil
 }

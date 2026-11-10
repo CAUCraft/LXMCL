@@ -70,6 +70,32 @@ func TestModrinthDownloadOnlyInstallsSelectedFile(t *testing.T) {
 	}
 }
 
+func TestExistingResourceMustMatchLoaderFormat(t *testing.T) {
+	i := Instance{ID: 1, Version: "1.21.1", Loader: LoaderFabric, LoaderVersion: "0.16.14", GameDir: t.TempDir()}
+	// An exact hash match alone must not turn a Forge archive into a valid Fabric mod.
+	body := testZIP(t, map[string]string{"META-INF/mods.toml": "forge metadata"})
+	file := PackFile{URL: "https://cdn.modrinth.com/wrong.jar", Filename: "wrong.jar", Size: int64(len(body))}
+	file.Hashes.SHA512 = fmt.Sprintf("%x", sha512.Sum512(body))
+	v := PackVersion{ID: "version", ProjectID: "project", GameVersions: []string{i.Version}, Loaders: []string{"fabric"}, Files: []PackFile{file}}
+	if err := os.MkdirAll(filepath.Join(i.GameDir, "mods"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	filename := filepath.Join(i.GameDir, "mods", file.Filename)
+	if err := os.WriteFile(filename, body, 0600); err != nil {
+		t.Fatal(err)
+	}
+	d := &downloads{http: &http.Client{Transport: transportFunc(func(*http.Request) (*http.Response, error) {
+		t.Fatal("existing invalid resource triggered a network request")
+		return nil, nil
+	})}}
+	if err := downloadModrinth(t.Context(), i, Mods, v, d, nil); err == nil {
+		t.Fatal("existing resource bypassed archive format validation")
+	}
+	if got, err := os.ReadFile(filename); err != nil || !bytes.Equal(got, body) {
+		t.Fatalf("existing file was modified: %v", err)
+	}
+}
+
 func TestModrinthPackVerifiesContentAndTargetsInstance(t *testing.T) {
 	content := testZIP(t, map[string]string{"pack.mcmeta": "{}"})
 	instance := Instance{ID: 2, Version: "1.21.1", GameDir: t.TempDir()}

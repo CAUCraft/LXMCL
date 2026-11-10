@@ -10,15 +10,17 @@ import (
 	"time"
 
 	"github.com/CAUCraft/LXMCL/internal/content"
+	"github.com/CAUCraft/LXMCL/internal/distribution"
 	"github.com/CAUCraft/LXMCL/internal/i18n"
 	"github.com/CAUCraft/LXMCL/internal/instance"
+	"github.com/CAUCraft/LXMCL/internal/modpack"
 )
 
-type ModpackSource string
+type ModpackSource = modpack.Source
 
 const (
-	ModrinthModpacks   ModpackSource = "Modrinth"
-	CurseForgeModpacks ModpackSource = "CurseForge"
+	ModrinthModpacks   = modpack.Modrinth
+	CurseForgeModpacks = modpack.CurseForge
 )
 
 type ModpackProject struct {
@@ -34,7 +36,7 @@ type ModpackRelease struct {
 	Size                         int64
 	Unavailable                  string
 	source                       ModpackSource
-	asset                        modpackAsset
+	asset                        distribution.Asset
 	downloadBlocked              bool
 }
 
@@ -119,9 +121,9 @@ func ListModpackReleases(ctx context.Context, project ModpackProject, key, game 
 		f := v.Files[n]
 		r := ModpackRelease{ID: v.ID, Title: v.Number, Filename: f.Filename, Size: f.Size,
 			Channel: v.Type, Published: v.Published, Games: v.GameVersions, Loaders: v.Loaders,
-			source: ModrinthModpacks, asset: modpackAsset{URLs: []string{f.URL}, Size: f.Size, Algorithm: "sha512", Digest: f.Hashes.SHA512}}
+			source: ModrinthModpacks, asset: distribution.Asset{URLs: []string{f.URL}, Size: f.Size, Algorithm: "sha512", Digest: f.Hashes.SHA512}}
 		r.Unavailable = unsupportedPackTags(r.Games, r.Loaders)
-		if r.Unavailable == "" && !r.asset.valid(maxModpackArchive) {
+		if r.Unavailable == "" && (r.asset.Size <= 0 || !r.asset.Valid(modpack.MaxArchiveSize)) {
 			r.Unavailable = i18n.Text("modpack.download_metadata_missing")
 		}
 		releases = append(releases, r)

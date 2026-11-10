@@ -52,14 +52,14 @@ func forgeMetadata(path string) (forgeInstaller, forgeProfile, error) {
 		}
 		return nil
 	}
-	if err := readModpackManifest(entry("install_profile.json"), &installer); err != nil {
+	if err := storage.ReadArchiveJSON(entry("install_profile.json"), maxMetadata, &installer); err != nil {
 		return installer, profile, i18n.Error("forge.manifest_read_failed", err)
 	}
 	name := strings.TrimPrefix(installer.JSON, "/")
 	if !storage.ValidPortablePath(name) || filepath.Ext(name) != ".json" {
 		return installer, profile, i18n.Error("forge.client_profile_unsupported")
 	}
-	if err := readModpackManifest(entry(name), &profile); err != nil {
+	if err := storage.ReadArchiveJSON(entry(name), maxMetadata, &profile); err != nil {
 		return installer, profile, i18n.Error("forge.client_profile_read_failed", err)
 	}
 	return installer, profile, nil

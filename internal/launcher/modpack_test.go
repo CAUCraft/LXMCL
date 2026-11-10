@@ -14,7 +14,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/CAUCraft/LXMCL/internal/distribution"
 	"github.com/CAUCraft/LXMCL/internal/i18n"
+	"github.com/CAUCraft/LXMCL/internal/modpack"
 )
 
 func packArchive(t *testing.T, entries map[string]string) []byte {
@@ -123,7 +125,7 @@ func TestModpackInstallIsIndependentAndVerified(t *testing.T) {
 		}
 	}
 	err = g.installModpack(ctx, store, next, i, pack, curseForge{}, client, install, nil)
-	if err == nil || !strings.Contains(err.Error(), i18n.Text("modpack.asset_integrity_failed")) {
+	if err == nil || !strings.Contains(err.Error(), i18n.Text("distribution.integrity_failed")) {
 		t.Fatalf("corrupt dependency accepted: %v", err)
 	}
 	verifyNoInstance()
@@ -252,11 +254,11 @@ func TestCurseForgeCatalogAndImport(t *testing.T) {
 		}
 	})}
 	g := Game{Cache: t.TempDir()}
-	downloaded, err := g.modpackAsset(ctx, releases[0].asset, client)
+	downloaded, err := (distribution.Cache{Root: g.Cache, Client: client}).Ensure(ctx, releases[0].asset)
 	if err != nil {
 		t.Fatal(err)
 	}
-	online, err := prepareModpack(ctx, downloaded, CurseForgeModpacks)
+	online, err := modpack.Prepare(ctx, downloaded, CurseForgeModpacks)
 	if err != nil {
 		t.Fatal(err)
 	}

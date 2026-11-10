@@ -27,6 +27,8 @@ go tool mygo build -platform windows/amd64
 
 整合包按清单安装指定版本的 Fabric、Forge、NeoForge 或 Quilt。Forge 和 NeoForge 使用经过校验的官方客户端安装器，并复用上述 Java 解析与安装流程。网络不可用时可在「设置」指定兼容 Java 后重试。Java 版本要求以 Minecraft 元数据为准，安装器日志位于数据目录的 `cache/installer-logs/`。
 
+后端扩展中，平台文件下载和摘要缓存由 `internal/distribution` 管理，整合包预览、清单与安装事务由 `internal/modpack` 管理。安装通过 `InstallOptions` 注入游戏安装和配置提交，依赖查询通过 `Resolver` 注入，不需要导入 `launcher` 或改全局 HTTP 客户端。可用本地归档和可控传输验证取消、归档变更、依赖缺项及提交失败回滚。
+
 NeoForge 官方 Maven 请求失败时，启动器会尝试 NeoForge CDN。NeoForge、Forge 和 Fabric Maven 文件可回退到 BMCLAPI 镜像，始终沿用加载器元数据或官方 Maven 提供的校验值。校验地址遇到临时网络错误时会限次重试。所有来源都无法提供匹配文件时，任务失败并保留可复用的已校验缓存。
 
 CurseForge 在线查询和下载依赖需要 [CurseForge API Key](https://console.curseforge.com/)。复制 [`.env.example`](../.env.example) 为 `.env`，在 `LXMCL_CURSEFORGE_API_KEY=` 后填入密钥并重启。启动器依次检查数据目录、当前工作目录和程序目录，使用第一个包含密钥的 `.env`。进程环境变量 `LXMCL_CURSEFORGE_API_KEY` 或 `CURSEFORGE_API_KEY` 优先于文件；页面输入只在本次运行中覆盖。不要提交含密钥的 `.env`。如果作者未开放某个必需文件的第三方下载，安装会报告文件并停止。

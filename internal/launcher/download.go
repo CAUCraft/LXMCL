@@ -2,13 +2,9 @@ package launcher
 
 import (
 	"context"
-	"errors"
-	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"slices"
-	"strconv"
 	"sync"
 	"time"
 
@@ -50,30 +46,6 @@ func officialURL(u *url.URL) bool {
 			"maven.neoforged.net", "repo.maven.apache.org", "repo1.maven.org"}, u.Hostname())
 }
 
-type responseError struct {
-	status int
-	src    string
-	delay  time.Duration
-}
-
-func (e *responseError) Error() string {
-	if e.status == http.StatusTooManyRequests {
-		return i18n.Text("download.rate_limited")
-	}
-	return i18n.Text("download.http_status", e.status, e.src)
-}
-
-func retryAfter(value string, now time.Time) time.Duration {
-	if n, err := strconv.Atoi(value); err == nil && n >= 0 {
-		// Any value beyond 30s is enough to defer to an explicit user retry.
-		return time.Duration(min(n, 31)) * time.Second
-	}
-	if date, err := http.ParseTime(value); err == nil {
-		return max(0, date.Sub(now))
-	}
-	return time.Second
-}
-
 func (d *downloads) get(ctx context.Context, src string) (*http.Response, error) {
 	return d.getFrom(ctx, src, d.http, officialURL)
 }
@@ -107,12 +79,12 @@ func (d *downloads) getFrom(ctx context.Context, src string, client *http.Client
 		return resp, nil
 	}
 	resp.Body.Close()
-	failure := &responseError{status: resp.StatusCode, src: src}
+	failure := &responseError{Status: resp.StatusCode, Source: src}
 	if resp.StatusCode == http.StatusTooManyRequests || (resp.StatusCode == http.StatusServiceUnavailable && resp.Header.Get("Retry-After") != "") {
 		now := time.Now()
-		failure.delay = retryAfter(resp.Header.Get("Retry-After"), now)
-		if failure.delay <= 30*time.Second {
-			until := now.Add(failure.delay)
+		failure.Delay = retryAfter(resp.Header.Get("Retry-After"), now)
+		if failure.Delay <= 30*time.Second {
+			until := now.Add(failure.Delay)
 			d.mu.Lock()
 			if until.After(d.cooldown[host]) {
 				if d.cooldown == nil {
@@ -126,45 +98,11 @@ func (d *downloads) getFrom(ctx context.Context, src string, client *http.Client
 	return nil, failure
 }
 
-func waitContext(ctx context.Context, delay time.Duration) error {
-	timer := time.NewTimer(delay)
-	defer timer.Stop()
-	select {
-	case <-timer.C:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-}
+type responseError = transfer.HTTPError
 
-func retryable(err error) bool {
-	var response *responseError
-	if errors.As(err, &response) {
-		return response.delay <= 30*time.Second && (response.status == http.StatusRequestTimeout ||
-			response.status == http.StatusTooManyRequests || response.status >= 500 && response.status <= 599)
-	}
-	var operation *net.OpError
-	var timeout net.Error
-	return errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, transfer.ErrMismatch) ||
-		errors.As(err, &operation) || (errors.As(err, &timeout) && timeout.Timeout())
-}
-
-func retry(ctx context.Context, fn func() error) error {
-	var err error
-	for attempt := range 3 {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		err = fn()
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		if err == nil || attempt == 2 || !retryable(err) {
-			return err
-		}
-		if err := waitContext(ctx, time.Duration(1<<attempt)*150*time.Millisecond); err != nil {
-			return err
-		}
-	}
-	return err
-}
+var (
+	retryAfter  = transfer.RetryAfter
+	waitContext = transfer.Wait
+	retryable   = transfer.Retryable
+	retry       = transfer.Retry
+)

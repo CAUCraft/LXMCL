@@ -153,7 +153,7 @@ func (d *downloads) fetch(ctx context.Context, src string, consume func(context.
 		var status *responseError
 		var netErr net.Error
 		if base == origin && (errors.As(err, &netErr) || errors.Is(err, context.DeadlineExceeded) ||
-			(errors.As(err, &status) && (status.status == 429 || status.status >= 500))) {
+			(errors.As(err, &status) && (status.Status == 429 || status.Status >= 500))) {
 			d.mu.Lock()
 			if d.mavenOriginDown == nil {
 				d.mavenOriginDown = make(map[string]bool)

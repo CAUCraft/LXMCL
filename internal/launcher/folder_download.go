@@ -9,7 +9,9 @@ import (
 	"path/filepath"
 
 	"github.com/CAUCraft/LXMCL/internal/content"
+	"github.com/CAUCraft/LXMCL/internal/distribution"
 	"github.com/CAUCraft/LXMCL/internal/i18n"
+	"github.com/CAUCraft/LXMCL/internal/modpack"
 )
 
 func (g Game) DownloadResourceFile(ctx context.Context, kind ContentKind, version PackVersion, folder string, report func(Progress)) error {
@@ -18,8 +20,8 @@ func (g Game) DownloadResourceFile(ctx context.Context, kind ContentKind, versio
 	if !ok || modrinthType(kind) == "" || err != nil || u.Hostname() != "cdn.modrinth.com" || !officialURL(u) {
 		return i18n.Error("resource.no_download")
 	}
-	a := modpackAsset{URLs: []string{f.URL}, Size: f.Size, Algorithm: "sha512", Digest: f.Hashes.SHA512}
-	if a.Size <= 0 || !a.valid(content.MaxSize) {
+	a := distribution.Asset{URLs: []string{f.URL}, Size: f.Size, Algorithm: "sha512", Digest: f.Hashes.SHA512}
+	if a.Size <= 0 || !a.Valid(content.MaxSize) {
 		return i18n.Error("resource.size_or_sha512_invalid")
 	}
 	return g.saveDownload(ctx, a, f.Filename, folder, report)
@@ -31,7 +33,7 @@ func (r ModpackRelease) Downloadable() bool {
 		ext = ".zip"
 	}
 	return (r.source == ModrinthModpacks || r.source == CurseForgeModpacks) && !r.downloadBlocked &&
-		content.ValidName(r.Filename, ext) && r.asset.Size > 0 && r.asset.valid(maxModpackArchive)
+		content.ValidName(r.Filename, ext) && r.asset.Size > 0 && r.asset.Valid(modpack.MaxArchiveSize)
 }
 
 func (g Game) DownloadModpackFile(ctx context.Context, release ModpackRelease, folder string, report func(Progress)) error {
@@ -41,7 +43,7 @@ func (g Game) DownloadModpackFile(ctx context.Context, release ModpackRelease, f
 	return g.saveDownload(ctx, release.asset, release.Filename, folder, report)
 }
 
-func (g Game) saveDownload(ctx context.Context, a modpackAsset, name, folder string, report func(Progress)) error {
+func (g Game) saveDownload(ctx context.Context, a distribution.Asset, name, folder string, report func(Progress)) error {
 	if !filepath.IsAbs(folder) {
 		return i18n.Error("download.folder_required")
 	}
@@ -58,7 +60,7 @@ func (g Game) saveDownload(ctx context.Context, a modpackAsset, name, folder str
 	if report != nil {
 		report(Progress{Stage: i18n.Text("progress.download_and_verify", name), Total: 1})
 	}
-	verified, err := g.modpackAsset(ctx, a, modpackHTTP)
+	verified, err := (distribution.Cache{Root: g.Cache}).Ensure(ctx, a)
 	if err != nil {
 		return err
 	}
@@ -76,7 +78,7 @@ func (g Game) saveDownload(ctx context.Context, a modpackAsset, name, folder str
 	return nil
 }
 
-func writeFolderDownload(ctx context.Context, root *os.Root, name string, a modpackAsset, src io.Reader) error {
+func writeFolderDownload(ctx context.Context, root *os.Root, name string, a distribution.Asset, src io.Reader) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -84,7 +86,7 @@ func writeFolderDownload(ctx context.Context, root *os.Root, name string, a modp
 	if err != nil {
 		return err
 	}
-	err = a.copyVerified(ctx, f, src)
+	err = a.CopyVerified(ctx, f, src)
 	if err == nil {
 		err = ctx.Err()
 	}

@@ -27,7 +27,7 @@ func (g Game) prefetchForgeLibraries(ctx context.Context, d *downloads, game str
 		}
 		u, err := url.Parse(a.URL)
 		_, neoAsset := neoMavenPath(a.URL)
-		if err != nil || (!officialURL(u) && !neoAsset) || !storage.ValidPortablePath(a.Path) || a.Size < 0 || a.Size > maxModpackFile {
+		if err != nil || (!officialURL(u) && !neoAsset) || !storage.ValidPortablePath(a.Path) || a.Size < 0 || a.Size > maxForgeLibrarySize {
 			return i18n.Error("forge.library_invalid", lib.Name)
 		}
 		if a.Size == 0 {
@@ -106,7 +106,7 @@ func attestForgeLibraries(ctx context.Context, root string, libs []forgeLibrary)
 		seen[path] = true
 		full := filepath.Join(root, filepath.FromSlash(path))
 		st, err := os.Lstat(full)
-		if err != nil || !st.Mode().IsRegular() || st.Size() <= 0 || st.Size() > maxModpackFile {
+		if err != nil || !st.Mode().IsRegular() || st.Size() <= 0 || st.Size() > maxForgeLibrarySize {
 			return nil, i18n.Error("forge.library_not_generated", path)
 		}
 		a := lib.Downloads.Artifact
@@ -189,3 +189,5 @@ func ignoreCachedVanillaJar(jvm []string, version string) {
 		}
 	}
 }
+
+const maxForgeLibrarySize = 1 << 30

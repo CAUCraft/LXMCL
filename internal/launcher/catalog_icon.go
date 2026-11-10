@@ -10,12 +10,13 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/CAUCraft/LXMCL/internal/distribution"
 	"github.com/CAUCraft/LXMCL/internal/i18n"
 )
 
 func catalogIconURL(u *url.URL) bool {
 	return u != nil && u.Scheme == "https" && u.User == nil && u.Port() == "" &&
-		(u.Hostname() == "cdn.modrinth.com" || curseCDN(u))
+		(u.Hostname() == "cdn.modrinth.com" || distribution.CurseCDN(u))
 }
 
 var catalogIconHTTP = &http.Client{
