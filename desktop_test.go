@@ -15,7 +15,7 @@ import (
 
 func TestMicrosoftLoginDialogUsesSystemBrowserAndCancels(t *testing.T) {
 	a, tt := testDesktop(t)
-	if err := tt.Click("账号设置"); err != nil {
+	if err := tt.Click("账号中心"); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := tt.Find("登录 Microsoft"); !ok {

@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"image"
 	"image/color"
+	"image/draw"
+	"math"
 	"testing"
 	"time"
 
@@ -27,12 +29,29 @@ func TestAppearanceStaysWithBrowsedAccount(t *testing.T) {
 		data: launcher.Appearance{
 			Skin:  launcher.ProfileTexture{URL: "https://textures.minecraft.net/texture/test", Variant: "CLASSIC"},
 			Capes: []launcher.ProfileTexture{{ID: cape, Alias: "Demo Cape", State: "ACTIVE"}},
-		}, capes: map[string]*ui.Bitmap{cape: renderCape(atlas)}}
+		}, capes: map[string]*image.NRGBA{cape: textureAtlas(atlas)}}
 	tt.Frame()
-	if err := tt.Click("账号设置"); err != nil {
+	if err := tt.Click("账号中心"); err != nil {
 		t.Fatal(err)
 	}
-	capture(t, tt, "account-appearance")
+	if a.page != pageAccount {
+		t.Fatal("the account center did not open as a standalone page")
+	}
+	capture(t, tt, "account-3d")
+	if err := tt.Click("Microsoft 账号操作"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := tt.Find("重新登录"); !ok {
+		t.Fatal("the account menu has no reauthentication action")
+	}
+	tt.Key(0, ui.KeyEscape)
+	if _, ok := tt.Find("重新登录"); ok || a.page != pageAccount {
+		t.Fatal("Escape should dismiss the account menu before leaving the page")
+	}
+	if err := tt.Click("查看背面"); err != nil {
+		t.Fatal(err)
+	}
+	capture(t, tt, "account-3d-cape")
 	tt.SetSize(820, 530)
 	tt.SetDark(true)
 	tt.Advance(500 * time.Millisecond)
@@ -43,9 +62,9 @@ func TestAppearanceStaysWithBrowsedAccount(t *testing.T) {
 		t.Fatalf("account list and preview do not fit the compact window: %+v %+v", list, skin)
 	}
 	a.appearance.draft, a.appearance.file = []byte("draft"), "新皮肤.png"
-	a.appearance.variant, a.appearance.classic = "classic", clubSkin
+	a.appearance.variant, a.appearance.draftSkin = "classic", clubSkin
 	tt.Frame()
-	capture(t, tt, "account-appearance-compact-dark")
+	capture(t, tt, "account-3d-compact-dark")
 	if _, ok := tt.Find("应用皮肤"); !ok {
 		t.Fatal("local skin draft has no apply action")
 	}
@@ -58,17 +77,30 @@ func TestAppearanceStaysWithBrowsedAccount(t *testing.T) {
 	if a.appearance.cape != "" || a.appearance.data.ActiveCape().ID != cape {
 		t.Fatal("selecting no cape did not stay in the preview until applied")
 	}
+	if _, ok := tt.Find("应用披风"); !ok {
+		t.Fatal("the new cape selection has no apply action")
+	}
 	if err := tt.Click("Player"); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := tt.Find("孪枭 · 皮肤预览"); !ok || a.state.MicrosoftProfile != id {
+	if _, ok := tt.Find("孪枭 · 离线预览"); !ok || a.state.MicrosoftProfile != id {
 		t.Fatal("browsing an offline skin did not preserve the active Microsoft account")
 	}
-	if err := tt.Click("账号设置"); err != nil {
+	capture(t, tt, "account-3d-offline")
+	if err := tt.Click("OnlinePlayer"); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := tt.Find("新皮肤.png"); !ok {
 		t.Fatal("browsing another account discarded the local skin draft")
+	}
+	if err := tt.Click("返回上一页"); err != nil || a.page != pageHome {
+		t.Fatalf("returning from the account center: page %d, %v", a.page, err)
+	}
+	if err := tt.Click("设置"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := tt.Find("账号列表"); ok {
+		t.Fatal("account management still appears in general settings")
 	}
 }
 
@@ -83,12 +115,39 @@ func TestSkinAvatarCompositesHatLayer(t *testing.T) {
 	if avatar.Bounds() != image.Rect(0, 0, 8, 8) || avatar.RGBAAt(0, 0) != face || avatar.RGBAAt(1, 0) != hat {
 		t.Fatal("avatar does not match the skin face and hat layer")
 	}
-	front := skinSide(img, false, false)
-	if front.RGBAAt(4, 0) != face || front.RGBAAt(5, 0) != hat {
-		t.Fatal("the face and avatar disagree")
+}
+
+func TestSkinModelShowsTheCapeOnlyFromBehind(t *testing.T) {
+	cape := image.NewNRGBA(image.Rect(0, 0, 64, 32))
+	draw.Draw(cape, cape.Bounds(), image.NewUniform(color.NRGBA{255, 0, 0, 255}), image.Point{}, draw.Src)
+	model := skinModel(placeholderSkin.atlas, cape, false)
+	dst := image.NewRGBA(image.Rect(0, 0, previewWidth, previewHeight))
+	depth := make([]float64, previewWidth*previewHeight)
+	drawSkinModel(dst, depth, model, 0, 0)
+	front := dst.RGBAAt(previewWidth/2, previewHeight/2)
+	drawSkinModel(dst, depth, model, math.Pi, 0)
+	back := dst.RGBAAt(previewWidth/2, previewHeight/2)
+	if front.B <= front.R || back.R <= 180 || back.B != 0 {
+		t.Fatalf("expected the cape behind the torso: front=%v back=%v", front, back)
 	}
 }
 
+func TestModelDragRotatesThePreview(t *testing.T) {
+	orbit := frontOrbit()
+	tt := ui.NewTesterWith(func(c *ui.Context) {
+		ui.Column(c).Fill().Children(func() {
+			modelStage(c, clubSkin.atlas, nil, false, &orbit)
+		})
+	}, 320, 320, ui.TesterOptions{Preferences: ui.Preferences{ReduceMotion: true}})
+	tt.Frame()
+	start := bytes.Clone(tt.Image().Pix)
+	tt.Press(145, 156)
+	tt.Move(216, 171)
+	tt.Release(216, 171)
+	if orbit.yaw == frontYaw || orbit.pitch == frontPitch || bytes.Equal(start, tt.Image().Pix) {
+		t.Fatal("dragging the model did not update the visible camera")
+	}
+}
 func TestFlightLoadingFollowsReducedMotion(t *testing.T) {
 	tester := ui.NewTesterWith(func(c *ui.Context) {
 		flightLoading(c, "正在读取启动器设置…")

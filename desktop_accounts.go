@@ -10,6 +10,7 @@ import (
 	"github.com/lobehub/lobe-mygo/pkg/feedback"
 	"github.com/lobehub/lobe-mygo/pkg/layout"
 	"github.com/lobehub/lobe-mygo/pkg/lucide"
+	"github.com/lobehub/lobe-mygo/pkg/overlay"
 	"github.com/lobehub/lobe-mygo/pkg/theme"
 )
 
@@ -33,52 +34,114 @@ func (a *desktop) accountName() string {
 	return "离线账号"
 }
 
-func (a *desktop) microsoftSettings(c *ui.Context, disabled bool) {
+func (a *desktop) openAccounts(microsoft bool) {
+	if a.page != pageAccount {
+		a.accountReturn = a.page
+	}
+	a.page = pageAccount
+	a.browsedAccount = a.state.Settings.Player
+	if microsoft || a.state.MicrosoftProfile != "" {
+		a.browsedAccount = ""
+	}
+}
+
+func (a *desktop) accounts(c *ui.Context) {
+	workspace(c, func() {
+		ui.Row(c).AlignItems(ui.Center).Gap(8).Shrink(0).Children(func() {
+			if icon(c, lucide.ArrowLeft(), "返回上一页", false) {
+				a.page = a.accountReturn
+			}
+			display.Text(c, "账号中心", display.TextProps{Strong: true, FontSize: 22})
+		})
+		w, _ := c.Size()
+		splitWorkspace(c, min(214, max(158, w*0.19)), func() {
+			muted(c, "账号列表").Padding(4, 6)
+			a.accountList(c)
+		}, func() {
+			key := a.browsedAccount
+			if key == "" {
+				key = ":microsoft/" + a.microsoftAccount.Profile.ID
+			}
+			detailPane(c.Key(key), func() {
+				disabled := a.busy || a.pickerBusy
+				if a.browsedAccount == "" {
+					a.startAppearance()
+					a.microsoftPage(c, disabled || a.busy)
+				} else {
+					a.offlineAccount(c, disabled)
+				}
+			})
+		})
+	})
+}
+
+func (a *desktop) microsoftPage(c *ui.Context, disabled bool) {
 	profile := a.microsoftAccount.Profile
 	selected := a.state.MicrosoftProfile
 	syncing := a.appearance != nil && a.appearance.syncing
-	surface(c).Padding(12, 14).Gap(8).Children(func() {
-		ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
-			name := profile.Name
-			if name == "" {
-				name = "Microsoft 账号"
-			}
-			a.accountAvatar(c, name, true, 40)
-			ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
-				display.Text(c, name, display.TextProps{Strong: true, FontSize: 17, Rows: 1}).Ellipsis("…")
-				muted(c, "Minecraft: Java 版").FontSize(12)
-			})
-			if profile.ID != "" {
-				if selected == profile.ID {
-					display.Tag(c, "使用中", display.TagProps{Color: display.TagGreen, Size: theme.Small})
-				} else if button(c, "切换", action.Default, disabled) {
-					a.selectMicrosoft(profile.ID)
-				}
-			}
-			label := "登录 Microsoft"
-			if profile.ID != "" {
-				label = "重新登录"
-			}
-			if button(c, label, action.Primary, disabled || syncing) {
-				a.beginMicrosoftLogin()
-			}
-			if (profile.ID != "" || selected != "") && button(c, "退出登录", action.Text, disabled || syncing) {
-				a.forgetMicrosoft()
-			}
+	if profile.ID == "" {
+		surface(c).Grow(1).Basis(0).MinHeight(0).Center().Padding(18).Children(func() {
+			display.Empty(c, display.EmptyProps{Icon: lucide.ShieldCheck(), Title: "连接 Microsoft 账号",
+				Description: "登录 Minecraft Java 版账号，管理皮肤和披风。",
+				Action: func() {
+					if button(c, "登录 Microsoft", action.Primary, disabled) {
+						a.beginMicrosoftLogin()
+					}
+					if selected != "" && button(c, "移除过期登录", action.Text, disabled) {
+						a.forgetMicrosoft()
+					}
+				}})
 		})
-		if selected != "" && selected != profile.ID {
-			feedback.Alert(c, "需要重新登录 Microsoft，或切换到离线账号。", feedback.AlertProps{Type: feedback.Warning})
-		}
-		if !launcher.MicrosoftCredentialsPersist() {
-			muted(c, "此平台的 Microsoft 登录仅在本次运行中保留。").FontSize(12)
-		}
-		if profile.ID == "" {
-			muted(c, "登录后可预览、更换 Java 版皮肤与披风。").FontSize(13)
-		}
-	})
+		return
+	}
+	accountHeader(c, func() { a.accountAvatar(c, profile.Name, true, 42) },
+		profile.Name, "Microsoft · Minecraft: Java 版", func() {
+			if selected == profile.ID {
+				activeAccountTag(c)
+			} else if button(c, "设为启动账号", action.Primary, disabled) {
+				a.selectMicrosoft(profile.ID)
+			}
+			a.microsoftMenu(c, disabled || syncing)
+		})
 	if p := a.appearance; p != nil && p.id == profile.ID {
 		a.appearancePanel(c, p, disabled)
 	}
+}
+
+func activeAccountTag(c *ui.Context) {
+	display.Tag(c, "启动账号", display.TagProps{Color: display.TagBlue, Size: theme.Small})
+}
+
+func accountHeader(c *ui.Context, avatar func(), name, detail string, controls func()) {
+	surface(c).Padding(10, 12).Shrink(0).Children(func() {
+		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+			avatar()
+			ui.Column(c).Gap(2).Grow(1).MinWidth(0).Children(func() {
+				display.Text(c, name, display.TextProps{Strong: true, FontSize: 18, Rows: 1}).Ellipsis("…")
+				muted(c, detail).FontSize(12).SingleLine().Ellipsis("…")
+			})
+			controls()
+		})
+	})
+}
+
+func (a *desktop) microsoftMenu(c *ui.Context, disabled bool) {
+	box := ui.Row(c).Shrink(0)
+	open := ui.Local(box, "open", func() bool { return false })
+	box.Children(func() {
+		items := []overlay.MenuItem{
+			{Key: "login", Label: "重新登录", Icon: lucide.RefreshCw(), Disabled: disabled},
+			{Key: "logout", Label: "退出登录", Icon: lucide.LogOut(), Danger: true, Disabled: disabled},
+		}
+		switch overlay.DropdownMenu(c, open, overlay.DropdownMenuProps{Items: items}, func(trigger ui.Element) {
+			action.StyleActionIcon(c, trigger, lucide.Ellipsis(), action.ActionIconProps{Title: "Microsoft 账号操作"})
+		}) {
+		case "login":
+			a.beginMicrosoftLogin()
+		case "logout":
+			a.forgetMicrosoft()
+		}
+	})
 }
 
 const addOfflineAccount = ":add"
@@ -89,20 +152,22 @@ func (a *desktop) accountList(c *ui.Context) {
 	if profile.ID != "" {
 		name, description = profile.Name, "Microsoft"
 		if a.state.MicrosoftProfile == profile.ID {
-			description += " · 使用中"
+			description = "当前启动账号"
 		}
 	}
-	items := []display.ListItem{{Key: ":microsoft", Label: name, Description: description,
-		Avatar: func() { a.accountAvatar(c, name, true, 25) }}}
+	microsoft := display.ListItem{Key: ":microsoft", Label: name, Description: description, Icon: lucide.UserRound()}
+	if profile.ID != "" {
+		microsoft.Avatar = func() { a.accountAvatar(c, name, true, 28) }
+	}
+	items := []display.ListItem{microsoft}
 	for _, player := range a.state.Players() {
 		description := "离线"
 		if a.state.MicrosoftProfile == "" && a.state.Settings.Player == player {
-			description += " · 使用中"
+			description = "当前启动账号"
 		}
 		items = append(items, display.ListItem{Key: player, Label: player, Description: description,
-			Avatar: func() { a.accountAvatar(c, player, false, 25) }})
+			Avatar: func() { a.accountAvatar(c, player, false, 28) }})
 	}
-	items = append(items, display.ListItem{Key: addOfflineAccount, Label: "添加离线账号", Icon: lucide.Plus()})
 	active := a.browsedAccount
 	if active == "" {
 		active = ":microsoft"
@@ -116,6 +181,10 @@ func (a *desktop) accountList(c *ui.Context) {
 			c.Invalidate()
 		}
 	}).Grow(1).MinHeight(0)
+	layout.Divider(c, layout.DividerProps{})
+	if button(c, "添加离线账号", action.Default, a.busy) {
+		a.browsedAccount = addOfflineAccount
+	}
 }
 
 func (a *desktop) offlineAccount(c *ui.Context, disabled bool) {
@@ -133,30 +202,32 @@ func (a *desktop) offlineAccount(c *ui.Context, disabled bool) {
 		})
 		return
 	}
-	surface(c).Padding(12, 14).Gap(10).Children(func() {
-		ui.Row(c).Gap(9).AlignItems(ui.Center).Children(func() {
-			a.accountAvatar(c, name, false, 40)
-			display.Text(c, name, display.TextProps{Strong: true, FontSize: 17}).Grow(1)
+	accountHeader(c, func() { a.accountAvatar(c, name, false, 42) },
+		name, "离线账号", func() {
 			if name == a.state.Settings.Player && a.state.MicrosoftProfile == "" {
-				display.Tag(c, "使用中", display.TagProps{Color: display.TagGreen, Size: theme.Small})
-			} else if button(c, "切换", action.Primary, disabled) {
+				activeAccountTag(c)
+			} else if button(c, "设为启动账号", action.Primary, disabled) {
 				a.selectOfflinePlayer(name)
 			}
-			if name != a.state.Settings.Player && button(c, "移除离线账号", action.Text, disabled) {
+			if name != a.state.Settings.Player && icon(c, lucide.Trash2(), "移除离线账号", disabled) {
 				a.forgetOfflinePlayer(name)
 			}
 		})
-		muted(c, "启动器使用孪枭作为离线账号头像。要在 Minecraft 中更换皮肤或披风，请登录 Microsoft。").FontSize(13)
-		if a.microsoftAccount.Profile.ID == "" && button(c, "登录 Microsoft", action.Default, disabled) {
-			a.browsedAccount = ""
-			a.beginMicrosoftLogin()
-		}
-	})
-	surface(c).Padding(12, 14).Gap(8).Children(func() {
-		heading(c, "孪枭 · 皮肤预览")
-		ui.Row(c).Gap(8).Children(func() {
-			appearanceTile(c, "正面", clubSkin.front, lucide.UserRound())
-			appearanceTile(c, "背面", clubSkin.back, lucide.UserRound())
+	root := ui.Row(c).Gap(10).AlignItems(ui.Stretch).Grow(1).Basis(0).MinHeight(0)
+	orbit := ui.Local(root, "orbit", frontOrbit)
+	root.Children(func() {
+		modelPreview(c, clubSkin, nil, false, orbit, "孪枭 · 离线预览")
+		accountInspector(c, func() {
+			heading(c, "外观")
+			muted(c, "孪枭用作启动器内的离线预览。登录 Microsoft 后可更换 Java 版皮肤和披风。").FontSize(13)
+			if a.microsoftAccount.Profile.ID == "" {
+				if button(c, "登录 Microsoft", action.Default, disabled) {
+					a.browsedAccount = ""
+					a.beginMicrosoftLogin()
+				}
+			} else if button(c, "查看 Microsoft 账号", action.Default, false) {
+				a.browsedAccount = ""
+			}
 		})
 	})
 }

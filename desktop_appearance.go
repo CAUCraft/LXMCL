@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"image"
 	"path/filepath"
 	"strings"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/lobehub/lobe-mygo/pkg/display"
 	"github.com/lobehub/lobe-mygo/pkg/feedback"
 	"github.com/lobehub/lobe-mygo/pkg/field"
+	"github.com/lobehub/lobe-mygo/pkg/layout"
 	"github.com/lobehub/lobe-mygo/pkg/lucide"
 )
 
@@ -23,10 +25,10 @@ type appearanceView struct {
 	loaded, syncing, reading bool
 	data                     launcher.Appearance
 	skin                     skinPreview
-	capes                    map[string]*ui.Bitmap
+	capes                    map[string]*image.NRGBA
 	file, variant            string
 	draft                    []byte
-	classic, slim            skinPreview
+	draftSkin                skinPreview
 	legacy                   bool
 	cape                     string
 	capeLoading, capeError   string
@@ -45,6 +47,7 @@ func (a *desktop) accountAvatar(c *ui.Context, name string, online bool, size fl
 	_, wash := brand(c)
 	var img ui.ImageSource = clubSkin.head
 	if online {
+		img = placeholderSkin.head
 		if p := a.appearance; p != nil && p.id == a.microsoftAccount.Profile.ID && p.skin.head != nil {
 			img = p.skin.head
 		}
@@ -59,7 +62,7 @@ func (a *desktop) startAppearance() {
 	if a.ctx == nil || id == "" || a.busy || a.appearance != nil || (a.microsoft != nil && a.microsoft.open) {
 		return
 	}
-	a.appearance = &appearanceView{id: id, capes: make(map[string]*ui.Bitmap)}
+	a.appearance = &appearanceView{id: id}
 	a.syncAppearance(a.appearance, appearanceChange{})
 }
 
@@ -114,10 +117,9 @@ func (a *desktop) syncAppearance(p *appearanceView, change appearanceChange) {
 			if applied {
 				if len(change.skin) != 0 {
 					p.draft, p.file = nil, ""
-					p.skin = p.classic
-					if change.variant == "slim" {
-						p.skin = p.slim
-					}
+					p.skin = p.draftSkin
+					p.data.Skin.Variant = change.variant
+					p.draftSkin = skinPreview{}
 				}
 				p.status = "外观已应用到 Minecraft"
 			}
@@ -146,7 +148,7 @@ func (a *desktop) syncAppearance(p *appearanceView, change appearanceChange) {
 				}
 			}
 			p.loaded, p.data, p.cape = true, data, cape
-			p.capes = make(map[string]*ui.Bitmap)
+			p.capes = make(map[string]*image.NRGBA)
 			p.capeRequest++
 			p.capeLoading, p.capeError = "", ""
 			if p.draft == nil {
@@ -165,12 +167,12 @@ func (a *desktop) loadProfilePreviews(p *appearanceView, data launcher.Appearanc
 		ctx, stop := context.WithTimeout(a.ctx, 16*time.Second)
 		defer stop()
 		var skin skinPreview
-		var cape *ui.Bitmap
+		var cape *image.NRGBA
 		var warnings []string
 		if data.Skin.URL != "" {
 			img, err := launcher.FetchProfileTexture(ctx, data.Skin.URL, true)
 			if err == nil {
-				skin = renderSkin(img, strings.EqualFold(data.Skin.Variant, "slim"))
+				skin = renderSkin(img)
 			} else {
 				warnings = append(warnings, "皮肤预览加载失败")
 			}
@@ -179,7 +181,7 @@ func (a *desktop) loadProfilePreviews(p *appearanceView, data launcher.Appearanc
 		if active.URL != "" {
 			img, err := launcher.FetchProfileTexture(ctx, active.URL, false)
 			if err == nil {
-				cape = renderCape(img)
+				cape = textureAtlas(img)
 			} else {
 				warnings = append(warnings, "披风预览加载失败")
 			}
@@ -213,14 +215,11 @@ func (a *desktop) chooseSkin(p *appearanceView) {
 		p.reading, p.status, p.failure = true, "", ""
 		go func() {
 			data, img, err := launcher.ReadSkinFile(path)
-			var classic, slim skinPreview
+			var preview skinPreview
 			legacy := false
 			if err == nil {
 				legacy = img.Bounds().Dy() == 32
-				classic = renderSkin(img, false)
-				if !legacy {
-					slim = renderSkin(img, true)
-				}
+				preview = renderSkin(img)
 			}
 			a.post(func() {
 				if a.appearance != p {
@@ -228,10 +227,10 @@ func (a *desktop) chooseSkin(p *appearanceView) {
 				}
 				p.reading = false
 				if err != nil {
-					p.draft, p.file, p.failure = nil, "", err.Error()
+					p.draft, p.draftSkin, p.file, p.failure = nil, skinPreview{}, "", err.Error()
 					return
 				}
-				p.file, p.draft, p.classic, p.slim, p.legacy = filepath.Base(path), data, classic, slim, legacy
+				p.file, p.draft, p.draftSkin, p.legacy = filepath.Base(path), data, preview, legacy
 				if legacy {
 					p.variant = "classic"
 				}
@@ -258,9 +257,9 @@ func (a *desktop) previewCape(p *appearanceView) {
 			ctx, stop := context.WithTimeout(a.ctx, 15*time.Second)
 			defer stop()
 			img, err := launcher.FetchProfileTexture(ctx, cape.URL, false)
-			var preview *ui.Bitmap
+			var preview *image.NRGBA
 			if err == nil {
-				preview = renderCape(img)
+				preview = textureAtlas(img)
 			}
 			a.post(func() {
 				if a.appearance != p || p.capeRequest != request {
@@ -279,53 +278,67 @@ func (a *desktop) previewCape(p *appearanceView) {
 }
 
 func (a *desktop) appearancePanel(c *ui.Context, p *appearanceView, disabled bool) {
-	surface(c).Padding(12, 14).Gap(9).Children(func() {
-		heading(c, "皮肤与披风", func() {
-			if button(c, "刷新外观", action.Text, disabled || p.syncing || p.reading) {
-				a.syncAppearance(p, appearanceChange{})
+	root := ui.Row(c).Gap(10).AlignItems(ui.Stretch).Grow(1).Basis(0).MinHeight(0)
+	orbit := ui.Local(root, "orbit", frontOrbit)
+	skin, slim, caption := p.skin, strings.EqualFold(p.data.Skin.Variant, "slim"), ""
+	if p.draft != nil {
+		skin, slim, caption = p.draftSkin, p.variant == "slim", "未应用"
+	} else if p.loaded && p.cape != p.data.ActiveCape().ID {
+		caption = "未应用"
+	}
+	if skin.atlas == nil {
+		skin, slim, caption = placeholderSkin, false, "无皮肤贴图 · 示意模型"
+	}
+	root.Children(func() {
+		modelPreview(c, skin, p.capes[p.cape], slim, orbit, caption)
+		accountInspector(c, func() {
+			locked := disabled || p.syncing || p.reading
+			heading(c, "外观", func() {
+				if icon(c, lucide.RefreshCw(), "刷新外观", locked) {
+					a.syncAppearance(p, appearanceChange{})
+				}
+			})
+			if p.syncing || p.reading {
+				label := "正在同步外观…"
+				if p.reading {
+					label = "正在读取 PNG…"
+				}
+				flightLoading(c, label)
 			}
-		})
-		if p.syncing || p.reading {
-			label := "正在同步 Minecraft 外观…"
-			if p.reading {
-				label = "正在读取皮肤 PNG…"
+			if p.status != "" {
+				feedback.Alert(c, p.status, feedback.AlertProps{Type: feedback.Success})
 			}
-			flightLoading(c, label)
-		}
-		if p.status != "" {
-			feedback.Alert(c, p.status, feedback.AlertProps{Type: feedback.Success})
-		}
-		if p.failure != "" {
-			feedback.Alert(c, p.failure, feedback.AlertProps{Type: feedback.Error})
-		}
-		if p.warning != "" {
-			feedback.Alert(c, p.warning, feedback.AlertProps{Type: feedback.Warning})
-		}
-		if !p.loaded {
-			return
-		}
-		disabled = disabled || p.syncing || p.reading
-		ui.Row(c).Gap(10).AlignItems(ui.Start).Children(func() {
-			a.skinEditor(c, p, disabled)
-			a.capeEditor(c, p, disabled)
+			if p.failure != "" {
+				feedback.Alert(c, p.failure, feedback.AlertProps{Type: feedback.Error})
+			}
+			if p.warning != "" {
+				feedback.Alert(c, p.warning, feedback.AlertProps{Type: feedback.Warning})
+			}
+			if p.loaded {
+				layout.Divider(c, layout.DividerProps{})
+				a.skinEditor(c, p, locked)
+				layout.Divider(c, layout.DividerProps{})
+				a.capeEditor(c, p, orbit, locked)
+			}
+			if !launcher.MicrosoftCredentialsPersist() {
+				muted(c, "登录仅在本次运行中保留。").FontSize(12)
+			}
 		})
 	})
 }
 
+func accountInspector(c *ui.Context, content func()) {
+	w, _ := c.Size()
+	surface(c).Width(min(272, max(220, w*0.245))).Shrink(0).MinHeight(0).Children(func() {
+		layout.ScrollArea(c, layout.ScrollAreaProps{}, func() {
+			ui.Column(c).Padding(12).Gap(9).FillWidth().Children(content)
+		}).Grow(1).MinHeight(0)
+	})
+}
+
 func (a *desktop) skinEditor(c *ui.Context, p *appearanceView, disabled bool) {
-	ui.Column(c).Grow(1).Basis(0).MinWidth(0).Gap(8).Children(func() {
+	ui.Column(c).MinWidth(0).Gap(7).Children(func() {
 		display.Text(c, "皮肤", display.TextProps{Strong: true})
-		preview := p.skin
-		if p.draft != nil {
-			preview = p.classic
-			if p.variant == "slim" {
-				preview = p.slim
-			}
-		}
-		ui.Row(c).Gap(6).Children(func() {
-			appearanceTile(c, "正面", preview.front, lucide.UserRound())
-			appearanceTile(c, "背面", preview.back, lucide.UserRound())
-		})
 		if p.draft == nil {
 			label := "PNG · 64 × 64 或 64 × 32"
 			if p.data.Skin.URL == "" {
@@ -334,16 +347,21 @@ func (a *desktop) skinEditor(c *ui.Context, p *appearanceView, disabled bool) {
 			muted(c, label).FontSize(12).SingleLine()
 		} else {
 			muted(c, p.file).FontSize(12).SingleLine().Ellipsis("…")
+			before := p.variant
 			field.Select(c, &p.variant, field.SelectProps{Disabled: disabled || p.legacy, Options: []field.SelectOption{
 				{Value: "classic", Label: "经典模型"}, {Value: "slim", Label: "纤细模型"},
 			}}).Label("皮肤模型")
+			if p.variant != before {
+				c.Invalidate()
+			}
 		}
 		ui.Row(c).Gap(6).Children(func() {
 			if button(c, "选择 PNG…", action.Default, disabled) {
 				a.chooseSkin(p)
 			}
 			if p.draft != nil && button(c, "取消预览", action.Text, disabled) {
-				p.draft, p.file = nil, ""
+				p.draft, p.draftSkin, p.file = nil, skinPreview{}, ""
+				c.Invalidate()
 			}
 		})
 		if p.draft != nil && button(c, "应用皮肤", action.Primary, disabled) {
@@ -352,23 +370,9 @@ func (a *desktop) skinEditor(c *ui.Context, p *appearanceView, disabled bool) {
 	})
 }
 
-func (a *desktop) capeEditor(c *ui.Context, p *appearanceView, disabled bool) {
-	ui.Column(c).Grow(1).Basis(0).MinWidth(0).Gap(8).Children(func() {
+func (a *desktop) capeEditor(c *ui.Context, p *appearanceView, orbit *modelOrbit, disabled bool) {
+	ui.Column(c).MinWidth(0).Gap(7).Children(func() {
 		display.Text(c, "披风", display.TextProps{Strong: true})
-		label := "不佩戴"
-		if p.cape != "" {
-			label = "披风预览"
-		}
-		ui.Row(c).Children(func() {
-			appearanceTile(c, label, p.capes[p.cape], lucide.Shirt())
-		})
-		if p.cape != "" && p.capeLoading == p.cape {
-			flightLoading(c, "正在加载披风…")
-		} else if p.capeError != "" && p.cape != "" && p.capes[p.cape] == nil {
-			if button(c, "重试披风预览", action.Text, disabled) {
-				a.previewCape(p)
-			}
-		}
 		if len(p.data.Capes) == 0 {
 			muted(c, "此账号暂无已拥有的披风").FontSize(12)
 			return
@@ -395,23 +399,19 @@ func (a *desktop) capeEditor(c *ui.Context, p *appearanceView, disabled bool) {
 		}
 		if p.cape != selected {
 			p.cape, p.status = selected, ""
+			orbit.turn(c, backOrbit())
 			a.previewCape(p)
+			c.Invalidate()
 		}
-		if button(c, "应用披风", action.Primary, disabled || p.cape == active) {
+		if p.cape != "" && p.capeLoading == p.cape {
+			flightLoading(c, "正在加载披风…")
+		} else if p.capeError != "" && p.cape != "" && p.capes[p.cape] == nil {
+			if button(c, "重试披风预览", action.Text, disabled) {
+				a.previewCape(p)
+			}
+		}
+		if p.cape != active && button(c, "应用披风", action.Primary, disabled) {
 			a.syncAppearance(p, appearanceChange{setCape: true, cape: p.cape})
 		}
-	})
-}
-
-func appearanceTile(c *ui.Context, label string, img *ui.Bitmap, glyph *ui.SVG) {
-	ink, wash := brand(c)
-	ui.Column(c).Grow(1).Basis(0).MinWidth(0).Height(113).Radius(8).Background(wash).
-		AlignItems(ui.Center).Justify(ui.Center).Gap(5).Children(func() {
-		if img != nil {
-			ui.Image(c, img).Size(56, 80).Fit(ui.Contain)
-		} else {
-			ui.Box(c).Size(56, 80).Center().Children(func() { ui.Icon(c, glyph).FontSize(25).TextColor(ink) })
-		}
-		muted(c, label).FontSize(12)
 	})
 }

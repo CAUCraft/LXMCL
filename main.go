@@ -119,6 +119,7 @@ type desktop struct {
 	appearance       *appearanceView
 	browsedAccount   string
 	newOfflinePlayer string
+	accountReturn    int
 	browsedServer    string
 
 	page, settingsPage, libraryPage        int

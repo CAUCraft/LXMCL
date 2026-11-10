@@ -199,7 +199,6 @@ func (a *desktop) javaSettings(c *ui.Context, disabled bool) {
 var settingsTabs = []nav.TabItem{
 	{Label: "游戏", Icon: lucide.Gamepad2()},
 	{Label: "Java", Icon: lucide.Coffee()},
-	{Label: "账号", Icon: lucide.UserRound()},
 	{Label: "关于", Icon: lucide.CircleHelp()},
 }
 
@@ -215,15 +214,8 @@ func (a *desktop) settings(c *ui.Context) {
 				a.settingsPage, _ = strconv.Atoi(key)
 				c.Invalidate()
 			}
-			if a.settingsPage == 2 {
-				layout.Divider(c, layout.DividerProps{})
-				a.accountList(c)
-			}
 		}, func() {
-			key := strconv.Itoa(a.settingsPage)
-			if a.settingsPage == 2 {
-				key += "/" + a.browsedAccount
-			}
+			key := a.settingsPage
 			detailPane(c.Key(key), func() {
 				disabled := a.busy || a.pickerBusy
 				layout.ScrollArea(c.Key(key), layout.ScrollAreaProps{}, func() {
@@ -236,13 +228,6 @@ func (a *desktop) settings(c *ui.Context) {
 							heading(c, "Java 设置")
 							a.javaSettings(c, disabled)
 						case 2:
-							if a.browsedAccount == "" {
-								a.startAppearance()
-								a.microsoftSettings(c, disabled || a.busy)
-							} else {
-								a.offlineAccount(c, disabled)
-							}
-						case 3:
 							a.help(c)
 						}
 					})

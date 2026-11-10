@@ -22,6 +22,7 @@ const (
 	pageLibrary
 	pageNetwork
 	pageSettings
+	pageAccount
 )
 
 var mainTabs = []nav.TabItem{
@@ -119,8 +120,11 @@ func (a *desktop) view(c *ui.Context) {
 				}
 			}
 		}
+		if a.page == pageAccount && c.Shortcut(0, ui.KeyEscape) {
+			a.page = a.accountReturn
+		}
 		if c.Shortcut(0, ui.KeyF1) {
-			a.page, a.settingsPage = pageSettings, 3
+			a.page, a.settingsPage = pageSettings, 2
 		}
 	}
 	ui.Column(c).Fill().Background(workspaceColor(c)).Children(func() {
@@ -145,6 +149,8 @@ func (a *desktop) view(c *ui.Context) {
 				a.network(c)
 			case pageSettings:
 				a.settings(c)
+			case pageAccount:
+				a.accounts(c.Key("accounts"))
 			}
 		}
 		if a.task.Stage != "" && !(a.page == pageLibrary && a.libraryPage == 1 && a.inspected == 0) {
@@ -170,8 +176,8 @@ func (a *desktop) noticeBar(c *ui.Context) {
 		}
 		feedback.Alert(c, a.notice, feedback.AlertProps{Type: tone, Variant: feedback.Plain}).Grow(1).MinWidth(0)
 		if a.noticeAccount {
-			if button(c, "账号设置", action.Text, false) {
-				a.page, a.settingsPage, a.browsedAccount = pageSettings, 2, ""
+			if button(c, "打开账号页", action.Text, false) {
+				a.openAccounts(true)
 			}
 		} else if a.noticeJava {
 			if button(c, "Java 设置", action.Text, false) {
@@ -211,8 +217,7 @@ func (a *desktop) topBar(c *ui.Context) {
 	ui.Box(c).Height(height).FillWidth().Background(tk.BgContainer).Shrink(0).DragWindow().Children(func() {
 		ui.Row(c).Absolute().Left(0).Right(0).Top(0).Bottom(0).
 			Justify(ui.Center).AlignItems(ui.Center).Children(func() {
-			nav.Tabs(c, &a.page, nav.TabsProps{Items: mainTabs, Variant: nav.TabsRounded, Size: theme.Small}, nil).
-				Label("主导航").AlignSelf(ui.Center).Shrink(0)
+			a.mainNavigation(c)
 		})
 		ui.Row(c).Absolute().Left(bar.Left + 14).Top(0).Bottom(0).
 			Gap(7).AlignItems(ui.Center).Children(func() {
@@ -228,8 +233,12 @@ func (a *desktop) topBar(c *ui.Context) {
 				}
 			}).AlignSelf(ui.Center)
 			name := a.accountName()
-			account := action.StyleButton(c, ui.ButtonBase(c).Label("账号设置"), "",
+			account := action.StyleButton(c, ui.ButtonBase(c).Label("账号中心"), "",
 				action.ButtonProps{Variant: action.Text, Size: theme.Small}).PaddingX(5).Gap(6).Shrink(0).Disabled(!a.ready)
+			if a.page == pageAccount {
+				_, wash := brand(c)
+				account.Background(wash)
+			}
 			account.Children(func() {
 				a.accountAvatar(c, name, a.state.MicrosoftProfile != "", 24)
 				ink, _ := brand(c)
@@ -238,13 +247,37 @@ func (a *desktop) topBar(c *ui.Context) {
 				}
 			})
 			if account.Clicked() {
-				a.page, a.settingsPage = pageSettings, 2
-				a.browsedAccount = a.state.Settings.Player
-				if a.state.MicrosoftProfile != "" {
-					a.browsedAccount = ""
+				if a.page == pageAccount {
+					a.page = a.accountReturn
+				} else {
+					a.openAccounts(false)
 				}
 			}
 		})
+	})
+}
+
+func (a *desktop) mainNavigation(c *ui.Context) {
+	if a.page != pageAccount {
+		nav.Tabs(c, &a.page, nav.TabsProps{Items: mainTabs, Variant: nav.TabsRounded, Size: theme.Small}, nil).
+			Label("主导航").AlignSelf(ui.Center).Shrink(0)
+		return
+	}
+	// Account is reached from the avatar, so none of the main tabs is active here.
+	tk := theme.TokensOf(c)
+	ui.Row(c).Gap(4).Padding(3).Radius(tk.BorderRadiusLG).Background(tk.BgLayout).
+		Label("主导航").AlignSelf(ui.Center).Shrink(0).Children(func() {
+		for page, item := range mainTabs {
+			b := action.StyleButton(c, ui.ButtonBase(c.Key(page)).Label(item.Label), "",
+				action.ButtonProps{Variant: action.Text, Size: theme.Small}).Height(26).PaddingX(10)
+			b.Children(func() {
+				ui.Icon(c, item.Icon).FontSize(14)
+				ui.Text(c, item.Label).FontSize(12).SingleLine()
+			})
+			if b.Clicked() {
+				a.page = page
+			}
+		}
 	})
 }
 
