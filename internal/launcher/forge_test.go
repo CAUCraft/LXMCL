@@ -1,6 +1,7 @@
 package launcher
 
 import (
+	"archive/zip"
 	"context"
 	"crypto/sha1"
 	"encoding/json"
@@ -9,9 +10,13 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/CAUCraft/LXMCL/internal/minecraft"
+	"github.com/CAUCraft/LXMCL/internal/storage"
 )
 
 const (
@@ -27,7 +32,7 @@ func TestMain(m *testing.M) {
 	if os.Getenv("LXMCL_TEST_FORGE_PROCESS") == "1" && len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "-XshowSettings:properties":
-			if os.Getenv(launcherCurseForgeKey) != "" || os.Getenv(standardCurseForgeKey) != "" {
+			if os.Getenv("LXMCL_CURSEFORGE_API_KEY") != "" || os.Getenv("CURSEFORGE_API_KEY") != "" {
 				os.Exit(2)
 			}
 			fmt.Println("    java.specification.version = 21")
@@ -42,9 +47,16 @@ func TestMain(m *testing.M) {
 			args := os.Args[2:]
 			main := slices.Index(args, shimMain)
 			cp := slices.Index(args, "-cp")
+			value := func(flag string) string {
+				if n := slices.Index(args, flag); n >= 0 && n+1 < len(args) {
+					return args[n+1]
+				}
+				return ""
+			}
 			mods, _ := os.ReadFile("config/probe.txt")
 			if cp < 0 || cp+1 >= len(args) || !strings.Contains(args[cp+1], "patched-1-client.jar") ||
 				main < 0 || !slices.Contains(args[main+1:], "shimClient") || string(mods) != "isolated" ||
+				value("--username") != "Player" || value("--accessToken") != "0" || value("--userType") != "legacy" ||
 				!slices.ContainsFunc(args[:max(main, 0)], func(arg string) bool {
 					return strings.HasPrefix(arg, "-DignoreList=") && strings.HasSuffix(arg, ".jar,client.jar")
 				}) || os.Getenv("CURSEFORGE_API_KEY") != "" {
@@ -62,7 +74,26 @@ func shimForgeInstall(args []string) error {
 		args[1] != "-Duser.home="+args[5] || os.Getenv("CURSEFORGE_API_KEY") != "" {
 		return errors.New("installer was not run with the isolated client arguments")
 	}
-	installer, p, err := forgeMetadata(args[3])
+	z, err := zip.OpenReader(args[3])
+	if err != nil {
+		return err
+	}
+	defer z.Close()
+	var installer struct{ Minecraft string }
+	var p struct{ ID string }
+	var profileJSON json.RawMessage
+	for _, f := range z.File {
+		switch f.Name {
+		case "install_profile.json":
+			err = storage.ReadArchiveJSON(f, 8<<20, &installer)
+		case "version.json":
+			err = storage.ReadArchiveJSON(f, 8<<20, &profileJSON)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	err = json.Unmarshal(profileJSON, &p)
 	if err != nil {
 		return err
 	}
@@ -75,23 +106,23 @@ func shimForgeInstall(args []string) error {
 	if err != nil || string(jar) != "client" {
 		return errors.New("installer did not get the verified vanilla jar")
 	}
-	b, err := json.Marshal(p)
+	b, err := json.Marshal(profileJSON)
 	if err != nil {
 		return err
 	}
-	if err := writeFile(filepath.Join(dir, "versions", p.ID, p.ID+".json"), b); err != nil {
+	if err := storage.WriteFile(filepath.Join(dir, "versions", p.ID, p.ID+".json"), b); err != nil {
 		return err
 	}
-	if err := writeFile(filepath.Join(dir, "libraries", filepath.FromSlash(shimLibrary)), []byte(shimOutput)); err != nil {
+	if err := storage.WriteFile(filepath.Join(dir, "libraries", filepath.FromSlash(shimLibrary)), []byte(shimOutput)); err != nil {
 		return err
 	}
-	return writeFile(filepath.Join(dir, "libraries", filepath.FromSlash(shimAux)), []byte(shimOutput))
+	return storage.WriteFile(filepath.Join(dir, "libraries", filepath.FromSlash(shimAux)), []byte(shimOutput))
 }
 
 func TestPatchedModpackInstallAndLaunch(t *testing.T) {
 	t.Setenv("LXMCL_TEST_FORGE_PROCESS", "1")
-	t.Setenv(standardCurseForgeKey, "must-not-reach-java")
-	t.Setenv(launcherCurseForgeKey, "must-not-reach-java")
+	t.Setenv("CURSEFORGE_API_KEY", "must-not-reach-java")
+	t.Setenv("LXMCL_CURSEFORGE_API_KEY", "must-not-reach-java")
 	java, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
@@ -124,9 +155,9 @@ func TestPatchedModpackInstallAndLaunch(t *testing.T) {
 			if i.Loader != tc.kind || i.LoaderVersion != tc.version || i.GameDir == old.Instances[0].GameDir {
 				t.Fatalf("unexpected staged instance: %+v", i)
 			}
-			src, err := forgeInstallerURL(i)
-			if err != nil || !strings.HasSuffix(src, "/"+tc.installerPath) {
-				t.Fatalf("installer source: %q, %v", src, err)
+			src := "https://maven.minecraftforge.net/" + tc.installerPath
+			if tc.kind == LoaderNeoForge {
+				src = "https://maven.neoforged.net/" + tc.installerPath
 			}
 			profileID := i.Version + "-" + strings.ToLower(tc.kind) + "-" + tc.version
 			installer := packArchive(t, map[string]string{
@@ -141,14 +172,14 @@ func TestPatchedModpackInstallAndLaunch(t *testing.T) {
 					"libraries":[{"name":"test.runtime:patched:1:client","downloads":{"artifact":{"path":%q}}}]}`, profileID, shimMain, shimLibrary),
 			})
 			fixture := newInstallFixture(t)
-			fixture.files[src] = installer
-			fixture.files[src+".sha1"] = []byte(fmt.Sprintf("%x", sha1.Sum(installer)))
-			client := &http.Client{Transport: transportFunc(fixture.request)}
+			fixture.Files[src] = installer
+			fixture.Files[src+".sha1"] = []byte(fmt.Sprintf("%x", sha1.Sum(installer)))
+			client := &http.Client{Transport: transportFunc(fixture.RoundTrip)}
 			game := Game{Cache: t.TempDir()}
 			install := func(ctx context.Context, work Instance, report func(Progress)) error {
-				return game.installWithJava(ctx, work, next.Settings.JavaPath, report, &downloads{http: client})
+				return (minecraft.Runtime{Cache: game.Cache, Client: minecraft.Client{Transport: client.Transport}}).InstallWithJava(ctx, work, next.Settings.JavaPath, report)
 			}
-			if err := game.installModpack(ctx, store, next, i, pack, curseForge{}, client, install, nil); err != nil {
+			if err := game.installModpack(ctx, store, next, i, pack, nil, client, install, nil); err != nil {
 				t.Fatal(err)
 			}
 			state, err := store.Load()
@@ -168,7 +199,7 @@ func TestPatchedModpackInstallAndLaunch(t *testing.T) {
 			}
 			// The processor output is discovered through library_directory,
 			// even though it was never on the Java classpath.
-			path := filepath.Join(game.forgeDir(i), "libraries", filepath.FromSlash(shimAux))
+			path := filepath.Join(filepath.Join(game.Cache, strings.ToLower(i.Loader), i.Version, i.LoaderVersion, runtime.GOOS+"-"+runtime.GOARCH), "libraries", filepath.FromSlash(shimAux))
 			if err := os.WriteFile(path, []byte(strings.Repeat("x", len(shimOutput))), 0600); err != nil {
 				t.Fatal(err)
 			}
@@ -185,33 +216,12 @@ func TestPatchedModpackInstallAndLaunch(t *testing.T) {
 	}
 }
 
-func TestForgeClassPathRetainsNativeClassifier(t *testing.T) {
-	var m metadata
-	var p forgeProfile
-	if err := json.Unmarshal([]byte(`{"libraries":[
-		{"name":"org.example:library:1","downloads":{"artifact":{"path":"old.jar"}}},
-		{"name":"org.example:library:1:natives-windows","downloads":{"artifact":{"path":"native.jar"}}}
-	]}`), &m); err != nil {
-		t.Fatal(err)
-	}
-	p.Libraries = []forgeLibrary{{Name: "org.example:library:2"}}
-	g := Game{Cache: t.TempDir()}
-	libraries := filepath.Join(g.Cache, "libraries")
-	old, native := filepath.Join(libraries, "old.jar"), filepath.Join(libraries, "native.jar")
-	got := g.mergeForgeClasspath(m, p, []string{old, native, "client.jar"}, []string{"new.jar"})
-	if !slices.Equal(got, []string{"new.jar", native, "client.jar"}) {
-		t.Fatalf("wrong merged classpath: %v", got)
-	}
-}
-
 func TestLegacyForgePackLoaderCoordinates(t *testing.T) {
 	for _, tc := range []struct {
-		id, kind, version, url string
+		id, kind, version string
 	}{
-		{"forge-1.20.1-47.4.10", LoaderForge, "47.4.10",
-			forgeMaven + "net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-installer.jar"},
-		{"neoforge-47.1.106", LoaderNeoForge, "47.1.106",
-			neoMaven + "net/neoforged/forge/1.20.1-47.1.106/forge-1.20.1-47.1.106-installer.jar"},
+		{"forge-1.20.1-47.4.10", LoaderForge, "47.4.10"},
+		{"neoforge-47.1.106", LoaderNeoForge, "47.1.106"},
 	} {
 		t.Run(tc.kind, func(t *testing.T) {
 			file := packFile(t, "legacy.zip", map[string]string{
@@ -223,9 +233,8 @@ func TestLegacyForgePackLoaderCoordinates(t *testing.T) {
 				t.Fatal(err)
 			}
 			info := pack.Info()
-			src, err := forgeInstallerURL(Instance{Loader: info.Loader, LoaderVersion: info.LoaderVersion, Version: info.Minecraft})
-			if err != nil || info.Loader != tc.kind || info.LoaderVersion != tc.version || src != tc.url {
-				t.Fatalf("unexpected loader: %+v, %s, %v", info, src, err)
+			if info.Loader != tc.kind || info.LoaderVersion != tc.version {
+				t.Fatalf("unexpected loader: %+v", info)
 			}
 		})
 	}

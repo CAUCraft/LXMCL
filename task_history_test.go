@@ -1,9 +1,6 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -15,11 +12,11 @@ func TestResourceRetryKeepsOriginalInstanceRevision(t *testing.T) {
 	state := launcher.State{Instances: []launcher.Instance{i}, Selected: 4}
 	row := taskRecord{InstanceID: i.ID, Revision: i.Revision, Version: i.Version, Status: taskCanceled,
 		Resource: &resourceTask{Kind: launcher.Mods, Project: "modA", Version: "releaseA"}}
-	if target, ok := row.retryTarget(state); !ok || target.ID != i.ID {
+	if target, ok := launcher.RetryTarget(row, state); !ok || target.ID != i.ID {
 		t.Fatal("resource retry did not use its original instance")
 	}
 	state.Instances[0].Revision++
-	if _, ok := row.retryTarget(state); ok {
+	if _, ok := launcher.RetryTarget(row, state); ok {
 		t.Fatal("resource retry was accepted after an instance revision change")
 	}
 }
@@ -55,28 +52,5 @@ func TestTaskHistoryPersistsExitAndBounds(t *testing.T) {
 		if item.At.Equal(run.At) {
 			t.Fatal("exit should update the original launch record")
 		}
-	}
-}
-
-func TestGameLogPreviewReadsBoundedTail(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "launcher-logs")
-	if err := os.Mkdir(dir, 0700); err != nil {
-		t.Fatal(err)
-	}
-	path := filepath.Join(dir, "game-test.log")
-	prefix := "this line must not be shown"
-	b := []byte(prefix + "\n" + strings.Repeat("一次游戏事件\n", logTailLimit) + "客户端退出\n")
-	if err := os.WriteFile(path, b, 0600); err != nil {
-		t.Fatal(err)
-	}
-	log, err := readGameLog(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(log, prefix) || !strings.HasSuffix(log, "客户端退出\n") || len(log) > logTailLimit+128 {
-		t.Fatalf("unexpected log preview of %d bytes", len(log))
-	}
-	if _, err := readGameLog(filepath.Join(dir, "other.exe")); err == nil {
-		t.Fatal("accepted a non-log path")
 	}
 }

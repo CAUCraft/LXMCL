@@ -412,7 +412,7 @@ func (a *desktop) taskHistoryPane(c *ui.Context, rows []taskRecord) {
 }
 
 func taskKey(row taskRecord) string {
-	return strconv.FormatInt(row.At.UnixNano(), 10)
+	return row.Key()
 }
 
 func taskIcon(row taskRecord) *ui.SVG {
@@ -468,7 +468,7 @@ func (a *desktop) taskRow(c *ui.Context, row taskRecord) {
 				button(c, "重试", action.Default, a.busy || a.running != nil) {
 				a.saveResourceFile(row.Folder, *row.Resource, launcher.PackVersion{})
 			}
-			if i, ok := row.retryTarget(a.state); ok {
+			if i, ok := launcher.RetryTarget(row, a.state); ok {
 				if button(c, "重试", action.Default, a.busy || a.running != nil) {
 					if row.Resource != nil {
 						a.downloadResource(i, *row.Resource, launcher.PackVersion{})

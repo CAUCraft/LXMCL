@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/CAUCraft/LXMCL/internal/launcher"
+	launcherlog "github.com/CAUCraft/LXMCL/internal/log"
 	"github.com/egoist/mygo"
 )
 
@@ -32,7 +33,7 @@ func (a *desktop) load() {
 	go func() {
 		s, err := a.store.Load()
 		account, accountErr := a.store.LoadMicrosoftAccount()
-		history, historyErr := loadTaskHistory(a.store.Root)
+		history, historyErr := a.journal.Load(a.store.Root)
 		curseForgeKey := launcher.LoadCurseForgeAPIKey(a.store.Root)
 		installed := make(map[int]bool, len(s.Instances))
 		for _, i := range s.Instances {
@@ -382,20 +383,16 @@ func (a *desktop) playOnServer(i launcher.Instance, installOnly bool, server str
 	a.task = launcher.Progress{Stage: "检查游戏文件"}
 	ctx, cancel := context.WithCancel(a.ctx)
 	a.cancelTask = cancel
-	settings, g := a.state.Settings, a.game
-	onlineID, account, session := a.state.MicrosoftProfile, a.microsoftAccount, a.minecraftSession
-	stationKey := a.state.StationKey
-	station, _ := a.state.Station(stationKey)
-	stationSession := a.stationSessions[stationKey]
-	stationState := a.state
-	instances := a.state.Instances
+	g := a.game
+	request := (launcher.LaunchRequest{Instance: i, State: a.state, Account: a.microsoftAccount, Session: a.minecraftSession, StationSession: a.stationSessions[a.state.StationKey], Server: server, InstallOnly: installOnly}).Snapshot()
+	instances := request.State.Instances
 	record := taskRecord{InstanceID: i.ID, Revision: i.Revision, Name: i.Name, Version: i.Version, Action: taskLaunch, Server: server, At: time.Now()}
 	if installOnly {
 		record.Action = taskVerify
 	} else {
 		record.Account = a.state.AccountKey()
 	}
-	records := a.taskSnapshot()
+	record = record.Submitted()
 	a.writes.Go(func() {
 		defer cancel()
 		var mu sync.Mutex
@@ -413,80 +410,10 @@ func (a *desktop) playOnServer(i launcher.Instance, installOnly bool, server str
 				})
 			}
 		}
-		needsInstall := installOnly || !g.Installed(i)
-		var err error
-		var activeSession *launcher.MinecraftSession
-		var refreshed bool
-		var stationStateChanged bool
-		if !installOnly && stationKey != "" {
-			report(launcher.Progress{Stage: "验证皮肤站登录"})
-			if station.Key == "" {
-				err = launcher.ErrSkinStationLogin
-			} else if stationSession.Profile.Key != stationKey {
-				stationSession, err = a.store.LoadStationSession(station)
-			}
-			if err == nil {
-				original := stationSession
-				stationSession, err = original.Verify(ctx)
-				if err == nil && original != stationSession {
-					err = a.store.SaveStationSession(stationSession)
-					if err != nil {
-						stationSession = original
-					}
-				}
-				if err == nil && stationSession.Profile.Name != station.Name {
-					stationState = stationState.Clone()
-					stationState.UseStation(stationSession.Profile)
-					err = a.store.Save(stationState)
-					stationStateChanged = err == nil
-				}
-			}
-		} else if !installOnly && onlineID != "" {
-			if !session.ValidFor(onlineID) {
-				report(launcher.Progress{Stage: "验证 Microsoft 登录"})
-				if account.Profile.ID != onlineID {
-					err = launcher.ErrMicrosoftRequired
-				} else {
-					authCtx, stop := context.WithTimeout(ctx, 65*time.Second)
-					var nextAccount launcher.MicrosoftAccount
-					nextAccount, session, err = launcher.RefreshMicrosoftLogin(authCtx, account)
-					stop()
-					if err == nil {
-						account, refreshed = nextAccount, true
-						if saveErr := a.store.SaveMicrosoftAccount(account); saveErr != nil {
-							err = fmt.Errorf("无法保存刷新后的 Microsoft 凭据：%w", saveErr)
-							session = launcher.MinecraftSession{}
-						}
-					}
-				}
-			}
-			if err == nil {
-				activeSession = &session
-			}
-		}
-		authFailed := err != nil
-		if err == nil && needsInstall {
-			err = g.InstallWithJava(ctx, i, settings.JavaPath, report)
-		}
-		var run launcher.Running
-		if err == nil && !installOnly {
-			start := func() (launcher.Running, error) {
-				if stationKey != "" {
-					return g.StartWithStation(ctx, i, settings, server, stationSession)
-				}
-				return g.StartWithSession(ctx, i, settings, server, activeSession)
-			}
-			report(launcher.Progress{Stage: "检查 Java 并启动游戏"})
-			run, err = start()
-			if !needsInstall && errors.Is(err, launcher.ErrRepairRequired) && ctx.Err() == nil {
-				report(launcher.Progress{Stage: "修复游戏文件"})
-				err = g.InstallWithJava(ctx, i, settings.JavaPath, report)
-				if err == nil {
-					report(launcher.Progress{Stage: "检查 Java 并启动游戏"})
-					run, err = start()
-				}
-			}
-		}
+		result, err := g.Execute(ctx, a.store, request, report)
+		run := result.Running
+		account, session, stationSession, stationState := result.Account, result.Session, result.StationSession, result.State
+		refreshed, stationStateChanged, authFailed := result.CredentialsChanged, result.StateChanged, result.AuthFailed
 		installed := make(map[int]bool)
 		for _, inst := range instances {
 			if inst.Version == i.Version {
@@ -503,7 +430,7 @@ func (a *desktop) playOnServer(i launcher.Instance, installOnly bool, server str
 		default:
 			record.Status, record.Log, record.PID = taskStarted, run.Log, run.PID
 		}
-		records = a.saveTask(records, record, func() {
+		a.saveTask(record, func() {
 			a.busy, a.cancelTask = false, nil
 			a.task = launcher.Progress{}
 			if refreshed {
@@ -545,7 +472,7 @@ func (a *desktop) playOnServer(i launcher.Instance, installOnly bool, server str
 			if err != nil {
 				record.Status, record.Detail = taskFailed, err.Error()
 			}
-			a.saveTask(records, record, func() {
+			a.saveTask(record, func() {
 				a.running, a.runningID = nil, 0
 				a.message("游戏已退出 · "+i.Name, err)
 				a.noticeTask = err != nil
@@ -557,7 +484,7 @@ func (a *desktop) playOnServer(i launcher.Instance, installOnly bool, server str
 }
 
 func (a *desktop) openLogFolder() {
-	if isGameLog(a.lastLog) {
+	if launcherlog.IsGame(a.lastLog) {
 		a.openPath(filepath.Dir(a.lastLog), false)
 	}
 }

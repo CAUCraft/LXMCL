@@ -6,7 +6,7 @@ CAUCRAFT 的 Minecraft Java 版启动器，使用 Go、MyGo 和 Lobe MyGo 构建
 
 Windows x64：从 [GitHub Actions](https://github.com/CAUCraft/LXMCL/actions/workflows/ci.yml?query=branch%3Amain) 的成功构建下载开发版。正式版发布后见 [GitHub Releases](https://github.com/CAUCraft/LXMCL/releases)。
 
-面向 Minecraft Java 版 1.20.1 及之后的正式版本，需自备兼容 Java。
+面向 Minecraft Java 版 1.20.1 及之后的正式版本。Windows x64 可按游戏元数据自动安装所需 Java，也可在设置中指定已有 Java。
 
 - **实例**：从「下载 → 游戏版本」选择 Minecraft 版本和加载器，可直接安装原版、Fabric、Forge、NeoForge 或 Quilt。实例页可校验文件和配置启动设置。
 - **整合包**：从 Modrinth 或 CurseForge 保存整合包文件，也可直接安装为独立实例，或导入本地 `.mrpack` 和 CurseForge `.zip`。CurseForge 在线查询和依赖下载需要 API Key。
@@ -15,7 +15,7 @@ Windows x64：从 [GitHub Actions](https://github.com/CAUCraft/LXMCL/actions/wor
 - **账号与服务器**：Microsoft、兼容 Yggdrasil 的第三方皮肤站与离线账号，支持皮肤头像、可旋转的 3D 预览、服务器收藏和直连。Microsoft 账号可上传 PNG 皮肤；皮肤站账号在站内修改外观。
 - **诊断**：Java 检测、下载进度、任务历史和游戏日志。
 
-Java 自动安装尚未接入。
+未指定 Java 时，先检查系统和已安装的运行时；找不到兼容版本才下载 Mojang 官方运行时。指定的 Java 不可用时会报告错误，保留用户的选择。
 
 ## 开发
 

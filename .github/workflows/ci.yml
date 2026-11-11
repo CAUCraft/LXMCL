@@ -124,7 +124,7 @@ jobs:
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
-      - run: go test -count=1 ./internal/launcher
+      - run: go test -count=1 ./internal/...
 
   release:
     name: Draft tagged GitHub release

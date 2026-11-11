@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/CAUCraft/LXMCL/internal/launcher"
+	launcherlog "github.com/CAUCraft/LXMCL/internal/log"
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"github.com/lobehub/lobe-mygo/pkg/action"
@@ -271,7 +272,7 @@ var instanceFolders = []struct{ label, path string }{
 	{"资源包", "resourcepacks"},
 	{"截图", "screenshots"},
 	{"崩溃报告", "crash-reports"},
-	{"启动日志", "launcher-logs"},
+	{"启动日志", launcherlog.GameDirectory},
 }
 
 func (a *desktop) instanceFiles(c *ui.Context, i launcher.Instance) {
@@ -325,9 +326,9 @@ func (a *desktop) instanceFiles(c *ui.Context, i launcher.Instance) {
 }
 
 func (a *desktop) latestInstanceLog(i launcher.Instance) string {
-	dir := filepath.Join(i.GameDir, "launcher-logs")
+	dir := filepath.Join(i.GameDir, launcherlog.GameDirectory)
 	for _, record := range a.history {
-		if (record.InstanceID == i.ID || record.InstanceID == 0) && isGameLog(record.Log) && filepath.Dir(record.Log) == dir {
+		if (record.InstanceID == i.ID || record.InstanceID == 0) && launcherlog.IsGame(record.Log) && filepath.Dir(record.Log) == dir {
 			return record.Log
 		}
 	}

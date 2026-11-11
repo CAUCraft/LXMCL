@@ -46,6 +46,19 @@ func TestMicrosoftLoginDialogUsesSystemBrowserAndCancels(t *testing.T) {
 	if a.microsoft != nil || !canceled || a.state.MicrosoftProfile != "" {
 		t.Fatal("closing sign-in did not cancel the pending login")
 	}
+	// OAuth can finish while another write owns the captured configuration.
+	// Retain its result for a save retry instead of starting a concurrent write.
+	p := &microsoftLoginView{open: true}
+	a.microsoft, a.busy = p, true
+	verified := launcher.MicrosoftAccount{Profile: launcher.MicrosoftProfile{ID: "0123456789abcdef0123456789abcdef", Name: "Player"}}
+	a.saveMicrosoftLogin(p, verified, launcher.MinecraftSession{})
+	tt.Frame()
+	if p.account != verified || p.saving || !a.busy || a.state.MicrosoftProfile != "" {
+		t.Fatal("completed OAuth changed state during another operation")
+	}
+	if _, ok := tt.Find("重试保存登录"); !ok {
+		t.Fatal("verified sign-in cannot retry saving")
+	}
 }
 
 func TestTaskRetryStaysWithCapturedAccount(t *testing.T) {
@@ -53,27 +66,27 @@ func TestTaskRetryStaysWithCapturedAccount(t *testing.T) {
 	i := a.state.Instances[0]
 	row := taskRecord{InstanceID: i.ID, Revision: i.Revision, Version: i.Version,
 		Action: taskLaunch, Status: taskFailed, Account: a.state.AccountKey()}
-	if _, ok := row.retryTarget(a.state); !ok {
+	if _, ok := launcher.RetryTarget(row, a.state); !ok {
 		t.Fatal("same-account launch could not be retried")
 	}
 	a.state.MicrosoftProfile = "0123456789abcdef0123456789abcdef"
-	if _, ok := row.retryTarget(a.state); ok {
+	if _, ok := launcher.RetryTarget(row, a.state); ok {
 		t.Fatal("the previous offline task can be retried with Microsoft credentials")
 	}
 	row.Account = a.state.AccountKey()
 	if err := a.state.UseOfflinePlayer("OtherPlayer"); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := row.retryTarget(a.state); ok {
+	if _, ok := launcher.RetryTarget(row, a.state); ok {
 		t.Fatal("Microsoft launch can be retried under an offline player")
 	}
 	a.state.UseStation(launcher.StationProfile{Key: "station-fixture"})
 	row.Account = ""
-	if _, ok := row.retryTarget(a.state); ok {
+	if _, ok := launcher.RetryTarget(row, a.state); ok {
 		t.Fatal("a legacy launch without a captured account can be retried under a station identity")
 	}
 	row.Account = a.state.AccountKey()
-	if _, ok := row.retryTarget(a.state); !ok {
+	if _, ok := launcher.RetryTarget(row, a.state); !ok {
 		t.Fatal("retry did not retain the captured station account")
 	}
 }

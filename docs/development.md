@@ -13,17 +13,29 @@ go tool mygo build -platform windows/amd64
 
 `go tool mygo dev` 会在 Go 文件改动后重启应用，默认使用单独的开发数据目录。用 `go run . -data-dir .local/mygo-check` 可指定测试目录。代码分层见[架构](architecture.md)，界面约定见 [UI Skill](../.agents/skills/lxmcl-ui/SKILL.md)。
 
+后端文案集中在 [简体中文](../internal/i18n/locales/zh-CN.json)和[英文](../internal/i18n/locales/en.json) JSON。新增文案时在两份文件中使用同一个 `模块.含义` 键，保持格式占位符一致；需要保留错误原因时使用 `i18n.Error` 和 `%w`，进度与标签使用 `i18n.Text`。默认使用简体中文。启动前设置 `$env:LXMCL_LOCALE = 'en'` 可查看英文后端消息，桌面界面标签仍使用中文。缺少译文时回退到简体中文。
+
 ## 数据
 
 默认根目录为 `%LOCALAPPDATA%\org.caucraft.lxmcl`：`launcher.json` 保存设置和实例，`tasks.json` 保存最近 24 条任务，`cache` 保存共享的客户端、库和资源。首次迁移会读取旧版配置。存档、游戏设置和 `launcher-logs` 位于各实例目录；移除实例配置不会删除这些文件。
 
-实例可继承或覆盖全局 Java 与内存，并指定启动分辨率或全屏。检测 Java 读取实际版本元数据；复制实例配置只复制版本和启动设置，并分配新目录。
+配置快照、实例集合和旧数据迁移由 `internal/config` 管理，`launcher.State` / `Store` 保留兼容入口。修改快照前调用 `Clone`，游戏和整合包安装使用 `PrepareInstallation` 返回新快照及目标实例，已有启动选择保持不变。读取或保存时补齐缺失、落后的 `next_id`，保留更高的历史计数和全部旧实例标识；损坏的当前配置不被旧版文件替代。配置写入继续通过应用层串行执行，账号凭据独立存于 `account.Vault`。
+
+实例可继承或覆盖全局 Java 与内存，并指定启动分辨率或全屏。检测 Java 读取实际版本元数据，只检查本地运行时；游戏启动或加载器安装缺少 Java 时，Windows x64 会根据元数据中的组件和最低版本下载 Mojang 官方运行时。缓存位于 `cache/java/windows-x64/`，文件与清单按官方 SHA-1 和大小校验，实际运行 Java 探测版本后才发布安装目录。指定 Java 路径时不会自动替换。复制实例配置只复制版本和启动设置，并分配新目录。
 
 「下载 → 游戏版本」从官方目录选 Minecraft 和加载器版本。原版不需要额外配置，Fabric、Forge、NeoForge 和 Quilt 会分别列出可选版本，预览版单独标注。「安装实例」会保存配置并下载游戏文件，不启动游戏，也不切换已有的启动目标。失败或取消后可在下载任务中重试。
 
 「下载 → 整合包」从 Modrinth 或 CurseForge 选项目和版本，也可用系统文件窗口导入 Modrinth `.mrpack` 或 CurseForge 导出的 `.zip`。确认名称后下载必需的客户端依赖并应用包内文件；选装文件和服务器专用文件默认跳过。整合包与游戏文件校验完毕后才登记新实例。取消或失败后，可返回安装页重试，已校验的下载可以复用。
 
-整合包按清单安装指定版本的 Fabric、Forge、NeoForge 或 Quilt。Forge 和 NeoForge 使用经过校验的官方客户端安装器，首次安装需有兼容 Java；如检测失败，可在「设置」指定 Java 后重试。Minecraft 1.20.1–1.20.4 建议使用 Java 17，1.20.5 和 1.21 系列建议使用 Java 21，较新版本以 Minecraft 元数据为准。安装器日志位于数据目录的 `cache/installer-logs/`。
+整合包按清单安装指定版本的 Fabric、Forge、NeoForge 或 Quilt。Forge 和 NeoForge 使用经过校验的官方客户端安装器，并复用上述 Java 解析与安装流程。网络不可用时可在「设置」指定兼容 Java 后重试。Java 版本要求以 Minecraft 元数据为准，安装器日志位于数据目录的 `cache/installer-logs/`。
+
+后端扩展中，平台文件下载和摘要缓存由 `internal/distribution` 管理，整合包预览、清单与安装事务由 `internal/modpack` 管理。安装通过 `InstallOptions` 注入游戏安装和配置提交，依赖查询通过 `Resolver` 注入，不需要导入 `launcher` 或改全局 HTTP 客户端。可用本地归档和可控传输验证取消、归档变更、依赖缺项及提交失败回滚。
+
+Minecraft 安装和启动由 `internal/minecraft.Runtime` 提供；游戏与加载器目录查询通过 `minecraft.Client`，传输由 `Client.Transport` 注入。应用层只传入提交时的实例、设置和已校验身份，皮肤站 JVM 参数通过回调准备。扩展运行时无需访问 `State` / `Store` 或整合包清单。缓存收据、加载器协议、启动参数和进程管理分别维护；现有 `launcher.Game` 调用保持兼容。`internal/testutil/mcfixture` 提供可控官方文件夹具，集成测试通过公开接口验证安装、取消、进程启动和旧缓存修复。
+
+Minecraft 与 Java 的 SHA-1 文件通过 `transfer.Artifact.Check` 验证，通过 `Ensure` 复用或下载替换缓存；校验摘要由文件描述内部解析，调用方只传本地路径与未知大小上限。已知长度不受该上限限制，未知长度必须提供有效上限；缓存损坏返回未通过，I/O 或取消返回错误。原缓存路径、损坏修复及重试行为保持不变，下载校验失败继续支持 `errors.Is(err, transfer.ErrMismatch)`。相关验证复用游戏安装、Forge 和受管 Java 测试，仅单独保留一个大小边界回归。
+
+项目搜索、版本查询、前置浏览和图标读取由 `internal/catalog.Client` 提供，通过 `Transport` 注入测试传输。目录模块不读写配置或实例文件；可下载版本须包含有效来源、大小和摘要。前置浏览保持只读，作者指定版本不会被自动替换，普通资源安装不会自动下载前置。CurseForge 依赖解析通过 `CurseForgeResolver` 接入整合包安装，API 密钥只发送到 CurseForge 官方 API。
 
 NeoForge 官方 Maven 请求失败时，启动器会尝试 NeoForge CDN。NeoForge、Forge 和 Fabric Maven 文件可回退到 BMCLAPI 镜像，始终沿用加载器元数据或官方 Maven 提供的校验值。校验地址遇到临时网络错误时会限次重试。所有来源都无法提供匹配文件时，任务失败并保留可复用的已校验缓存。
 
@@ -33,11 +45,19 @@ CurseForge 在线查询和下载依赖需要 [CurseForge API Key](https://consol
 
 「下载」里的模组、资源包、光影包和整合包可以直接保存到自选文件夹，不需要创建实例。独立下载只保存选中文件并校验摘要，同名文件不会被覆盖。模组、资源包和光影包任务重试时保留原文件夹和版本。
 
+独立文件夹下载调用 `distribution.Cache.Export`，实例远程资源安装调用 `content.Install`，本地导入通过 `Import` / `WriteVerified`。应用层只选择兼容版本与文件描述，已有文件的摘要、归档检查和下载发布都由资源模块处理。远程安装与本地导入共用发布流程，复用 `storage.PublishNew` 写入 `.part`，校验成功后才发布成品。同实例资源修改仍需串行；异常退出留下的 `.part` 不影响重试，也不会出现在资源列表。保留的回归覆盖发布前不可见、失败和取消清理、写入期间同名冲突、目录绑定及禁用资源保护；Windows 使用原生重命名，其他平台要求目标文件系统支持硬链接，不能回退到可能覆盖已有文件的普通重命名。
+
 从实例的「资源」页点「添加」会绑定该实例。Modrinth 按实例的游戏版本及 Fabric、Forge、NeoForge 或 Quilt 筛选。单个模组、资源包和光影包只保存或安装选中文件；必要前置在「查看前置」中列出，点击可打开项目或作者指定的版本。安装时仍检查文件 SHA-512 和对应的 JAR 或 ZIP 内容。任务重试绑定原实例、配置修订和资源版本。启动时按原流程校验并补齐缺失的游戏文件；显式安装整合包仍按其清单处理。
 
-存档备份位于数据目录的 `backups/`，恢复支持包含 `世界名/level.dat` 的 ZIP，不覆盖已有世界。
+缓存修复、配置和凭据写入通过 `storage.ReplaceFile` 统一准备、同步、关闭与替换；`WriteFile` 保留字节写入入口，任务历史继续自行编码并检查 2 MiB 限制，再复用它保存。回调只负责写入和业务校验，不关闭文件；失败或取消保留旧内容。原路径、文件权限及任务目录权限保持不变，临时文件统一为 `.lxmcl-*.part`。相关验证只新增一个替换前保留旧内容的回归，其余复用缓存、配置、账号及任务测试。
 
-Microsoft 登录在系统浏览器授权，随后检查 Xbox、Java 版权益和档案。Windows 使用 DPAPI 加密刷新凭据，其他平台仅保留当前会话。更换构建的公开应用 ID 时，旧账号需要重新登录。
+存档备份位于数据目录的 `backups/instance-<id>/`，恢复支持包含 `世界名/level.dat` 的 ZIP，同名世界添加后缀保留。`saves.Backup` / `Restore` 内部先规划并统一校验跨平台路径，再执行 ZIP 读写与发布；路径冲突在创建输出目录前报告。备份应在游戏停止写入后进行，同实例操作由调用方串行。恢复全部解压成功后逐个发布，发布失败时返回已恢复数量。测试复用既有备份恢复用例，仅补充规划失败不创建目录和开始前取消的检查。
+
+服务器状态查询使用 `server.Client.Ping`，零值和原有 `launcher.PingServer` 使用系统网络。需要自定义 DNS 或连接方式时传入 `LookupSRV` / `DialContext`，无需修改全局网络对象；自定义函数须响应 context，返回的连接交由查询关闭。地址规范化、连接生命周期和状态协议分别维护，继续保留 5 秒总超时及原服务器握手地址。
+
+Microsoft 登录在系统浏览器授权，随后检查 Xbox、Java 版权益和档案。账号协议和外观操作由 `internal/account` 管理，可通过 `account.Client.Transport` 注入测试传输，不需要改全局 HTTP 客户端。`account.Vault` 在 Windows 使用 DPAPI 加密凭据，保留已有文件名和格式；其他平台仅保留当前会话。更换构建的公开应用 ID 时，旧账号需要重新登录。
+
+账号登录与移除通过 `launcher.Store` 的 `CommitMicrosoftLogin` / `CommitStationLogin` 和 `RemoveMicrosoftAccount` / `RemoveStationAccount` 完成，调用方必须串行执行。`AccountCommit` 分别报告凭据保存、删除和配置保存结果；配置未提交时返回原快照，已完成的凭据操作不回滚。启动与外观操作通过 `AuthorizeMicrosoft` / `AuthorizeStation` 复用授权与保存规则，返回错误时停止后续操作，但保留最新内存凭据供重试。登录弹窗中的“重试保存登录”复用已验证结果，无需重新授权或绑定角色。不要用 `CredentialsSaved` 判断非 Windows 登录是否成功，该平台无加密文件存储。
 
 点击顶栏头像进入独立账号中心。拖动 3D 角色可旋转，也可用视口下方的按钮转向背面或重置。选择 64 × 64 或 64 × 32 的 PNG 可在上传前预览；已拥有的披风可直接试穿在同一角色上。点击应用后才会更新 Minecraft Java 版档案。离线账号的孪枭头像和模型仅在启动器内显示。
 
@@ -45,6 +65,8 @@ Microsoft 登录在系统浏览器授权，随后检查 Xbox、Java 版权益和
 
 ## 验证与发布
 
-[CI](https://github.com/CAUCraft/LXMCL/actions) 在 Windows 上运行测试和打包，在 Linux 上运行启动器核心测试。UI 测试使用软件渲染，可通过 `LXMCL_UI_CAPTURE` 保存截图；系统窗控、输入法及实际进入游戏需要另行验证。
+测试优先复用已有集成用例，每个模块保留少量关键行为和实际缺陷回归，避免为薄包装、简单字段转换或同一规则在多层重复添加测试。按改动范围运行必要检查。
+
+[CI](https://github.com/CAUCraft/LXMCL/actions) 在 Windows 上运行测试和打包，在 Linux 上运行全部 `internal` 包的测试。自动安装 Java 的平台测试在 Windows x64 运行，清单校验等测试可跨平台运行。新增后端行为须覆盖任务取消、失败后无成品发布及旧数据兼容等相关边界；可使用可控的 HTTP transport 验证文件字节与摘要。用 `$env:LXMCL_LOCALE = 'en'; go test ./...` 检查英文目录。UI 测试使用软件渲染，可通过 `LXMCL_UI_CAPTURE` 保存截图；系统窗控、输入法及实际进入游戏需要另行验证。
 
 Windows 构建产物保留 14 天，包含便携版、安装包、许可归档、对应源码和 SHA-256 清单。源码包包含构建所需的 Go 依赖，解压后按上方命令构建。`NSISCONFDIR` 让安装器使用 zlib。更新 `mygo.json` 版本后推送对应的 `v主.次.修订` 标签，CI 通过后生成 Release 草稿。更新依赖时同步核对[第三方许可](../THIRD_PARTY_NOTICES.txt)。

@@ -3,7 +3,9 @@ package launcher
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"crypto/sha512"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -48,13 +50,13 @@ func TestModrinthDownloadOnlyInstallsSelectedFile(t *testing.T) {
 				Loaders: []string{strings.ToLower(i.Loader)}, Files: []PackFile{file},
 				Dependencies: []ModDependency{{ProjectID: "requiredProject", VersionID: "missingVersion", Type: "required"}}}
 			var calls int
-			d := &downloads{http: &http.Client{Transport: transportFunc(func(req *http.Request) (*http.Response, error) {
+			d := &http.Client{Transport: transportFunc(func(req *http.Request) (*http.Response, error) {
 				if req.URL.String() != fileURL {
 					t.Fatalf("install requested dependency metadata or files: %s", req.URL)
 				}
 				calls++
 				return fixtureResponse(http.StatusOK, body), nil
-			})}}
+			})}
 			var progress Progress
 			if err := downloadModrinth(t.Context(), i, Mods, v, d, func(p Progress) { progress = p }); err != nil {
 				t.Fatal(err)
@@ -70,16 +72,42 @@ func TestModrinthDownloadOnlyInstallsSelectedFile(t *testing.T) {
 	}
 }
 
+func TestExistingResourceMustMatchLoaderFormat(t *testing.T) {
+	i := Instance{ID: 1, Version: "1.21.1", Loader: LoaderFabric, LoaderVersion: "0.16.14", GameDir: t.TempDir()}
+	// An exact hash match alone must not turn a Forge archive into a valid Fabric mod.
+	body := testZIP(t, map[string]string{"META-INF/mods.toml": "forge metadata"})
+	file := PackFile{URL: "https://cdn.modrinth.com/wrong.jar", Filename: "wrong.jar", Size: int64(len(body))}
+	file.Hashes.SHA512 = fmt.Sprintf("%x", sha512.Sum512(body))
+	v := PackVersion{ID: "version", ProjectID: "project", GameVersions: []string{i.Version}, Loaders: []string{"fabric"}, Files: []PackFile{file}}
+	if err := os.MkdirAll(filepath.Join(i.GameDir, "mods"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	filename := filepath.Join(i.GameDir, "mods", file.Filename)
+	if err := os.WriteFile(filename, body, 0600); err != nil {
+		t.Fatal(err)
+	}
+	d := &http.Client{Transport: transportFunc(func(*http.Request) (*http.Response, error) {
+		t.Fatal("existing invalid resource triggered a network request")
+		return nil, nil
+	})}
+	if err := downloadModrinth(t.Context(), i, Mods, v, d, nil); err == nil {
+		t.Fatal("existing resource bypassed archive format validation")
+	}
+	if got, err := os.ReadFile(filename); err != nil || !bytes.Equal(got, body) {
+		t.Fatalf("existing file was modified: %v", err)
+	}
+}
+
 func TestModrinthPackVerifiesContentAndTargetsInstance(t *testing.T) {
 	content := testZIP(t, map[string]string{"pack.mcmeta": "{}"})
 	instance := Instance{ID: 2, Version: "1.21.1", GameDir: t.TempDir()}
 	other := Instance{ID: 1, Version: "1.21.1", GameDir: t.TempDir()}
-	d := &downloads{http: &http.Client{Transport: transportFunc(func(req *http.Request) (*http.Response, error) {
+	d := &http.Client{Transport: transportFunc(func(req *http.Request) (*http.Response, error) {
 		if req.URL.Hostname() != "cdn.modrinth.com" {
 			t.Fatalf("unexpected origin: %s", req.URL)
 		}
 		return fixtureResponse(http.StatusOK, content), nil
-	})}}
+	})}
 	file := PackFile{URL: "https://cdn.modrinth.com/data/pack.zip", Filename: "pack.zip", Size: int64(len(content)), Primary: true}
 	file.Hashes.SHA512 = strings.Repeat("0", 128)
 	version := PackVersion{GameVersions: []string{"1.21.1"}, Files: []PackFile{file}}
@@ -101,38 +129,6 @@ func TestModrinthPackVerifiesContentAndTargetsInstance(t *testing.T) {
 	}
 	if files, err := ListContent(other, ResourcePacks); len(files) != 0 || err != nil {
 		t.Fatalf("changed the wrong instance: %v, %v", files, err)
-	}
-}
-
-func TestModrinthSearchPaginatesAndUsesCorrectCategory(t *testing.T) {
-	var got []string
-	d := &downloads{http: &http.Client{Transport: transportFunc(func(req *http.Request) (*http.Response, error) {
-		q := req.URL.Query()
-		if req.URL.Path != "/v2/search" || q.Get("query") != "test" || q.Get("index") != "updated" ||
-			q.Get("limit") != "20" || q.Get("offset") != "40" || !strings.Contains(q.Get("facets"), "versions:1.21.1") {
-			t.Fatalf("unexpected search request: %s", req.URL)
-		}
-		got = append(got, q.Get("facets"))
-		return fixtureResponse(200, []byte(`{"total_hits":54,"hits":[{"project_id":"valid","title":"Demo","description":"Pack"},{"project_id":"../bad","title":"Invalid"}]}`)), nil
-	})}}
-	for _, tc := range []struct {
-		kind          ContentKind
-		loader, facet string
-	}{
-		{Mods, LoaderFabric, "categories:fabric"},
-		{Mods, LoaderForge, "categories:forge"},
-		{Mods, LoaderNeoForge, "categories:neoforge"},
-		{Mods, LoaderQuilt, "categories:quilt"},
-		{ShaderPacks, LoaderFabric, "project_type:shader"},
-	} {
-		result, err := searchModrinth(t.Context(), Instance{Version: "1.21.1", Loader: tc.loader}, tc.kind, " test ", "updated", 2, d)
-		if err != nil || result.Total != 54 || len(result.Hits) != 1 || result.Hits[0].Description != "Pack" {
-			t.Fatalf("unexpected result: %+v / %v", result, err)
-		}
-		facets := got[len(got)-1]
-		if !strings.Contains(facets, tc.facet) || tc.kind == ShaderPacks && strings.Contains(facets, "categories:") {
-			t.Fatalf("incompatible search facets: %s", facets)
-		}
 	}
 }
 
@@ -210,5 +206,34 @@ func TestBackupAndRestoreKeepExistingWorld(t *testing.T) {
 	}
 	if _, err := RestoreSaves(t.Context(), i, malicious); err == nil {
 		t.Fatal("accepted a world archive with path traversal")
+	}
+	conflict := testZIP(t, map[string]string{
+		"World/level.dat": "valid", "World/data": "file", "World/data/chunk": "nested",
+	})
+	if err := os.WriteFile(malicious, conflict, 0600); err != nil {
+		t.Fatal(err)
+	}
+	i.GameDir = filepath.Join(t.TempDir(), "uncreated")
+	if n, err := RestoreSaves(t.Context(), i, malicious); err == nil || n != 0 {
+		t.Fatalf("accepted conflicting archive paths: %d, %v", n, err)
+	}
+	if _, err := os.Stat(i.GameDir); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("invalid restore created its destination: %v", err)
+	}
+}
+
+func TestCanceledSaveOperationsDoNotCreateDirectories(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	root := t.TempDir()
+	i := Instance{ID: 3, GameDir: filepath.Join(root, "game")}
+	if name, err := BackupSaves(ctx, i, filepath.Join(root, "data")); name != "" || !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled backup returned %q, %v", name, err)
+	}
+	if n, err := RestoreSaves(ctx, i, filepath.Join(root, "absent.zip")); n != 0 || !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled restore returned %d, %v", n, err)
+	}
+	if entries, err := os.ReadDir(root); err != nil || len(entries) != 0 {
+		t.Fatalf("canceled operations created files: %v, %v", entries, err)
 	}
 }

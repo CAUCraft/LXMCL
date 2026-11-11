@@ -74,25 +74,15 @@ func (a *desktop) syncAppearance(p *appearanceView, change appearanceChange) {
 		return
 	}
 	account, session := a.microsoftAccount, a.minecraftSession
-	refresh := !session.ValidFor(p.id)
-	p.syncing, a.busy = true, refresh
+	p.syncing, a.busy = true, true
 	p.status, p.failure, p.warning = "", "", ""
 	a.writes.Go(func() {
 		ctx, stop := context.WithTimeout(a.ctx, 65*time.Second)
 		defer stop()
 		var data launcher.Appearance
-		var err error
-		var saved, applied bool
-		if refresh {
-			var next launcher.MicrosoftAccount
-			next, session, err = launcher.RefreshMicrosoftLogin(ctx, account)
-			if err == nil {
-				account, saved = next, true
-				if saveErr := a.store.SaveMicrosoftAccount(next); saveErr != nil {
-					err = fmt.Errorf("无法保存刷新后的登录：%w", saveErr)
-				}
-			}
-		}
+		var applied bool
+		auth, err := a.store.AuthorizeMicrosoft(ctx, p.id, account, session)
+		account, session = auth.Account, auth.Session
 		if err == nil && len(change.skin) != 0 {
 			err = session.UploadSkin(ctx, change.skin, change.variant)
 			applied = err == nil
@@ -105,15 +95,11 @@ func (a *desktop) syncAppearance(p *appearanceView, change appearanceChange) {
 			data, err = session.Appearance(ctx)
 		}
 		a.post(func() {
-			if refresh {
-				a.busy = false
-			}
+			a.busy = false
 			if a.appearance != p {
 				return
 			}
-			if saved {
-				a.microsoftAccount, a.minecraftSession = account, session
-			}
+			a.microsoftAccount, a.minecraftSession = account, session
 			if errors.Is(err, launcher.ErrMicrosoftRequired) && a.minecraftSession == session {
 				a.minecraftSession = launcher.MinecraftSession{}
 			}
