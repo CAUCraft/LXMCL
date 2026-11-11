@@ -24,7 +24,7 @@ type accountCommitFixture struct {
 
 // Obtain real opaque credentials through the protocol client; no token fields
 // or persistence hooks are exposed solely for these application tests.
-func accountCommitFixtures(t *testing.T) []accountCommitFixture {
+func accountProtocolFixture(t *testing.T) (account.Client, MicrosoftAccount, MinecraftSession, StationSession) {
 	t.Helper()
 	const id = "0123456789abcdef0123456789abcdef"
 	client := account.Client{Transport: transportFunc(func(r *http.Request) (*http.Response, error) {
@@ -69,6 +69,12 @@ func accountCommitFixtures(t *testing.T) []accountCommitFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
+	return client, a, session, station
+}
+
+func accountCommitFixtures(t *testing.T) []accountCommitFixture {
+	t.Helper()
+	_, a, session, station := accountProtocolFixture(t)
 	return []accountCommitFixture{
 		{name: "microsoft", path: "microsoft-account.dat",
 			commit: func(s Store, state State) (AccountCommit, error) { return s.CommitMicrosoftLogin(state, a) },

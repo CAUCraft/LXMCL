@@ -46,6 +46,8 @@ flowchart TD
     Minecraft --> Account
     Minecraft --> Instance
     Minecraft --> Transfer
+    Minecraft --> Tasks
+    Minecraft --> Server
     Minecraft --> Process
     Minecraft --> Logs
     Launcher --> Content[content]
@@ -100,6 +102,8 @@ flowchart TD
 `Store.CommitMicrosoftLogin` / `CommitStationLogin` 接收已验证的账号或已绑定的会话，先保存凭据，再提交账号选择；`RemoveMicrosoftAccount` / `RemoveStationAccount` 先删除凭据，再保存取消选择或移除档案的配置。私有实现分别维护凭据操作与配置提交，返回 `AccountCommit`：`CredentialsSaved` 仅表示已加密落盘，非持久化平台为假；`CredentialsDeleted` 表示删除已完成或文件本来不存在；`StateSaved` 表示配置保存完成。`State` 始终是原快照或已保存的新快照，失败不返回尚未提交的配置，也不回滚可能已轮换的凭据。
 
 `AuthorizeMicrosoft` / `AuthorizeStation` 被启动授权及 Microsoft 外观刷新复用。每次授权都尝试保存当前凭据，有效缓存会话也不能绕过之前失败的保存。Microsoft OAuth 已轮换但后续 Xbox、权益或档案查询失败时，协议层返回原身份加新刷新令牌、空游戏会话；应用层仍尝试保存。皮肤站保存失败保留新会话。后续认证网络失败也会重试保存内存中的凭据，认证与写入同时失败通过 `errors.Join` 保留两条错误链；两步都成功后才更新配置或继续使用会话。
+
+`Store.Accounts` 注入授权使用的 `account.Client`，零值访问系统网络。`Game.Execute` 使用传入 Store 的账号客户端；安装与启动准备使用 `Game.Transport`，两者可以采用不同传输策略。账号协议、配置和加密文件仍分别由 `account.Client`、`config.Store` 和 `account.Vault` 实现，应用用例负责保存顺序与部分成功结果。Minecraft 只接收 `account.LaunchIdentity`，账号模块继续封装凭据和身份校验。
 
 `LaunchResult` 返回最新内存凭据和已保存的配置，即使授权或后续下载失败也不会丢失结果。`CredentialsChanged` 表示 Microsoft 账号或游戏会话在内存变化，`CredentialsSaved` 表示所选提供者凭据落盘，`StateChanged` 表示配置已保存；调用方不得在返回错误时启动游戏或应用外观。保存失败可保留有效会话供下次授权重存，不能直接把该会话视为提交成功。
 

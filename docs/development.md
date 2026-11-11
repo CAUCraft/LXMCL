@@ -61,6 +61,8 @@ Microsoft 登录在系统浏览器授权，随后检查 Xbox、Java 版权益和
 
 账号登录与移除通过 `launcher.Store` 的 `CommitMicrosoftLogin` / `CommitStationLogin` 和 `RemoveMicrosoftAccount` / `RemoveStationAccount` 完成，调用方必须串行执行。`AccountCommit` 分别报告凭据保存、删除和配置保存结果；配置未提交时返回原快照，已完成的凭据操作不回滚。启动与外观操作通过 `AuthorizeMicrosoft` / `AuthorizeStation` 复用授权与保存规则，返回错误时停止后续操作，但保留最新内存凭据供重试。登录弹窗中的“重试保存登录”复用已验证结果，无需重新授权或绑定角色。不要用 `CredentialsSaved` 判断非 Windows 登录是否成功，该平台无加密文件存储。
 
+通过 `Store.Accounts = account.Client{Transport: ...}` 注入授权协议传输，可在公开用例中验证令牌轮换、网络失败与凭据保存重试。`Game.Execute` 使用传入 Store 的账号客户端；`Game.Transport` 管理安装与启动准备。两个依赖都在启动后台操作前配置，测试复用真实协议夹具取得不透明会话，无需暴露令牌字段或替换全局网络对象。
+
 点击顶栏头像进入独立账号中心。拖动 3D 角色可旋转，也可用视口下方的按钮转向背面或重置。选择 64 × 64 或 64 × 32 的 PNG 可在上传前预览；已拥有的披风可直接试穿在同一角色上。点击应用后才会更新 Minecraft Java 版档案。离线账号的孪枭头像和模型仅在启动器内显示。
 
 点击账号列表的「＋」→「第三方皮肤站」，填写支持密码登录的 HTTPS 站点或 Yggdrasil API（例如 `https://littleskin.cn/api/yggdrasil`），登录并选定角色。加入联机时使用配置了同一认证服务的服务器。皮肤和披风在站内修改，返回启动器后可刷新 3D 预览。启动器不保存密码；Windows 加密保存会话，其他平台退出后需重新登录。首次用皮肤站账号启动时会下载并校验 authlib-injector，文件保存在共享缓存。

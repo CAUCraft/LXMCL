@@ -27,7 +27,7 @@ func (s Store) AuthorizeMicrosoft(ctx context.Context, id string, a MicrosoftAcc
 	var authErr error
 	if !session.ValidFor(id) {
 		authCtx, stop := context.WithTimeout(ctx, 65*time.Second)
-		result.Account, result.Session, authErr = RefreshMicrosoftLogin(authCtx, a)
+		result.Account, result.Session, authErr = s.Accounts.RefreshMicrosoftLogin(authCtx, a)
 		stop()
 	}
 	// OAuth may rotate credentials before a later service fails or ctx expires.
@@ -63,7 +63,7 @@ func (s Store) AuthorizeStation(ctx context.Context, state State, session Statio
 		}
 	}
 	var authErr, saveErr error
-	result.Session, authErr = result.Session.Verify(ctx)
+	result.Session, authErr = s.Accounts.VerifyStation(ctx, result.Session)
 	// The input may contain an earlier rotation whose storage failed. Even a
 	// transient verification failure must not skip retrying that pending save.
 	result.CredentialsSaved, saveErr = saveAccountCredentials(func() error { return s.SaveStationSession(result.Session) })
