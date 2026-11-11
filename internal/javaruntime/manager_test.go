@@ -122,6 +122,39 @@ func TestExplicitJavaNeverDownloads(t *testing.T) {
 	}
 }
 
+func TestManagedRuntimeRejectsChangedManifestBeforePublish(t *testing.T) {
+	m, req, _, _ := runtimeFixture(t)
+	root := filepath.Join(m.Root, "windows-x64", req.Component)
+	_, err := m.Ensure(t.Context(), req, func(done, total int) {
+		if done != total {
+			return
+		}
+		paths, err := filepath.Glob(filepath.Join(root, ".install-*", "manifest.json"))
+		if err != nil || len(paths) != 1 {
+			t.Fatalf("staged manifest: %v, %v", paths, err)
+		}
+		data, err := os.ReadFile(paths[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Keep valid JSON, file checksums and length; only the manifest digest changes.
+		changed := bytes.Replace(data, []byte("piston-data.mojang.com/java"), []byte("piston-data.mojang.com/JAVA"), 1)
+		if bytes.Equal(changed, data) {
+			t.Fatal("fixture manifest was not changed")
+		}
+		if err := os.WriteFile(paths[0], changed, 0600); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if err == nil {
+		t.Fatal("published a runtime with an untrusted manifest")
+	}
+	entries, readErr := os.ReadDir(root)
+	if readErr != nil || len(entries) != 0 {
+		t.Fatalf("failed install left files: %v, %v", entries, readErr)
+	}
+}
+
 func TestManifestRejectsTraversalLinksAndCaseCollisions(t *testing.T) {
 	for _, files := range []map[string]runtimeFile{
 		{"../escape": {Type: "directory"}},

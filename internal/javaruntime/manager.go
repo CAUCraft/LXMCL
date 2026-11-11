@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/CAUCraft/LXMCL/internal/i18n"
-	"github.com/CAUCraft/LXMCL/internal/transfer"
 )
 
 // Requirement comes from verified Minecraft version metadata.
@@ -70,47 +69,6 @@ func (m Manager) Ensure(ctx context.Context, req Requirement, report Progress) (
 
 var installGate = make(chan struct{}, 1)
 
-func (m Manager) inspect(ctx context.Context, dir string) (Runtime, error) {
-	probe := m.probe
-	if probe == nil {
-		probe = Probe
-	}
-	return probe(ctx, filepath.Join(dir, "bin", "java.exe"))
-}
-
-func (m Manager) verify(ctx context.Context, dir string, req Requirement) (Runtime, error) {
-	manifestPath := filepath.Join(dir, "manifest.json")
-	if suffix, ok := strings.CutPrefix(filepath.Base(dir), "runtime-"); ok {
-		sha, _, _ := strings.Cut(suffix, "-")
-		a := transfer.Artifact{SHA: sha, Size: transfer.UnknownSize}
-		valid, err := a.Check(ctx, manifestPath, metadataLimit)
-		if err != nil {
-			return Runtime{}, err
-		}
-		if !valid {
-			return Runtime{}, i18n.Error("java.runtime_manifest_invalid")
-		}
-	}
-	manifest, err := readManifest(manifestPath)
-	if err != nil {
-		return Runtime{}, err
-	}
-	if err = manifest.validate(); err != nil {
-		return Runtime{}, err
-	}
-	if err = manifest.verify(ctx, dir); err != nil {
-		return Runtime{}, err
-	}
-	j, err := m.inspect(ctx, dir)
-	if err != nil {
-		return Runtime{}, err
-	}
-	if j.Major < req.Major {
-		return Runtime{}, i18n.Error("java.version_too_old", j.Major, req.Major)
-	}
-	return j, nil
-}
-
 func canceled(ctx context.Context, err error) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
@@ -130,25 +88,4 @@ func (m Manager) Local(ctx context.Context, req Requirement, preferred string) (
 		}
 	}
 	return found, canceled(ctx, err)
-}
-
-func (m Manager) managed(ctx context.Context, req Requirement) (Runtime, error) {
-	root := filepath.Join(m.Root, "windows-x64", req.Component)
-	dirs, err := os.ReadDir(root)
-	if err != nil {
-		return Runtime{}, err
-	}
-	for _, dir := range dirs {
-		if !dir.IsDir() || !strings.HasPrefix(dir.Name(), "runtime-") {
-			continue
-		}
-		path := filepath.Join(root, dir.Name())
-		if found, err := m.verify(ctx, path, req); err == nil {
-			return found, nil
-		}
-		if ctx.Err() != nil {
-			return Runtime{}, ctx.Err()
-		}
-	}
-	return Runtime{}, i18n.Error("java.compatible_not_found", req.Major)
 }

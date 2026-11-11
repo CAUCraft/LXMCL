@@ -30,11 +30,8 @@ func (m Manager) install(ctx context.Context, root string, req Requirement, repo
 	if err = asset.Ensure(ctx, filepath.Join(stage, "manifest.json"), metadataLimit, m.fetch); err != nil {
 		return Runtime{}, err
 	}
-	files, err := readManifest(filepath.Join(stage, "manifest.json"))
+	files, err := loadManifest(ctx, filepath.Join(stage, "manifest.json"), asset)
 	if err != nil {
-		return Runtime{}, err
-	}
-	if err = files.validate(); err != nil {
 		return Runtime{}, err
 	}
 	total := 0
@@ -64,7 +61,7 @@ func (m Manager) install(ctx context.Context, root string, req Requirement, repo
 			return Runtime{}, err
 		}
 	}
-	j, err := m.verify(ctx, stage, req)
+	j, err := m.verify(ctx, stage, asset, req)
 	if err != nil {
 		return Runtime{}, err
 	}

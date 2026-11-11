@@ -24,22 +24,35 @@ type runtimeFile struct {
 }
 type manifest struct{ Files map[string]runtimeFile }
 
-func readManifest(path string) (manifest, error) {
+// loadManifest binds decoding and structural validation to a verified manifest.
+func loadManifest(ctx context.Context, path string, expected transfer.Artifact) (manifest, error) {
 	var result manifest
+	valid, err := expected.Check(ctx, path, metadataLimit)
+	if err != nil {
+		return result, err
+	}
+	if !valid {
+		return result, i18n.Error("java.runtime_manifest_invalid")
+	}
 	f, err := os.Open(path)
 	if err != nil {
 		return result, err
 	}
 	defer f.Close()
-	data, err := io.ReadAll(io.LimitReader(f, metadataLimit+1))
+	data, err := io.ReadAll(io.LimitReader(transfer.Reader(ctx, f), metadataLimit+1))
 	if err != nil {
 		return result, err
 	}
 	if len(data) > metadataLimit {
 		return result, i18n.Error("metadata.response_too_large")
 	}
-	err = json.Unmarshal(data, &result)
-	return result, err
+	if err = json.Unmarshal(data, &result); err != nil {
+		return result, err
+	}
+	if err = result.validate(); err != nil {
+		return result, err
+	}
+	return result, ctx.Err()
 }
 
 func (m manifest) validate() error {
