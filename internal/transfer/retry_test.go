@@ -64,3 +64,22 @@ func TestRetryAfterHTTPDate(t *testing.T) {
 		t.Fatalf("past date parsed as %v", got)
 	}
 }
+
+func TestRetryPreservesCompletedAttemptOnCancellation(t *testing.T) {
+	for _, result := range []error{nil, io.ErrUnexpectedEOF} {
+		ctx, cancel := context.WithCancel(t.Context())
+		calls := 0
+		err := Retry(ctx, func() error {
+			calls++
+			cancel()
+			return result
+		})
+		want := error(nil)
+		if result != nil {
+			want = context.Canceled
+		}
+		if !errors.Is(err, want) || calls != 1 {
+			t.Fatalf("attempt returned %v: got %v, %d calls; want %v", result, err, calls, want)
+		}
+	}
+}

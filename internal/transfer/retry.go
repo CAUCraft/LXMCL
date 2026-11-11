@@ -64,6 +64,8 @@ func Retryable(err error) bool {
 
 // Retry makes at most three attempts with backoff and honors HTTPError.Delay.
 // Cancellation interrupts both requests and the wait between attempts.
+// A successful attempt is final, even if cancellation arrives as it returns;
+// the attempt owns its cancellation checks before committing any side effects.
 func Retry(ctx context.Context, fn func() error) error {
 	var err error
 	for attempt := range 3 {
@@ -71,10 +73,13 @@ func Retry(ctx context.Context, fn func() error) error {
 			return err
 		}
 		err = fn()
+		if err == nil {
+			return nil
+		}
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		if err == nil || attempt == 2 || !Retryable(err) {
+		if attempt == 2 || !Retryable(err) {
 			return err
 		}
 		delay := time.Duration(1<<attempt) * 150 * time.Millisecond
