@@ -67,6 +67,8 @@ Microsoft 登录在系统浏览器授权，随后检查 Xbox、Java 版权益和
 
 测试优先复用已有集成用例，每个模块保留少量关键行为和实际缺陷回归，避免为薄包装、简单字段转换或同一规则在多层重复添加测试。按改动范围运行必要检查。
 
+任务历史的 `Resource.Kind` 保存资源类型字符串，沿用旧 `tasks.json` 格式。记录读写保留未知类型；重试用例转换为 `content.Kind` 后检查实例兼容性，未知类型不能重试安装。`tasks.Progress` 的调用方因此无需依赖资源安装模块。
+
 [CI](https://github.com/CAUCraft/LXMCL/actions) 在 Windows 上运行测试和打包，在 Linux 上运行全部 `internal` 包的测试。自动安装 Java 的平台测试在 Windows x64 运行，清单校验等测试可跨平台运行。新增后端行为须覆盖任务取消、失败后无成品发布及旧数据兼容等相关边界；可使用可控的 HTTP transport 验证文件字节与摘要。用 `$env:LXMCL_LOCALE = 'en'; go test ./...` 检查英文目录。UI 测试使用软件渲染，可通过 `LXMCL_UI_CAPTURE` 保存截图；系统窗控、输入法及实际进入游戏需要另行验证。
 
 Windows 构建产物保留 14 天，包含便携版、安装包、许可归档、对应源码和 SHA-256 清单。源码包包含构建所需的 Go 依赖，解压后按上方命令构建。`NSISCONFDIR` 让安装器使用 zlib。更新 `mygo.json` 版本后推送对应的 `v主.次.修订` 标签，CI 通过后生成 Release 草稿。更新依赖时同步核对[第三方许可](../THIRD_PARTY_NOTICES.txt)。

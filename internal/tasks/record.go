@@ -6,8 +6,6 @@ import (
 	"errors"
 	"strconv"
 	"time"
-
-	"github.com/CAUCraft/LXMCL/internal/content"
 )
 
 // Persisted values retain the original tasks.json format. Do not translate these
@@ -24,10 +22,12 @@ const (
 )
 
 type Resource struct {
-	Kind    content.Kind `json:"kind"`
-	Project string       `json:"project"`
-	Version string       `json:"version"`
-	Title   string       `json:"title"`
+	// Kind is the persisted resource identifier. The operation that retries a
+	// record interprets it and checks support for the submitted instance.
+	Kind    string `json:"kind"`
+	Project string `json:"project"`
+	Version string `json:"version"`
+	Title   string `json:"title"`
 }
 
 type Record struct {

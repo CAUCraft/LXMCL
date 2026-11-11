@@ -27,7 +27,7 @@ LXMCL 使用 Go、MyGo 原生窗口和 Lobe MyGo 组件。主包负责界面状�
 | `internal/log` | 游戏与加载器安装器的日志路径、写入文件创建及游戏日志预览。 |
 | `internal/i18n` | 从嵌入式 JSON 按键读取后端文案，保留错误链与语言回退。 |
 
-依赖向下流动：桌面调用应用编排，编排组合领域模块和基础设施。`config`、`minecraft`、`account`、`catalog`、`content`、`distribution`、`modpack`、`javaruntime`、`tasks`、`instance` 等包不反向导入 `launcher`。任务记录可引用资源类型，不能引用桌面组件或启动器实例状态。`launcher` 的公开类型别名和薄包装保留现有调用接口，协议和文件操作交给对应模块。
+依赖向下流动：桌面调用应用编排，编排组合领域模块和基础设施。`config`、`minecraft`、`account`、`catalog`、`content`、`distribution`、`modpack`、`javaruntime`、`tasks`、`instance` 等包不反向导入 `launcher`。任务记录用稳定字符串保存资源类型，应用层在重试时转换并校验实例兼容性；`tasks` 只依赖通用存储与文案模块。`launcher` 的公开类型别名和薄包装保留现有调用接口，协议和文件操作交给对应模块。
 
 ```mermaid
 flowchart TD
@@ -66,7 +66,6 @@ flowchart TD
     Launcher --> Saves[saves 存档]
     Saves --> Storage
     Saves --> Transfer
-    Tasks --> Content
     Tasks --> Storage
     Content --> Instance
     Content --> Distribution
