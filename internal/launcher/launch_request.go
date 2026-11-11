@@ -17,11 +17,11 @@ func (r LaunchRequest) Snapshot() LaunchRequest {
 	return r
 }
 
-// LaunchResult carries refreshed credentials and committed state changes even
-// when authentication, installation or startup fails. CredentialsChanged means
-// Microsoft credentials were refreshed in memory, not necessarily saved; a save
-// failure is returned with an empty Session. StateChanged means State was saved.
-// Running means Java started, not game readiness.
+// LaunchResult carries the latest credentials and committed state even on error.
+// CredentialsChanged means Microsoft credentials or the session changed in memory;
+// CredentialsSaved reports encrypted persistence for the selected provider.
+// Failed authentication or saving prevents launch; retained sessions must pass
+// authorization and persistence again on retry. Running is not game readiness.
 type LaunchResult struct {
 	Running            Running
 	Account            MicrosoftAccount
@@ -29,6 +29,7 @@ type LaunchResult struct {
 	StationSession     StationSession
 	State              State
 	CredentialsChanged bool
+	CredentialsSaved   bool
 	StateChanged       bool
 	AuthFailed         bool
 }

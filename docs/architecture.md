@@ -94,7 +94,15 @@ flowchart TD
 
 提交时调用 `LaunchRequest.Snapshot`，捕获实例 ID、修订、游戏目录、账号、设置和服务器。`Game.Execute` 检查请求内实例与状态一致，依次完成认证、安装和启动；已安装游戏遇到 `ErrRepairRequired` 时仅修复并重试一次。只安装模式跳过认证和游戏启动。浏览其他实例不改变该请求的目标。
 
-`launch_request.go` 定义契约，`launch_auth.go` 协调会话验证、凭据保存与账号选择的状态更新，`launch_operation.go` 编排步骤。Microsoft 和皮肤站的协议、外观、会话内部字段及凭据编解码归 `account` 管理；它不读取启动器配置，也不决定当前选中的账号。认证失败会终止本次启动。`LaunchResult` 返回已刷新的凭据与已保存的配置变化，即使后续下载失败也不会丢失这些结果；`CredentialsChanged` 表示 Microsoft 凭据已在内存刷新，保存失败时仍返回新凭据，但返回错误并清空游戏会话。`StateChanged` 表示配置已保存，两者不代表跨文件原子提交。第三方认证仅用于选择皮肤站账号的启动请求。
+`launch_request.go` 定义契约，`launch_auth.go` 选择账号授权用例，`launch_operation.go` 编排启动步骤。Microsoft 和皮肤站的协议、外观、会话内部字段及凭据编解码归 `account` 管理；它不读取启动器配置，也不决定当前选中的账号。第三方认证仅用于选择皮肤站账号的启动请求。
+
+`Store.CommitMicrosoftLogin` / `CommitStationLogin` 接收已验证的账号或已绑定的会话，先保存凭据，再提交账号选择；`RemoveMicrosoftAccount` / `RemoveStationAccount` 先删除凭据，再保存取消选择或移除档案的配置。私有实现分别维护凭据操作与配置提交，返回 `AccountCommit`：`CredentialsSaved` 仅表示已加密落盘，非持久化平台为假；`CredentialsDeleted` 表示删除已完成或文件本来不存在；`StateSaved` 表示配置保存完成。`State` 始终是原快照或已保存的新快照，失败不返回尚未提交的配置，也不回滚可能已轮换的凭据。
+
+`AuthorizeMicrosoft` / `AuthorizeStation` 被启动授权及 Microsoft 外观刷新复用。每次授权都尝试保存当前凭据，有效缓存会话也不能绕过之前失败的保存。Microsoft OAuth 已轮换但后续 Xbox、权益或档案查询失败时，协议层返回原身份加新刷新令牌、空游戏会话；应用层仍尝试保存。皮肤站保存失败保留新会话。后续认证网络失败也会重试保存内存中的凭据，认证与写入同时失败通过 `errors.Join` 保留两条错误链；两步都成功后才更新配置或继续使用会话。
+
+`LaunchResult` 返回最新内存凭据和已保存的配置，即使授权或后续下载失败也不会丢失结果。`CredentialsChanged` 表示 Microsoft 账号或游戏会话在内存变化，`CredentialsSaved` 表示所选提供者凭据落盘，`StateChanged` 表示配置已保存；调用方不得在返回错误时启动游戏或应用外观。保存失败可保留有效会话供下次授权重存，不能直接把该会话视为提交成功。
+
+桌面只调用提交用例并应用实际完成的结果。保存失败后，登录弹窗保留候选账号或已绑定会话，重试不再执行设备授权或皮肤站角色绑定；不同 Microsoft 身份在凭据和配置均未提交时不覆盖原内存账号。凭据删除后即清空对应内存，配置失败保留原选择和移除入口供重试。桌面通过忙碌状态阻止并发写入；`writes` 等待组只负责退出时等待，不提供串行锁。浏览器授权在其他任务进行时完成，会保留候选并等待用户重试保存。这里不承诺两份文件的跨文件原子提交。
 
 `account.Client` 的零值使用标准网络传输，可通过 `Transport` 注入代理策略或协议测试。请求有超时限制且不跟随认证重定向。显式客户端提供设备码登录、Microsoft 刷新、皮肤站角色绑定与验证、外观读写和启动选项；已有会话方法使用默认客户端。皮肤站的 API 发现只允许同源跳转，authlib-injector 仍按固定官方版本校验。
 

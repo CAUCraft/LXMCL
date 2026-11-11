@@ -46,6 +46,19 @@ func TestMicrosoftLoginDialogUsesSystemBrowserAndCancels(t *testing.T) {
 	if a.microsoft != nil || !canceled || a.state.MicrosoftProfile != "" {
 		t.Fatal("closing sign-in did not cancel the pending login")
 	}
+	// OAuth can finish while another write owns the captured configuration.
+	// Retain its result for a save retry instead of starting a concurrent write.
+	p := &microsoftLoginView{open: true}
+	a.microsoft, a.busy = p, true
+	verified := launcher.MicrosoftAccount{Profile: launcher.MicrosoftProfile{ID: "0123456789abcdef0123456789abcdef", Name: "Player"}}
+	a.saveMicrosoftLogin(p, verified, launcher.MinecraftSession{})
+	tt.Frame()
+	if p.account != verified || p.saving || !a.busy || a.state.MicrosoftProfile != "" {
+		t.Fatal("completed OAuth changed state during another operation")
+	}
+	if _, ok := tt.Find("重试保存登录"); !ok {
+		t.Fatal("verified sign-in cannot retry saving")
+	}
 }
 
 func TestTaskRetryStaysWithCapturedAccount(t *testing.T) {

@@ -20,6 +20,8 @@ type microsoftLoginView struct {
 	code         launcher.MicrosoftDeviceCode
 	err          string
 	cancel       context.CancelFunc
+	account      launcher.MicrosoftAccount
+	session      launcher.MinecraftSession
 }
 
 func (a *desktop) accountName() string {
@@ -269,37 +271,35 @@ func (a *desktop) offlineAccount(c *ui.Context, disabled bool) {
 }
 
 func (a *desktop) selectMicrosoft(id string) {
-	if id == "" || id != a.microsoftAccount.Profile.ID {
+	if !a.ready || a.busy || id == "" || id != a.microsoftAccount.Profile.ID {
 		return
 	}
-	next := a.state.Clone()
-	next.MicrosoftProfile = id
-	next.StationKey = ""
-	a.save(next, 0, func(err error) { a.message("切换 Microsoft 账号", err) })
+	state, account := a.state.Clone(), a.microsoftAccount
+	a.busy = true
+	a.writes.Go(func() {
+		result, err := a.store.CommitMicrosoftLogin(state, account)
+		a.post(func() {
+			a.busy, a.state = false, result.State
+			a.message("切换 Microsoft 账号", err)
+		})
+	})
 }
 
 func (a *desktop) forgetMicrosoft() {
 	if a.busy || (a.appearance != nil && a.appearance.syncing) {
 		return
 	}
-	next := a.state.Clone()
-	next.MicrosoftProfile = ""
+	state := a.state.Clone()
 	a.busy = true
 	a.writes.Go(func() {
-		err := a.store.DeleteMicrosoftAccount()
-		removed := err == nil
-		if removed {
-			err = a.store.Save(next)
-		}
+		result, err := a.store.RemoveMicrosoftAccount(state)
 		a.post(func() {
 			a.busy = false
-			if removed {
+			if result.CredentialsDeleted {
 				a.microsoftAccount, a.minecraftSession = launcher.MicrosoftAccount{}, launcher.MinecraftSession{}
 				a.appearance = nil
 			}
-			if err == nil {
-				a.state = next
-			}
+			a.state = result.State
 			a.message("退出 Microsoft 登录", err)
 		})
 	})
@@ -349,22 +349,23 @@ func (a *desktop) loginError(p *microsoftLoginView, err error) {
 }
 
 func (a *desktop) saveMicrosoftLogin(p *microsoftLoginView, account launcher.MicrosoftAccount, session launcher.MinecraftSession) {
-	next := a.state.Clone()
-	next.MicrosoftProfile = account.Profile.ID
-	next.StationKey = ""
+	p.account, p.session, p.err = account, session, ""
+	if !a.ready || a.busy {
+		p.code = launcher.MicrosoftDeviceCode{}
+		p.err = "登录已验证，请等待当前任务完成后重试保存。"
+		return
+	}
+	state := a.state.Clone()
 	p.code, p.saving, a.busy = launcher.MicrosoftDeviceCode{}, true, true
 	a.writes.Go(func() {
-		err := a.store.SaveMicrosoftAccount(account)
-		stored := err == nil
-		if stored {
-			err = a.store.Save(next)
-		}
+		result, err := a.store.CommitMicrosoftLogin(state, account)
 		a.post(func() {
 			a.busy, p.saving = false, false
-			if stored {
+			if result.CredentialsSaved || result.StateSaved || a.microsoftAccount.Profile.ID == "" || a.microsoftAccount.Profile.ID == account.Profile.ID {
 				a.microsoftAccount, a.minecraftSession = account, session
 				a.appearance = nil
 			}
+			a.state = result.State
 			if err != nil {
 				if p.open {
 					p.err = "无法保存登录：" + err.Error()
@@ -374,7 +375,7 @@ func (a *desktop) saveMicrosoftLogin(p *microsoftLoginView, account launcher.Mic
 				}
 				return
 			}
-			a.state, p.open = next, false
+			p.open = false
 			a.message("已登录 Microsoft · "+account.Profile.Name, nil)
 			a.startAppearance()
 		})
@@ -393,6 +394,9 @@ func (a *desktop) microsoftLoginDialog(c *ui.Context) {
 				flightLoading(c, "正在保存登录…")
 			case p.err != "":
 				feedback.Alert(c, p.err, feedback.AlertProps{Type: feedback.Error})
+				if p.account.Profile.ID != "" && button(c, "重试保存登录", action.Primary, a.busy) {
+					a.saveMicrosoftLogin(p, p.account, p.session)
+				}
 				if button(c, "重新获取登录代码", action.Default, a.busy) {
 					a.beginMicrosoftLogin()
 				}

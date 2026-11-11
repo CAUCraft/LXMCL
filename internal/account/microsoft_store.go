@@ -52,11 +52,11 @@ func (s Vault) LoadMicrosoftAccount() (MicrosoftAccount, error) {
 }
 
 func (s Vault) SaveMicrosoftAccount(account MicrosoftAccount) error {
-	if !CredentialsPersist() {
-		return nil
-	}
 	if account.refreshToken == "" || !profileID.MatchString(account.Profile.ID) || !instance.ValidPlayerName(account.Profile.Name) {
 		return ErrMicrosoftRequired
+	}
+	if !CredentialsPersist() {
+		return nil
 	}
 	plain, err := json.Marshal(microsoftRecord{Profile: account.Profile, Refresh: account.refreshToken})
 	if err != nil {

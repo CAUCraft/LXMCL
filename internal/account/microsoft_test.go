@@ -114,9 +114,13 @@ func TestMicrosoftDeviceLoginAndIdentity(t *testing.T) {
 		t.Fatal("refresh accepted a different Minecraft identity")
 	}
 	owned = false
-	if _, _, err := client.RefreshMicrosoftLogin(t.Context(), account); err == nil || !strings.Contains(err.Error(), i18n.Text("microsoft.minecraft_license_missing")) ||
+	partial, rejected, err := client.RefreshMicrosoftLogin(t.Context(), account)
+	if err == nil || !strings.Contains(err.Error(), i18n.Text("microsoft.minecraft_license_missing")) ||
 		stages[len(stages)-1] != "/entitlements/mcstore" {
 		t.Fatalf("account without game ownership was accepted: %v", err)
+	}
+	if partial.Profile != account.Profile || partial.refreshToken != "rotated-fixture" || rejected != (MinecraftSession{}) {
+		t.Fatal("failed authorization lost rotated credentials or granted a game session")
 	}
 }
 

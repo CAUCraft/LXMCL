@@ -2,60 +2,26 @@ package launcher
 
 import (
 	"context"
-	"time"
 
 	"github.com/CAUCraft/LXMCL/internal/i18n"
 )
 
 func authorizeLaunch(ctx context.Context, store Store, r LaunchRequest, report func(Progress)) (LaunchResult, error) {
-	onlineID, account, session := r.State.MicrosoftProfile, r.Account, r.Session
-	stationKey := r.State.StationKey
-	station, _ := r.State.Station(stationKey)
-	stationSession, stationState := r.StationSession, r.State
-	var err error
-	var refreshed, stationStateChanged bool
-	if stationKey != "" {
+	result := LaunchResult{Account: r.Account, Session: r.Session, StationSession: r.StationSession, State: r.State}
+	if r.State.StationKey != "" {
 		report(Progress{Stage: i18n.Text("progress.verify_station")})
-		if station.Key == "" {
-			err = ErrSkinStationLogin
-		} else if stationSession.Profile.Key != stationKey {
-			stationSession, err = store.LoadStationSession(station)
-		}
-		if err == nil {
-			original := stationSession
-			stationSession, err = original.Verify(ctx)
-			if err == nil && original != stationSession {
-				err = store.SaveStationSession(stationSession)
-				if err != nil {
-					stationSession = original
-				}
-			}
-			if err == nil && stationSession.Profile.Name != station.Name {
-				stationState = stationState.Clone()
-				stationState.UseStation(stationSession.Profile)
-				err = store.Save(stationState)
-				stationStateChanged = err == nil
-			}
-		}
-	} else if onlineID != "" {
-		if !session.ValidFor(onlineID) {
-			report(Progress{Stage: i18n.Text("progress.verify_microsoft")})
-			if account.Profile.ID != onlineID {
-				err = ErrMicrosoftRequired
-			} else {
-				authCtx, stop := context.WithTimeout(ctx, 65*time.Second)
-				var nextAccount MicrosoftAccount
-				nextAccount, session, err = RefreshMicrosoftLogin(authCtx, account)
-				stop()
-				if err == nil {
-					account, refreshed = nextAccount, true
-					if saveErr := store.SaveMicrosoftAccount(account); saveErr != nil {
-						err = i18n.Error("microsoft.refresh_save_failed", saveErr)
-						session = MinecraftSession{}
-					}
-				}
-			}
-		}
+		auth, err := store.AuthorizeStation(ctx, r.State, r.StationSession)
+		result.StationSession, result.State = auth.Session, auth.State
+		result.CredentialsSaved, result.StateChanged = auth.CredentialsSaved, auth.StateSaved
+		return result, err
 	}
-	return LaunchResult{Account: account, Session: session, StationSession: stationSession, State: stationState, CredentialsChanged: refreshed, StateChanged: stationStateChanged}, err
+	if id := r.State.MicrosoftProfile; id != "" {
+		report(Progress{Stage: i18n.Text("progress.verify_microsoft")})
+		auth, err := store.AuthorizeMicrosoft(ctx, id, r.Account, r.Session)
+		result.Account, result.Session = auth.Account, auth.Session
+		result.CredentialsChanged = auth.Account != r.Account || auth.Session != r.Session
+		result.CredentialsSaved = auth.CredentialsSaved
+		return result, err
+	}
+	return result, nil
 }

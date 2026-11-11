@@ -1,5 +1,8 @@
 {
+  "account.credentials_delete_failed": "Could not remove account credentials: %w",
+  "account.credentials_save_failed": "Could not save account credentials; the latest credentials remain in this session for retry: %w",
   "account.offline_name_invalid": "An offline name must contain 3–16 letters, digits or underscores",
+  "account.selection_save_failed": "Credentials were processed, but the account configuration was not saved; please retry: %w",
   "appearance.cape_dimensions_invalid": "Minecraft returned unsupported cape texture dimensions",
   "appearance.cape_id_invalid": "Invalid cape ID",
   "appearance.png_incomplete": "The PNG texture is incomplete",
@@ -171,7 +174,6 @@
   "microsoft.minecraft_profile_service": "Minecraft Java Edition profile",
   "microsoft.minecraft_token_invalid": "Minecraft returned invalid access credentials",
   "microsoft.profile_changed": "Microsoft returned a different Minecraft profile. Sign in again",
-  "microsoft.refresh_save_failed": "Could not save refreshed Microsoft credentials: %w",
   "microsoft.refresh_token_missing": "Microsoft did not return a refresh token",
   "microsoft.vault_corrupt": "The Microsoft credentials are damaged. Sign in again",
   "microsoft.vault_decrypt_failed": "Could not decrypt the local Microsoft credentials",

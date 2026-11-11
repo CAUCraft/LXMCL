@@ -148,11 +148,17 @@ func (c Client) RefreshMicrosoftLogin(ctx context.Context, account MicrosoftAcco
 	if tokens.Refresh == "" {
 		tokens.Refresh = account.refreshToken
 	}
+	// Rotation belongs to the existing OAuth account even if a later Xbox or
+	// Minecraft check fails. Return it for persistence without granting a session.
+	account.refreshToken = tokens.Refresh
 	next, session, err := c.minecraftSession(ctx, tokens)
-	if err == nil && next.Profile.ID != account.Profile.ID {
+	if err != nil {
+		return account, MinecraftSession{}, err
+	}
+	if next.Profile.ID != account.Profile.ID {
 		return account, MinecraftSession{}, i18n.Error("microsoft.profile_changed")
 	}
-	return next, session, err
+	return next, session, nil
 }
 
 func microsoftTokenError(err error) error {

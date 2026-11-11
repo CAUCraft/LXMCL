@@ -1,5 +1,8 @@
 {
+  "account.credentials_delete_failed": "无法移除账号凭据：%w",
+  "account.credentials_save_failed": "无法保存账号凭据；新凭据保留在本次会话中，可重试保存：%w",
   "account.offline_name_invalid": "离线名称须为 3–16 位字母、数字或下划线",
+  "account.selection_save_failed": "凭据处理已完成，但账号配置尚未保存；请重试：%w",
   "appearance.cape_dimensions_invalid": "Minecraft 返回了不支持的披风贴图尺寸",
   "appearance.cape_id_invalid": "披风标识无效",
   "appearance.png_incomplete": "PNG 贴图不完整",
@@ -171,7 +174,6 @@
   "microsoft.minecraft_profile_service": "Minecraft Java 档案",
   "microsoft.minecraft_token_invalid": "Minecraft 返回了无效的访问凭据",
   "microsoft.profile_changed": "Microsoft 返回了不同的 Minecraft 档案，请重新登录",
-  "microsoft.refresh_save_failed": "无法保存刷新后的 Microsoft 凭据：%w",
   "microsoft.refresh_token_missing": "Microsoft 未返回可刷新的登录凭据",
   "microsoft.vault_corrupt": "Microsoft 凭据已损坏，请重新登录",
   "microsoft.vault_decrypt_failed": "无法解密本机 Microsoft 凭据",

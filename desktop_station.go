@@ -23,6 +23,7 @@ type stationLoginView struct {
 	api, username, password, role, failure string
 	target                                 launcher.StationProfile
 	pending                                launcher.StationLogin
+	session                                launcher.StationSession
 	cancel                                 context.CancelFunc
 }
 
@@ -63,7 +64,9 @@ func (a *desktop) stationLoginDialog(c *ui.Context) {
 	feedback.Modal(c, &p.open, feedback.ModalProps{Title: "登录第三方皮肤站", Width: 440, NoFooter: true}, func() {
 		ui.Column(c).Gap(8).Children(func() {
 			roles := p.pending.Roles()
-			if len(roles) == 0 {
+			if p.session.Profile.Key != "" {
+				muted(c, "登录已验证，请重试保存。").FontSize(13)
+			} else if len(roles) == 0 {
 				muted(c, "使用皮肤站自己的账号。登录信息会发给下方填写的站点。").FontSize(13)
 				stationField(c, "皮肤站或 API 地址", &p.api, "https://skin.example.org", p.busy || p.target.Key != "", false)
 				stationField(c, "皮肤站账号", &p.username, "邮箱或用户名", p.busy, false)
@@ -86,7 +89,11 @@ func (a *desktop) stationLoginDialog(c *ui.Context) {
 				if button(c, "取消", action.Default, p.saving) {
 					p.open = false
 				}
-				if len(roles) == 0 {
+				if p.session.Profile.Key != "" {
+					if button(c, "重试保存登录", action.Primary, a.busy || p.busy) {
+						a.bindStation(p)
+					}
+				} else if len(roles) == 0 {
 					if button(c, "登录皮肤站", action.Primary, a.busy || p.busy || p.api == "" || p.username == "" || p.password == "") {
 						a.authenticateStation(p)
 					}
@@ -159,26 +166,36 @@ func (a *desktop) bindStation(p *stationLoginView) {
 	if a.busy || p.busy || p.role == "" {
 		return
 	}
-	pending, role, target, next := p.pending, p.role, p.target, a.state.Clone()
+	pending, role, target, state := p.pending, p.role, p.target, a.state.Clone()
+	bound := p.session
 	p.busy, p.saving, p.failure, a.busy = true, true, "", true
 	a.writes.Go(func() {
 		ctx, stop := context.WithTimeout(a.ctx, 30*time.Second)
 		defer stop()
-		session, err := pending.Bind(ctx, role)
+		session := bound
+		var err error
+		if session.Profile.Key == "" {
+			session, err = pending.Bind(ctx, role)
+		}
 		if err == nil && target.Key != "" && session.Profile.Key != target.Key {
 			err = launcher.ErrSkinStationLogin
+			session = launcher.StationSession{}
 		}
+		result := launcher.AccountCommit{State: state}
 		if err == nil {
-			err = a.store.SaveStationSession(session)
-		}
-		if err == nil {
-			next.UseStation(session.Profile)
-			err = a.store.Save(next)
+			result, err = a.store.CommitStationLogin(state, session)
 		}
 		a.post(func() {
 			p.busy, p.saving, a.busy = false, false, false
+			p.session = session
+			a.state = result.State
+			if session.Profile.Key != "" {
+				a.rememberStation(session)
+			}
 			if err != nil {
-				p.pending = launcher.StationLogin{}
+				if session.Profile.Key == "" {
+					p.pending = launcher.StationLogin{}
+				}
 				if p.open {
 					p.failure = err.Error()
 				} else {
@@ -186,8 +203,7 @@ func (a *desktop) bindStation(p *stationLoginView) {
 				}
 				return
 			}
-			a.rememberStation(session)
-			a.state, p.open = next, false
+			p.open = false
 			a.browsedAccount = stationAccountPrefix + session.Profile.Key
 			a.loadStationPreview(session.Profile, true)
 			a.message("已登录皮肤站 · "+session.Profile.Name, nil)
@@ -205,24 +221,19 @@ func (a *desktop) forgetStation(p launcher.StationProfile) {
 	if a.busy {
 		return
 	}
-	next := a.state.Clone()
-	next.ForgetStation(p.Key)
+	state := a.state.Clone()
 	a.busy = true
 	a.writes.Go(func() {
-		err := a.store.Save(next)
-		removed := err == nil
-		if removed {
-			err = a.store.DeleteStationSession(p.Key)
-		}
+		result, err := a.store.RemoveStationAccount(state, p.Key)
 		a.post(func() {
 			a.busy = false
-			if removed {
-				a.state = next
+			a.state = result.State
+			if result.CredentialsDeleted {
 				delete(a.stationSessions, p.Key)
 				delete(a.stationPreviews, p.Key)
-				if a.browsedAccount == stationAccountPrefix+p.Key {
-					a.browsedAccount = a.state.Settings.Player
-				}
+			}
+			if result.StateSaved && a.browsedAccount == stationAccountPrefix+p.Key {
+				a.browsedAccount = a.state.Settings.Player
 			}
 			a.message("移除皮肤站账号", err)
 		})
