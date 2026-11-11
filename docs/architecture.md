@@ -95,6 +95,8 @@ flowchart TD
 
 `launch_request.go` 定义契约，`launch_auth.go` 选择账号授权用例，`launch_operation.go` 编排启动步骤。Microsoft 和皮肤站的协议、外观、会话内部字段及凭据编解码归 `account` 管理；它不读取启动器配置，也不决定当前选中的账号。第三方认证仅用于选择皮肤站账号的启动请求。
 
+`Game.Transport` 注入游戏用例的网络传输，贯穿 Minecraft 与 Java 安装、整合包预览及依赖解析、文件下载和皮肤站 JVM 准备。各领域客户端继续管理超时、凭据与重定向规则；零值沿用系统传输。独立目录查询可使用 `catalog.Client`，账号授权由传入的 `Store` 负责。集成测试经公开 `InstallModpack` / `DownloadModrinth` 接口执行实际装配与提交流程。
+
 `Store.CommitMicrosoftLogin` / `CommitStationLogin` 接收已验证的账号或已绑定的会话，先保存凭据，再提交账号选择；`RemoveMicrosoftAccount` / `RemoveStationAccount` 先删除凭据，再保存取消选择或移除档案的配置。私有实现分别维护凭据操作与配置提交，返回 `AccountCommit`：`CredentialsSaved` 仅表示已加密落盘，非持久化平台为假；`CredentialsDeleted` 表示删除已完成或文件本来不存在；`StateSaved` 表示配置保存完成。`State` 始终是原快照或已保存的新快照，失败不返回尚未提交的配置，也不回滚可能已轮换的凭据。
 
 `AuthorizeMicrosoft` / `AuthorizeStation` 被启动授权及 Microsoft 外观刷新复用。每次授权都尝试保存当前凭据，有效缓存会话也不能绕过之前失败的保存。Microsoft OAuth 已轮换但后续 Xbox、权益或档案查询失败时，协议层返回原身份加新刷新令牌、空游戏会话；应用层仍尝试保存。皮肤站保存失败保留新会话。后续认证网络失败也会重试保存内存中的凭据，认证与写入同时失败通过 `errors.Join` 保留两条错误链；两步都成功后才更新配置或继续使用会话。

@@ -24,7 +24,7 @@ func (g Game) DownloadModpackFile(ctx context.Context, release ModpackRelease, f
 }
 
 func (g Game) saveDownload(ctx context.Context, a distribution.Asset, name, folder string, report func(Progress)) error {
-	return (distribution.Cache{Root: g.Cache}).Export(ctx, a, name, folder, func(done, total int) {
+	return g.downloads().Export(ctx, a, name, folder, func(done, total int) {
 		if report == nil {
 			return
 		}

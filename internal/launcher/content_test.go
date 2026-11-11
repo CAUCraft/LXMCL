@@ -50,7 +50,7 @@ func TestModrinthDownloadOnlyInstallsSelectedFile(t *testing.T) {
 				Loaders: []string{strings.ToLower(i.Loader)}, Files: []PackFile{file},
 				Dependencies: []ModDependency{{ProjectID: "requiredProject", VersionID: "missingVersion", Type: "required"}}}
 			var calls int
-			d := &http.Client{Transport: transportFunc(func(req *http.Request) (*http.Response, error) {
+			g := Game{Transport: transportFunc(func(req *http.Request) (*http.Response, error) {
 				if req.URL.String() != fileURL {
 					t.Fatalf("install requested dependency metadata or files: %s", req.URL)
 				}
@@ -58,14 +58,14 @@ func TestModrinthDownloadOnlyInstallsSelectedFile(t *testing.T) {
 				return fixtureResponse(http.StatusOK, body), nil
 			})}
 			var progress Progress
-			if err := downloadModrinth(t.Context(), i, Mods, v, d, func(p Progress) { progress = p }); err != nil {
+			if err := g.DownloadModrinth(t.Context(), i, Mods, v, func(p Progress) { progress = p }); err != nil {
 				t.Fatal(err)
 			}
 			files, err := ListContent(i, Mods)
 			if err != nil || len(files) != 1 || files[0].Name != file.Filename || progress.Done != 1 || progress.Total != 1 {
 				t.Fatalf("selected file was not installed alone: %v %v %+v", files, err, progress)
 			}
-			if err := downloadModrinth(t.Context(), i, Mods, v, d, nil); err != nil || calls != 1 {
+			if err := g.DownloadModrinth(t.Context(), i, Mods, v, nil); err != nil || calls != 1 {
 				t.Fatalf("retry did not reuse the verified file: %d requests, %v", calls, err)
 			}
 		})
@@ -86,11 +86,11 @@ func TestExistingResourceMustMatchLoaderFormat(t *testing.T) {
 	if err := os.WriteFile(filename, body, 0600); err != nil {
 		t.Fatal(err)
 	}
-	d := &http.Client{Transport: transportFunc(func(*http.Request) (*http.Response, error) {
+	g := Game{Transport: transportFunc(func(*http.Request) (*http.Response, error) {
 		t.Fatal("existing invalid resource triggered a network request")
 		return nil, nil
 	})}
-	if err := downloadModrinth(t.Context(), i, Mods, v, d, nil); err == nil {
+	if err := g.DownloadModrinth(t.Context(), i, Mods, v, nil); err == nil {
 		t.Fatal("existing resource bypassed archive format validation")
 	}
 	if got, err := os.ReadFile(filename); err != nil || !bytes.Equal(got, body) {
@@ -102,7 +102,7 @@ func TestModrinthPackVerifiesContentAndTargetsInstance(t *testing.T) {
 	content := testZIP(t, map[string]string{"pack.mcmeta": "{}"})
 	instance := Instance{ID: 2, Version: "1.21.1", GameDir: t.TempDir()}
 	other := Instance{ID: 1, Version: "1.21.1", GameDir: t.TempDir()}
-	d := &http.Client{Transport: transportFunc(func(req *http.Request) (*http.Response, error) {
+	g := Game{Transport: transportFunc(func(req *http.Request) (*http.Response, error) {
 		if req.URL.Hostname() != "cdn.modrinth.com" {
 			t.Fatalf("unexpected origin: %s", req.URL)
 		}
@@ -111,14 +111,14 @@ func TestModrinthPackVerifiesContentAndTargetsInstance(t *testing.T) {
 	file := PackFile{URL: "https://cdn.modrinth.com/data/pack.zip", Filename: "pack.zip", Size: int64(len(content)), Primary: true}
 	file.Hashes.SHA512 = strings.Repeat("0", 128)
 	version := PackVersion{GameVersions: []string{"1.21.1"}, Files: []PackFile{file}}
-	if err := downloadModrinth(t.Context(), instance, ResourcePacks, version, d, nil); err == nil {
+	if err := g.DownloadModrinth(t.Context(), instance, ResourcePacks, version, nil); err == nil {
 		t.Fatal("accepted a pack with a mismatched SHA-512")
 	}
 	if files, err := ListContent(instance, ResourcePacks); len(files) != 0 || err != nil {
 		t.Fatalf("bad download left files: %v, %v", files, err)
 	}
 	version.Files[0].Hashes.SHA512 = fmt.Sprintf("%x", sha512.Sum512(content))
-	if err := downloadModrinth(t.Context(), instance, ResourcePacks, version, d, nil); err != nil {
+	if err := g.DownloadModrinth(t.Context(), instance, ResourcePacks, version, nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := SetContentEnabled(instance, ResourcePacks, "pack.zip", false); err != nil {

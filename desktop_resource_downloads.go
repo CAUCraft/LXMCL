@@ -471,6 +471,7 @@ func (a *desktop) saveResourceFile(folder string, r resourceTask, version launch
 }
 
 func (a *desktop) downloadResource(i launcher.Instance, r resourceTask, version launcher.PackVersion) {
+	game := a.game
 	kind := launcher.ContentKind(r.Kind)
 	a.runContentTask(i, "安装"+contentLabel(kind), &r, func(ctx context.Context, report func(launcher.Progress)) error {
 		if version.ID == "" {
@@ -480,6 +481,6 @@ func (a *desktop) downloadResource(i launcher.Instance, r resourceTask, version 
 				return err
 			}
 		}
-		return launcher.DownloadModrinth(ctx, i, kind, version, report)
+		return game.DownloadModrinth(ctx, i, kind, version, report)
 	})
 }

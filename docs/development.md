@@ -31,6 +31,8 @@ go tool mygo build -platform windows/amd64
 
 后端扩展中，平台文件下载和摘要缓存由 `internal/distribution` 管理，整合包预览、清单与安装事务由 `internal/modpack` 管理。安装通过 `InstallOptions` 注入游戏安装和配置提交，依赖查询通过 `Resolver` 注入，不需要导入 `launcher` 或改全局 HTTP 客户端。可用本地归档和可控传输验证取消、归档变更、依赖缺项及提交失败回滚。
 
+应用用例通过 `launcher.Game.Transport` 接收可控传输，覆盖游戏及 Java 安装、整合包下载与依赖解析、文件夹导出、实例资源安装和皮肤站 JVM 准备。传输应响应 context 并支持并发；来源、摘要、超时和重定向规则继续由领域模块管理。测试直接调用公开用例，复用协议夹具即可验证实际装配；`Game{Cache: ...}` 和原有包级资源下载函数继续使用系统网络。
+
 Minecraft 安装和启动由 `internal/minecraft.Runtime` 提供；游戏与加载器目录查询通过 `minecraft.Client`，传输由 `Client.Transport` 注入。应用层只传入提交时的实例、设置和已校验身份，皮肤站 JVM 参数通过回调准备。扩展运行时无需访问 `State` / `Store` 或整合包清单。缓存收据、加载器协议、启动参数和进程管理分别维护；现有 `launcher.Game` 调用保持兼容。`internal/testutil/mcfixture` 提供可控官方文件夹具，集成测试通过公开接口验证安装、取消、进程启动和旧缓存修复。
 
 Minecraft 与 Java 的 SHA-1 文件通过 `transfer.Artifact.Check` 验证，通过 `Ensure` 复用或下载替换缓存；校验摘要由文件描述内部解析，调用方只传本地路径与未知大小上限。已知长度不受该上限限制，未知长度必须提供有效上限；缓存损坏返回未通过，I/O 或取消返回错误。原缓存路径、损坏修复及重试行为保持不变，下载校验失败继续支持 `errors.Is(err, transfer.ErrMismatch)`。相关验证复用游戏安装、Forge 和受管 Java 测试，仅单独保留一个大小边界回归。

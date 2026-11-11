@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 
-	"github.com/CAUCraft/LXMCL/internal/distribution"
 	"github.com/CAUCraft/LXMCL/internal/i18n"
 	"github.com/CAUCraft/LXMCL/internal/modpack"
 )
@@ -20,7 +19,7 @@ func (g Game) PrepareOnlineModpack(ctx context.Context, r ModpackRelease) (Prepa
 	if !ok {
 		return PreparedModpack{}, i18n.Error("modpack.online_file_unavailable")
 	}
-	filename, err := (distribution.Cache{Root: g.Cache}).Ensure(ctx, a)
+	filename, err := g.downloads().Ensure(ctx, a)
 	if err != nil {
 		return PreparedModpack{}, err
 	}

@@ -54,7 +54,9 @@ func launchIdentity(offline string, session *MinecraftSession) (gameIdentity, er
 func (g Game) startProgress(ctx context.Context, i Instance, settings Settings, server string, identity gameIdentity, station *StationSession, report func(Progress)) (Running, error) {
 	options := minecraft.LaunchOptions{Settings: settings, Server: server, Identity: identity}
 	if station != nil {
-		options.PrepareJVM = func(ctx context.Context) ([]string, error) { return station.LaunchArgs(ctx, g.Cache) }
+		options.PrepareJVM = func(ctx context.Context) ([]string, error) {
+			return (account.Client{Transport: g.Transport}).StationLaunchArgs(ctx, *station, g.Cache)
+		}
 	}
 	return g.runtime().Start(ctx, i, options, report)
 }
