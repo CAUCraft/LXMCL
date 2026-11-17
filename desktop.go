@@ -473,14 +473,26 @@ func (a *desktop) library(c *ui.Context) {
 	})
 }
 
+func matchesInstanceSearch(i launcher.Instance, query string) bool {
+	return query == "" || strings.Contains(strings.ToLower(i.Name+" "+i.Version+" "+loaderName(i)), query)
+}
+
+func (a *desktop) matchesCacheFilter(i launcher.Instance) bool {
+	switch a.instanceFilter {
+	case 1:
+		return a.installed[i.ID]
+	case 2:
+		return !a.installed[i.ID]
+	default:
+		return true
+	}
+}
+
 func (a *desktop) instanceList(c *ui.Context, inspecting bool) {
 	query := strings.ToLower(strings.TrimSpace(a.query))
 	var items []display.ListItem
 	for _, i := range a.state.Instances {
-		if !strings.Contains(strings.ToLower(i.Name+" "+i.Version+" "+loaderName(i)), query) {
-			continue
-		}
-		if a.instanceFilter == 1 && !a.installed[i.ID] || a.instanceFilter == 2 && a.installed[i.ID] {
+		if !matchesInstanceSearch(i, query) || !a.matchesCacheFilter(i) {
 			continue
 		}
 		detail := i.Version + " · " + loaderName(i)

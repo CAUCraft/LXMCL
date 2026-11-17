@@ -371,6 +371,16 @@ func TestInstanceFilterAndVersionEditor(t *testing.T) {
 	if !a.form.open || a.form.err == "" || a.state.Instances[1].Version != "1.21.4" {
 		t.Fatal("an unsupported version was accepted")
 	}
+	tt.Key(0, ui.KeyEscape)
+	a.query = "1.21"
+	for _, label := range []string{"主页", "实例设置"} {
+		if err := tt.Click(label); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if a.instanceFilter != 0 || a.query != "1.21" || a.detailPage != detailLaunch || a.inspected != 1 || a.state.Selected != 1 {
+		t.Fatal("home settings did not reveal the target while keeping its matching search")
+	}
 }
 
 func TestTaskCenterFiltersAndDisablesStaleRetry(t *testing.T) {

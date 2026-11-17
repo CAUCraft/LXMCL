@@ -151,6 +151,12 @@ func (a *desktop) configureLoader(i launcher.Instance) {
 }
 
 func (a *desktop) inspect(i launcher.Instance) {
+	if !matchesInstanceSearch(i, strings.ToLower(strings.TrimSpace(a.query))) {
+		a.query, a.scroll.Y = "", 0
+	}
+	if !a.matchesCacheFilter(i) {
+		a.instanceFilter, a.scroll.Y = 0, 0
+	}
 	a.page, a.inspected = pageLibrary, i.ID
 	a.detailPage = detailOverview
 }
