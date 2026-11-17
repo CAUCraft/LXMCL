@@ -431,12 +431,33 @@ func TestInstanceSettingsKeepDraftAndLaunchTargetSeparate(t *testing.T) {
 	if err := tt.Click("更多实例操作"); err != nil {
 		t.Fatal(err)
 	}
-	if err := tt.Click("复制实例配置…"); err != nil {
+	if err := tt.Click("复制实例…"); err != nil {
 		t.Fatal(err)
 	}
 	if a.form.target.ID != 2 || a.form.mode != "duplicate" || a.state.Selected != 1 {
 		t.Fatal("copy dialog was not bound to the viewed instance")
 	}
+	if a.form.copyContent || a.form.name != "建筑测试 副本" {
+		t.Fatalf("unexpected copy defaults: %+v", a.form)
+	}
+	capture(t, tt, "duplicate-compact")
+	if err := tt.Click("同时复制资源和游戏设置"); err != nil || !a.form.copyContent {
+		t.Fatalf("copying files is not selectable: %v", err)
+	}
+	tt.Advance(250 * time.Millisecond)
+	tt.Frame()
+	capture(t, tt, "duplicate-content-compact")
+	tt.SetDark(false)
+	tt.SetSize(1140, 720)
+	tt.Frame()
+	tt.Advance(250 * time.Millisecond)
+	tt.Frame()
+	capture(t, tt, "duplicate-content-light")
+	tt.Key(0, ui.KeyEscape)
+	if a.form.open || len(a.state.Instances) != 2 || a.state.Selected != 1 {
+		t.Fatal("canceling a copy changed the instance list or launch target")
+	}
+
 }
 
 func testDesktop(t *testing.T) (*desktop, *ui.Tester) {

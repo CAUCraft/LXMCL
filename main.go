@@ -91,6 +91,7 @@ type editor struct {
 	version        string
 	err            string
 	focus          bool
+	copyContent    bool
 	loaderVersions []string
 	loaderLoading  bool
 	loaderError    string
