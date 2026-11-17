@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/CAUCraft/LXMCL/internal/launcher"
 	"github.com/egoist/mygo/ui"
@@ -16,6 +17,7 @@ import (
 type serverCheck struct {
 	pending bool
 	message string
+	err     string
 	icon    ui.ImageSource
 }
 
@@ -34,7 +36,7 @@ func (a *desktop) checkServer(server launcher.Server) {
 		a.post(func() {
 			status.pending = false
 			if err != nil {
-				status.message = "无法查询状态"
+				status.err = err.Error()
 			} else {
 				status.icon = picture
 				status.message = fmt.Sprintf("%s · %d/%d 人 · %d ms", reply.Version, reply.Online, reply.Max, reply.Latency.Milliseconds())
@@ -95,17 +97,11 @@ func (a *desktop) network(c *ui.Context) {
 		if a.serverError != "" {
 			feedback.Alert(c, a.serverError, feedback.AlertProps{Type: feedback.Error})
 		}
-		i, selected := a.state.Find(a.state.Selected)
 		note := "离线账号仅能加入允许离线登录的服务器。"
 		if a.state.StationKey != "" {
 			note = "皮肤站账号：" + a.accountName() + "。请加入同一认证体系的服务器。"
 		} else if a.state.MicrosoftProfile != "" {
 			note = "Microsoft 账号：" + a.accountName() + "。"
-		}
-		if selected {
-			note += " 启动实例：" + i.Name + " · " + i.Version
-		} else {
-			note += " 请先选择启动实例。"
 		}
 		muted(c, note).FontSize(12)
 		if len(a.state.Servers) == 0 {
@@ -155,12 +151,35 @@ func (a *desktop) network(c *ui.Context) {
 							display.Text(c, server.Name, display.TextProps{Strong: true, FontSize: 15, Rows: 1}).Ellipsis("…")
 							muted(c, server.Address).SingleLine().Ellipsis("…")
 						})
+						action.CopyButton(c, server.Address, action.CopyButtonProps{}).Label("复制服务器地址")
 					})
 					check := a.serverStatus[server.Address]
 					if check != nil && check.pending {
 						flightLoading(c, check.message)
+					} else if check != nil && check.err != "" {
+						feedback.Alert(c, "无法查询服务器状态", feedback.AlertProps{Type: feedback.Warning, Description: check.err})
 					} else if check != nil {
 						muted(c, check.message).FontSize(13)
+					} else {
+						muted(c, "尚未查询服务器状态").FontSize(12)
+					}
+					i, selected := a.serverInstance()
+					if len(a.state.Instances) > 0 {
+						options := make([]field.SelectOption, 0, len(a.state.Instances))
+						for _, instance := range a.state.Instances {
+							options = append(options, field.SelectOption{Value: strconv.Itoa(instance.ID),
+								Label: instance.Name + " · " + instance.Version + " · " + loaderName(instance)})
+						}
+						settingsRow(c, "加入时使用", func() {
+							value := strconv.Itoa(i.ID)
+							catalogPicker(c, &value, options, "选择联机实例", "", a.busy || a.running != nil).Grow(1).MinWidth(0)
+							if value != strconv.Itoa(i.ID) {
+								a.serverInstanceID, _ = strconv.Atoi(value)
+								i, selected = a.serverInstance()
+							}
+						})
+					} else if button(c, "先安装游戏实例…", action.Default, a.busy) {
+						a.create()
 					}
 					ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 						if button(c, "启动并加入", action.Primary, !selected || a.busy || a.running != nil) {
@@ -178,4 +197,11 @@ func (a *desktop) network(c *ui.Context) {
 			})
 		})
 	})
+}
+
+func (a *desktop) serverInstance() (launcher.Instance, bool) {
+	if i, ok := a.state.Find(a.serverInstanceID); ok {
+		return i, true
+	}
+	return a.state.Find(a.state.Selected)
 }

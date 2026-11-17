@@ -142,6 +142,7 @@ type desktop struct {
 	downloadFolder                         string
 	serverName, serverAddress, serverError string
 	serverStatus                           map[string]*serverCheck
+	serverInstanceID                       int
 	query                                  string
 	focusSearch                            bool
 	instanceFilter                         int
@@ -156,19 +157,20 @@ type desktop struct {
 	catalogErr                             string
 	javaInfo                               string
 
-	busy         bool
-	cancelTask   context.CancelFunc
-	task         launcher.Progress
-	taskName     string
-	running      *launcher.Running
-	runningID    int
-	lastLog      string
-	history      []taskRecord
-	logOpen      bool
-	logText      string
-	logPath      string
-	logRequest   uint64
-	licensesOpen bool
-	licenseFile  string
-	pickerBusy   bool
+	busy          bool
+	cancelTask    context.CancelFunc
+	taskCanceling bool
+	task          launcher.Progress
+	taskName      string
+	running       *launcher.Running
+	runningID     int
+	lastLog       string
+	history       []taskRecord
+	logOpen       bool
+	logText       string
+	logPath       string
+	logRequest    uint64
+	licensesOpen  bool
+	licenseFile   string
+	pickerBusy    bool
 }

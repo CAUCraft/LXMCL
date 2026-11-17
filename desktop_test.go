@@ -136,14 +136,28 @@ func TestDesktopNavigationKeepsLaunchTarget(t *testing.T) {
 	if a.inspected != 0 || a.state.Selected != 1 {
 		t.Fatalf("second Escape should return to the list; inspected = %d, selected = %d", a.inspected, a.state.Selected)
 	}
+	a.state.Instances, a.state.Selected, a.page = nil, 0, pageHome
+	tt.SetSize(820, 530)
+	tt.Frame()
+	capture(t, tt, "home-first-run")
+	if err := tt.Click("切换启动账号"); err != nil || a.page != pageAccount {
+		t.Fatalf("first-run account setup is unreachable: %v", err)
+	}
+	tt.Key(0, ui.KeyEscape)
+	if err := tt.Click("安装实例…"); err != nil || a.downloadPage != downloadGame || a.page != pageDownloads {
+		t.Fatalf("first-run install is unreachable: %v", err)
+	}
 }
 
 func TestDesktopTasksReachableDuringDownload(t *testing.T) {
 	a, tt := testDesktop(t)
 	a.busy, a.taskName = true, "建筑测试"
 	a.task = launcher.Progress{Stage: "下载资源", Done: 8, Total: 24}
+	cancels := 0
+	a.cancelTask = func() { cancels++ }
 	a.history = []taskRecord{{
-		Name: "生存世界", Version: "1.21.1", Action: "启动游戏", Status: "已失败",
+		InstanceID: 1,
+		Name:       "生存世界", Version: "1.21.1", Action: "启动游戏", Status: "已失败",
 		Detail: "请检查 Java 设置后重试。", At: time.Date(2026, 11, 9, 9, 0, 0, 0, time.UTC),
 	}}
 	tt.SetSize(820, 530)
@@ -161,6 +175,19 @@ func TestDesktopTasksReachableDuringDownload(t *testing.T) {
 		t.Fatal("task history was not rendered")
 	}
 	capture(t, tt, "tasks-dark-compact")
+	if err := tt.Click("复制错误详情"); err != nil || tt.Clipboard() != a.history[0].Detail {
+		t.Fatalf("failed to copy the task error: %v", err)
+	}
+	if err := tt.Click("取消任务"); err != nil {
+		t.Fatal(err)
+	}
+	if !a.taskCanceling || cancels != 1 {
+		t.Fatal("cancel did not retain the pending task and show immediate feedback")
+	}
+	if err := tt.Click("正在取消…"); err != nil || cancels != 1 || !a.busy {
+		t.Fatalf("cancel could be submitted again or cleared the active operation: %v", err)
+	}
+	capture(t, tt, "tasks-canceling-compact")
 	a.logOpen, a.logPath, a.logText = true, "launcher.log", "Minecraft is starting."
 	tt.Frame()
 	if _, ok := tt.Find("游戏日志"); !ok {
@@ -214,7 +241,24 @@ func TestCompactSettingsAndLicenses(t *testing.T) {
 	if a.memory != "4096" {
 		t.Fatalf("restored memory = %q", a.memory)
 	}
+	tt.SetSize(820, 530)
+	a.memory = "4GiB"
+	tt.Frame()
+	capture(t, tt, "settings-invalid-compact")
+	if _, ok := tt.Find("最大内存须为 1024–65536 MiB 的整数"); !ok {
+		t.Fatal("invalid memory has no inline explanation")
+	}
+	if err := tt.Click("应用设置"); err != nil || a.busy || a.state.Settings.Memory != 4096 {
+		t.Fatalf("invalid memory was submitted: %v", err)
+	}
 	tt.Key(0, ui.KeyF1)
+	if _, ok := tt.Find("有未保存的更改"); !ok || a.memory != "4GiB" {
+		t.Fatal("changing settings tabs hid or discarded pending changes")
+	}
+	if err := tt.Click("还原更改"); err != nil || a.memory != "4096" {
+		t.Fatalf("cannot restore settings from the about tab: %v", err)
+	}
+	capture(t, tt, "about-compact")
 	if err := tt.Click("查看许可证"); err != nil {
 		t.Fatal(err)
 	}
@@ -266,7 +310,8 @@ func TestTaskCenterFiltersAndDisablesStaleRetry(t *testing.T) {
 	i := a.state.Instances[1]
 	a.history = []taskRecord{
 		{InstanceID: i.ID, Revision: i.Revision, Name: i.Name, Version: i.Version, Action: taskVerify, Status: taskFailed, At: time.Now()},
-		{Name: "已完成的任务", Version: "1.21.1", Action: taskVerify, Status: taskCompleted, At: time.Now().Add(-time.Minute)},
+		{Name: "已完成的任务", Version: "1.21.1", Action: "下载资源", Status: taskCompleted, At: time.Now().Add(-time.Minute),
+			Resource: &resourceTask{Title: "高清资源包"}},
 	}
 	if err := tt.Click("任务中心"); err != nil {
 		t.Fatal(err)
@@ -282,6 +327,19 @@ func TestTaskCenterFiltersAndDisablesStaleRetry(t *testing.T) {
 	if a.page != pageDownloads || a.downloadPage != downloadTasks || a.state.Selected != 1 {
 		t.Fatal("task shortcut did not preserve the launch selection")
 	}
+	tt.SetSize(820, 530)
+	tt.Frame()
+	completed := a.history[1]
+	for _, label := range []string{"选择历史任务", completed.Name + " · " + completed.Status + " · " + completed.At.Local().Format("01-02 15:04")} {
+		if err := tt.Click(label); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, ok := tt.Find("资源 · 高清资源包"); !ok || a.browsedTask != taskKey(completed) {
+		t.Fatal("compact task selection lost the resource or selected record")
+	}
+	tt.SetSize(1140, 720)
+	tt.Frame()
 	if err := tt.Click("失败 / 取消"); err != nil {
 		t.Fatal(err)
 	}
@@ -296,6 +354,15 @@ func TestTaskCenterFiltersAndDisablesStaleRetry(t *testing.T) {
 	tt.Frame()
 	if _, ok := tt.Find("重试"); ok {
 		t.Fatal("a task for an obsolete revision can still be retried")
+	}
+	if _, ok := tt.Find("实例配置、登录账号或资源信息已变化，请检查后重新发起。"); !ok {
+		t.Fatal("unavailable retry has no explanation")
+	}
+	if err := tt.Click("查看实例"); err != nil {
+		t.Fatal(err)
+	}
+	if a.inspected != i.ID || a.detailPage != detailLaunch || a.state.Selected != 1 {
+		t.Fatal("task recovery did not open the captured instance settings without changing the launch target")
 	}
 }
 
@@ -405,7 +472,27 @@ func TestResourceAndServerEntrypoints(t *testing.T) {
 	if _, ok := tt.Find("启动并加入"); !ok || a.page != pageNetwork {
 		t.Fatal("the saved Java server has no quick join entry")
 	}
+	tt.SetSize(820, 530)
+	tt.Frame()
+	for _, label := range []string{"选择联机实例", "建筑测试 · 1.21.4 · Fabric 0.16.14"} {
+		if err := tt.Click(label); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if target, ok := a.serverInstance(); !ok || target.ID != 2 || a.state.Selected != 1 {
+		t.Fatal("server selection changed the home launch target or captured the wrong instance")
+	}
+	if err := tt.Click("复制服务器地址"); err != nil || tt.Clipboard() != "localhost:25565" {
+		t.Fatalf("server address copy failed: %v", err)
+	}
 	capture(t, tt, "saved-servers")
+	a.serverStatus = map[string]*serverCheck{"localhost:25565": {err: "连接超时，请检查服务器地址或稍后重试。"}}
+	tt.Frame()
+	capture(t, tt, "server-query-failed")
+	a.state.Remove(2)
+	if target, ok := a.serverInstance(); !ok || target.ID != 1 {
+		t.Fatal("removed server instance did not fall back to the home target")
+	}
 }
 
 func capture(t *testing.T, tt *ui.Tester, name string) {
