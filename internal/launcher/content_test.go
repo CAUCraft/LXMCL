@@ -166,7 +166,7 @@ func TestBulkContentKeepsConflictsAndReportsPartialChanges(t *testing.T) {
 	}
 }
 
-func TestShaderPackRequiresShadersDirectoryAndFabricInstance(t *testing.T) {
+func TestShaderPackRequiresShadersDirectoryAndModdedInstance(t *testing.T) {
 	i := Instance{GameDir: t.TempDir(), Loader: "Vanilla"}
 	source := filepath.Join(t.TempDir(), "test.zip")
 	if err := os.WriteFile(source, testZIP(t, map[string]string{"shaders/composite.fsh": "// sample"}), 0600); err != nil {
@@ -175,12 +175,14 @@ func TestShaderPackRequiresShadersDirectoryAndFabricInstance(t *testing.T) {
 	if err := ImportContent(t.Context(), i, ShaderPacks, source); err == nil {
 		t.Fatal("offered an unconfigured vanilla instance as a shader target")
 	}
-	i.Loader = "Fabric"
-	if err := ImportContent(t.Context(), i, ShaderPacks, source); err != nil {
-		t.Fatal(err)
-	}
-	if files, err := ListContent(i, ShaderPacks); err != nil || len(files) != 1 || files[0].Name != "test.zip" {
-		t.Fatalf("shader not installed: %v %v", files, err)
+	for _, loader := range []string{LoaderFabric, LoaderForge, LoaderNeoForge, LoaderQuilt} {
+		i.GameDir, i.Loader = t.TempDir(), loader
+		if err := ImportContent(t.Context(), i, ShaderPacks, source); err != nil {
+			t.Fatalf("%s: %v", loader, err)
+		}
+		if files, err := ListContent(i, ShaderPacks); err != nil || len(files) != 1 || files[0].Name != "test.zip" {
+			t.Fatalf("%s shader not installed: %v %v", loader, files, err)
+		}
 	}
 	if err := os.WriteFile(filepath.Join(filepath.Dir(source), "bad.zip"), testZIP(t, map[string]string{"pack.mcmeta": "{}"}), 0600); err != nil {
 		t.Fatal(err)
