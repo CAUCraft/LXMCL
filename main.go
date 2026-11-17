@@ -91,6 +91,7 @@ type editor struct {
 	version        string
 	err            string
 	focus          bool
+	copyContent    bool
 	loaderVersions []string
 	loaderLoading  bool
 	loaderError    string
@@ -168,6 +169,7 @@ type desktop struct {
 	history       []taskRecord
 	logOpen       bool
 	logLibrary    *instanceLogView
+	restore       *restoreView
 	logText       string
 	logPath       string
 	logRequest    uint64

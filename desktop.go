@@ -8,6 +8,7 @@ import (
 	"github.com/CAUCraft/LXMCL/internal/launcher"
 	"github.com/egoist/mygo/ui"
 	"github.com/lobehub/lobe-mygo/pkg/action"
+	"github.com/lobehub/lobe-mygo/pkg/choice"
 	"github.com/lobehub/lobe-mygo/pkg/display"
 	"github.com/lobehub/lobe-mygo/pkg/feedback"
 	"github.com/lobehub/lobe-mygo/pkg/field"
@@ -85,7 +86,7 @@ const (
 
 func (a *desktop) view(c *ui.Context) {
 	theme.Apply(c)
-	if a.ready && !a.form.open && !a.logOpen && !a.licensesOpen &&
+	if a.ready && !a.form.open && a.restore == nil && !a.logOpen && !a.licensesOpen &&
 		!a.modpacks.keyOpen &&
 		(a.stationLogin == nil || !a.stationLogin.open) &&
 		(a.microsoft == nil || !a.microsoft.open) {
@@ -151,6 +152,7 @@ func (a *desktop) view(c *ui.Context) {
 		}
 		a.editor(c.Key("instance-editor"))
 		a.logDialog(c.Key("game-log"))
+		a.restoreDialog(c.Key("restore-save"))
 		a.licensesDialog(c.Key("third-party-licenses"))
 		a.microsoftLoginDialog(c.Key("microsoft-login"))
 		a.stationLoginDialog(c.Key("station-login"))
@@ -406,7 +408,7 @@ func (a *desktop) library(c *ui.Context) {
 		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
 			ui.Column(c).Grow(1).MinWidth(0).MaxWidth(340).Children(func() {
 				hotkey := searchHotkey
-				if a.form.open || a.logOpen || a.licensesOpen {
+				if a.form.open || a.restore != nil || a.logOpen || a.licensesOpen {
 					hotkey = ""
 				}
 				search := field.SearchBar(c, &a.query, field.SearchBarProps{
@@ -544,7 +546,7 @@ func (a *desktop) editor(c *ui.Context) {
 	case "version":
 		title, okText = "更换版本", "保存版本"
 	case "duplicate":
-		title, okText = "复制实例配置", "创建副本"
+		title, okText = "复制实例", "创建副本"
 	case "loader":
 		title, okText = "选择加载器", "保存加载器"
 	}
@@ -571,7 +573,7 @@ func (a *desktop) editor(c *ui.Context) {
 					feedback.AlertProps{Type: feedback.Warning})
 			} else {
 				if a.form.mode == "duplicate" {
-					panelHeading(c, lucide.Copy(), a.form.target.Name, "复制版本和启动设置，存档与资源文件留在原实例。")
+					panelHeading(c, lucide.Copy(), a.form.target.Name, "Minecraft "+a.form.target.Version+" · "+loaderName(a.form.target))
 				}
 				ui.Column(c).Gap(5).Children(func() {
 					display.Text(c, "实例名称", display.TextProps{Strong: true})
@@ -583,6 +585,17 @@ func (a *desktop) editor(c *ui.Context) {
 					}
 					submit = in.Submitted()
 				})
+				if a.form.mode == "duplicate" {
+					choice.Checkbox(c, &a.form.copyContent, "同时复制资源和游戏设置", choice.CheckboxProps{}).Label("同时复制资源和游戏设置").Disabled(a.busy || a.running != nil)
+					if a.form.copyContent {
+						display.Text(c, "包含模组、资源包、光影、配置和服务器列表。存档、截图与日志保留在原实例。", display.TextProps{FontSize: 13})
+					} else {
+						muted(c, "副本使用独立游戏目录，默认仅复制版本和启动设置。").FontSize(12)
+					}
+					if a.running != nil {
+						muted(c, "退出游戏后可同时复制资源。").FontSize(12)
+					}
+				}
 			}
 			if a.form.mode == "version" {
 				ui.Column(c).Gap(5).Children(func() {

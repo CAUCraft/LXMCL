@@ -386,6 +386,13 @@ func TestTaskCenterFiltersAndDisablesStaleRetry(t *testing.T) {
 	if a.inspected != i.ID || a.detailPage != detailLaunch || a.state.Selected != 1 {
 		t.Fatal("task recovery did not open the captured instance settings without changing the launch target")
 	}
+	a.history = []taskRecord{{InstanceID: i.ID, Revision: i.Revision, Name: i.Name, Action: "恢复存档 · 1 个世界", Status: taskCanceled}}
+	a.openTasks()
+	tt.Frame()
+	if err := tt.Click("查看实例"); err != nil || a.detailPage != detailFiles || a.inspected != i.ID || a.state.Selected != 1 {
+		t.Fatalf("restore history did not return to the target's files: %v", err)
+	}
+
 }
 
 func TestInstanceSettingsKeepDraftAndLaunchTargetSeparate(t *testing.T) {
@@ -418,6 +425,23 @@ func TestInstanceSettingsKeepDraftAndLaunchTargetSeparate(t *testing.T) {
 	if a.launchDrafts[2].fields.memory != "8192" {
 		t.Fatal("switching tabs lost the instance draft")
 	}
+	a.launchDrafts[2].fields.memory = "8g"
+	tt.Frame()
+	if _, ok := tt.Find("最大内存须为 1024–65536 MiB，留空则跟随全局"); !ok {
+		t.Fatal("invalid instance memory has no explanation before applying")
+	}
+	if err := tt.Click("应用并启动"); err != nil || a.busy || a.launchDrafts[2].err != "" {
+		t.Fatalf("invalid draft reached submit: %v", err)
+	}
+	tt.Advance(250 * time.Millisecond)
+	tt.Frame()
+	capture(t, tt, "instance-draft-invalid")
+	if err := tt.Click("游戏文件"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.Click("检查启动设置"); err != nil || a.detailPage != detailLaunch || a.state.Selected != 1 {
+		t.Fatalf("cannot correct the draft from another tab: %v", err)
+	}
 	if err := tt.Click("还原更改"); err != nil {
 		t.Fatal(err)
 	}
@@ -431,11 +455,69 @@ func TestInstanceSettingsKeepDraftAndLaunchTargetSeparate(t *testing.T) {
 	if err := tt.Click("更多实例操作"); err != nil {
 		t.Fatal(err)
 	}
-	if err := tt.Click("复制实例配置…"); err != nil {
+	if err := tt.Click("复制实例…"); err != nil {
 		t.Fatal(err)
 	}
 	if a.form.target.ID != 2 || a.form.mode != "duplicate" || a.state.Selected != 1 {
 		t.Fatal("copy dialog was not bound to the viewed instance")
+	}
+	if a.form.copyContent || a.form.name != "建筑测试 副本" {
+		t.Fatalf("unexpected copy defaults: %+v", a.form)
+	}
+	capture(t, tt, "duplicate-compact")
+	if err := tt.Click("同时复制资源和游戏设置"); err != nil || !a.form.copyContent {
+		t.Fatalf("copying files is not selectable: %v", err)
+	}
+	tt.Advance(250 * time.Millisecond)
+	tt.Frame()
+	capture(t, tt, "duplicate-content-compact")
+	tt.SetDark(false)
+	tt.SetSize(1140, 720)
+	tt.Frame()
+	tt.Advance(250 * time.Millisecond)
+	tt.Frame()
+	capture(t, tt, "duplicate-content-light")
+	tt.Key(0, ui.KeyEscape)
+	if a.form.open || len(a.state.Instances) != 2 || a.state.Selected != 1 {
+		t.Fatal("canceling a copy changed the instance list or launch target")
+	}
+
+}
+
+func TestSaveRestorePreviewKeepsTarget(t *testing.T) {
+	a, tt := testDesktop(t)
+	target := a.state.Instances[1]
+	a.inspect(target)
+	a.detailPage = detailFiles
+	p := &restoreView{target: target, filename: "社团世界备份.zip", worlds: []string{"建筑测试", "红石实验", "社团生存"}}
+	a.restore = p
+	tt.Frame()
+	capture(t, tt, "restore-worlds-light")
+	if err := tt.Click("红石实验"); err != nil || p.selected != 2 {
+		t.Fatalf("world selection: %d %v", p.selected, err)
+	}
+	tt.SetSize(820, 530)
+	tt.SetDark(true)
+	tt.Frame()
+	tt.Advance(250 * time.Millisecond)
+	tt.Frame()
+	capture(t, tt, "restore-selected-compact")
+	tt.Key(0, ui.KeyF2)
+	if a.form.open || a.state.Selected != 1 {
+		t.Fatal("preview leaked a global shortcut or changed launch target")
+	}
+	a.state.Instances[1].Revision++
+	tt.Frame()
+	if _, ok := tt.Find("恢复世界"); ok || a.busy {
+		t.Fatal("stale restore can still be submitted")
+	}
+	if _, ok := tt.Find("返回实例"); !ok {
+		t.Fatal("stale target has no recovery action")
+	}
+	capture(t, tt, "restore-error-compact")
+	tt.Key(0, ui.KeyEscape)
+	if a.restore != nil || a.detailPage != detailFiles || a.inspected != target.ID {
+		t.Fatal("Escape left the originating files tab")
 	}
 }
 
@@ -486,6 +568,11 @@ func TestResourceAndServerEntrypoints(t *testing.T) {
 	tt.SetDark(true)
 	tt.Advance(500 * time.Millisecond)
 	tt.Frame()
+	for _, want := range []int{1, 0} {
+		if err := tt.Click("选择资源 old.jar"); err != nil || len(a.content.selection(a.content.files)) != want {
+			t.Fatalf("toggle disabled resource selection: want %d, error %v", want, err)
+		}
+	}
 	if err := tt.Click("全选当前列表"); err != nil {
 		t.Fatal(err)
 	}

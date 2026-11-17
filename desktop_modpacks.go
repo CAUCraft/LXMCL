@@ -162,12 +162,12 @@ func (a *desktop) readModpack(filename string, release launcher.ModpackRelease) 
 			if name == "" {
 				name = strings.TrimSuffix(p.archive, filepath.Ext(p.archive))
 			}
-			p.name = modpackInstanceName(a.state, name)
+			p.name = availableInstanceName(a.state, name, "整合包")
 		})
 	}()
 }
 
-func modpackInstanceName(state launcher.State, title string) string {
+func availableInstanceName(state launcher.State, title, fallback string) string {
 	title = strings.TrimSpace(strings.Map(func(r rune) rune {
 		if r < 32 || r == 127 {
 			return ' '
@@ -175,7 +175,7 @@ func modpackInstanceName(state launcher.State, title string) string {
 		return r
 	}, title))
 	if title == "" {
-		title = "整合包"
+		title = fallback
 	}
 	runes := []rune(title)
 	for n := 1; ; n++ {

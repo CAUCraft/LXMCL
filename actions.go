@@ -130,7 +130,10 @@ func (a *desktop) changeVersion(i launcher.Instance) {
 }
 
 func (a *desktop) duplicate(i launcher.Instance) {
-	a.form = editor{open: true, mode: "duplicate", target: i, focus: true}
+	name := []rune(i.Name)
+	title := string(name[:min(len(name), 45)]) + " 副本"
+	a.form = editor{open: true, mode: "duplicate", target: i, focus: true,
+		name: availableInstanceName(a.state, title, "副本")}
 }
 
 func (a *desktop) configureLoader(i launcher.Instance) {
@@ -201,6 +204,15 @@ func (a *desktop) submitEditor() {
 	}
 	if err != nil {
 		a.form.err = err.Error()
+		return
+	}
+	if form.mode == "duplicate" && form.copyContent {
+		if a.running != nil {
+			a.form.err = "请先退出游戏，再复制资源与游戏设置"
+			return
+		}
+		target, _ := next.Find(checkID)
+		a.copyInstanceContent(form, next, target)
 		return
 	}
 	a.form.err = ""

@@ -44,7 +44,12 @@ func (a *desktop) details(c *ui.Context, i launcher.Instance) {
 			d := a.launchDrafts[i.ID]
 			if d != nil && d.revision == i.Revision && d.fields != launchFields(i.Launch) &&
 				a.running == nil && a.task.Stage == "" {
-				if launchButton(c, "应用并启动", lucide.Play(), a.busy || a.pickerBusy) {
+				_, err := d.fields.options()
+				if err != nil && a.detailPage != detailLaunch {
+					if launchButton(c, "检查启动设置", lucide.Settings2(), false) {
+						a.detailPage = detailLaunch
+					}
+				} else if launchButton(c, "应用并启动", lucide.Play(), a.busy || a.pickerBusy || err != nil) {
 					a.detailPage = detailLaunch
 					a.saveInstanceLaunch(i, d, true)
 				}
@@ -130,7 +135,7 @@ func (a *desktop) instanceMenu(c *ui.Context, i launcher.Instance, inList bool) 
 			{Key: "folder", Label: "打开游戏目录", Icon: lucide.FolderOpen()},
 			{Divider: true},
 			{Key: "rename", Label: "重命名", Icon: lucide.Pencil(), Hotkey: renameKey, Disabled: a.busy},
-			{Key: "duplicate", Label: "复制实例配置…", Icon: lucide.Copy(), Disabled: a.busy || (!i.Vanilla() && !i.Fabric() && !i.Forge() && !i.NeoForge() && !i.Quilt())},
+			{Key: "duplicate", Label: "复制实例…", Icon: lucide.Copy(), Disabled: a.busy || (!i.Vanilla() && !i.Fabric() && !i.Forge() && !i.NeoForge() && !i.Quilt())},
 			{Divider: true},
 			{Key: "remove", Label: "移除配置…", Icon: lucide.Trash2(), Danger: true, Disabled: a.busy || a.runningID == i.ID},
 		}}, func(trigger ui.Element) {
