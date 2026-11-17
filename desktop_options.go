@@ -46,9 +46,11 @@ func catalogPicker(c *ui.Context, value *string, options []field.SelectOption, l
 	width := min(440, max(200, anchor.Bounds().W-24))
 	overlay.Popover(c, anchor, open, overlay.PopoverProps{Placement: overlay.Bottom}, func() {
 		ui.Column(c).Width(width).Gap(6).Children(func() {
+			submitted := false
 			if len(options) > 6 {
 				previous := *query
 				input := field.SearchBar(c, query, field.SearchBarProps{Placeholder: "筛选选项"}).Label("筛选" + label)
+				submitted = input.Submitted()
 				if *focus {
 					input.Focus()
 					*focus = false
@@ -58,14 +60,17 @@ func catalogPicker(c *ui.Context, value *string, options []field.SelectOption, l
 				}
 			}
 			q := strings.ToLower(strings.TrimSpace(*query))
+			exactMatches := 0
 			items := make([]display.ListItem, 0, len(options))
 			for _, option := range options {
-				if q != "" && !strings.Contains(strings.ToLower(option.Label), q) &&
+				label := strings.ToLower(option.Label)
+				if q != "" && !strings.Contains(label, q) &&
 					!strings.Contains(strings.ToLower(option.Value), q) {
 					continue
 				}
 				item := display.ListItem{Key: "v:" + option.Value, Label: option.Label, Icon: option.Icon, Disabled: option.Disabled}
-				if q != "" && (strings.EqualFold(option.Value, q) || strings.EqualFold(option.Label, q)) {
+				if q != "" && (label == q || strings.EqualFold(option.Value, q) && strings.HasPrefix(label, q+" · ")) {
+					exactMatches++
 					items = slices.Insert(items, 0, item)
 				} else {
 					items = append(items, item)
@@ -75,13 +80,22 @@ func catalogPicker(c *ui.Context, value *string, options []field.SelectOption, l
 				muted(c, "无匹配选项").Padding(6)
 				return
 			}
+			confirmable := q != "" && !items[0].Disabled && (len(items) == 1 || exactMatches == 1)
+			if confirmable {
+				items[0].Extra = "Enter"
+			}
+			var key string
 			layout.ScrollArea(c, layout.ScrollAreaProps{State: scroll}, func() {
-				if key := display.List(c, display.ListProps{Items: items, Active: "v:" + *value, Compact: true}); key != "" {
-					*value, *open = strings.TrimPrefix(key, "v:"), false
-					anchor.Focus()
-					c.Invalidate()
-				}
+				key = display.List(c, display.ListProps{Items: items, Active: "v:" + *value, Compact: true})
 			}).Height(min(168, float32(34*len(items)-2))).Clip()
+			if submitted && confirmable {
+				key = items[0].Key
+			}
+			if key != "" {
+				*value, *open = strings.TrimPrefix(key, "v:"), false
+				anchor.Focus()
+				c.Invalidate()
+			}
 		})
 	})
 	return anchor
