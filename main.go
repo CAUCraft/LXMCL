@@ -170,6 +170,7 @@ type desktop struct {
 	logOpen       bool
 	logLibrary    *instanceLogView
 	restore       *restoreView
+	backups       *backupView
 	logText       string
 	logPath       string
 	logRequest    uint64

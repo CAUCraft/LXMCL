@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/CAUCraft/LXMCL/internal/launcher"
+	"github.com/CAUCraft/LXMCL/internal/saves"
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"github.com/lobehub/lobe-mygo/pkg/action"
@@ -172,5 +173,74 @@ func (p *restoreView) worldPicker(c *ui.Context) {
 				ui.Icon(rc, lucide.Check()).FontSize(15)
 			}
 		})
+	})
+}
+
+type backupView struct {
+	instanceID int
+	entries    []saves.BackupEntry
+	cancel     context.CancelFunc
+	loading    bool
+	err        string
+}
+
+func (a *desktop) refreshBackups(id int) {
+	if a.backups != nil && a.backups.cancel != nil {
+		a.backups.cancel()
+	}
+	p := &backupView{instanceID: id}
+	a.backups = p
+	if a.ctx == nil {
+		return
+	}
+	ctx, cancel := context.WithCancel(a.ctx)
+	p.loading, p.cancel = true, cancel
+	root := a.store.Root
+	go func() {
+		defer cancel()
+		entries, err := saves.Recent(ctx, root, id)
+		a.post(func() {
+			if a.backups != p {
+				return
+			}
+			p.entries, p.loading = entries, false
+			if err != nil {
+				p.err = err.Error()
+			}
+		})
+	}()
+}
+
+func (a *desktop) recentBackupList(c *ui.Context, i launcher.Instance, disabled bool) {
+	if a.backups == nil || a.backups.instanceID != i.ID {
+		a.refreshBackups(i.ID)
+	}
+	p := a.backups
+	sectionPane(c).Padding(8, 14).Gap(4).Children(func() {
+		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+			display.Text(c, "最近备份", display.TextProps{Strong: true}).Grow(1)
+			if icon(c, lucide.RefreshCw(), "刷新最近备份", p.loading) {
+				a.refreshBackups(i.ID)
+			}
+		})
+		if p.err != "" {
+			feedback.Alert(c, "无法读取备份目录", feedback.AlertProps{Type: feedback.Warning, Description: p.err})
+		} else if p.loading {
+			muted(c, "正在读取备份列表…").FontSize(12)
+		} else if len(p.entries) == 0 {
+			muted(c, "此实例还没有本地备份。").FontSize(12)
+		}
+		for _, entry := range p.entries {
+			ui.Row(c.Key(entry.Name)).Gap(10).AlignItems(ui.Center).Children(func() {
+				ui.Icon(c, lucide.Archive()).FontSize(16)
+				ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
+					display.Text(c, entry.Name, display.TextProps{FontSize: 13, Rows: 1}).Ellipsis("…")
+					muted(c, entry.Modified.Local().Format("2006-01-02 15:04")+" · "+fileSizeLabel(entry.Size)).FontSize(12)
+				})
+				if action.Button(c, "预览…", action.ButtonProps{Variant: action.Default}).Label("预览备份 " + entry.Name).Disabled(disabled).Clicked() {
+					a.previewSaveArchive(i, filepath.Join(launcher.BackupsDir(a.store.Root, i.ID), entry.Name))
+				}
+			})
+		}
 	})
 }

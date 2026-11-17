@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"image/png"
 	"math"
 	"os"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/CAUCraft/LXMCL/internal/launcher"
 	launcherlog "github.com/CAUCraft/LXMCL/internal/log"
+	"github.com/CAUCraft/LXMCL/internal/saves"
 	"github.com/egoist/mygo/ui"
 	"github.com/lobehub/lobe-mygo/pkg/display"
 )
@@ -489,8 +491,36 @@ func TestSaveRestorePreviewKeepsTarget(t *testing.T) {
 	target := a.state.Instances[1]
 	a.inspect(target)
 	a.detailPage = detailFiles
-	p := &restoreView{target: target, filename: "社团世界备份.zip", worlds: []string{"建筑测试", "红石实验", "社团生存"}}
-	a.restore = p
+	stamp := time.Date(2026, 11, 18, 7, 30, 0, 0, time.Local)
+	a.backups = &backupView{instanceID: target.ID, entries: []saves.BackupEntry{
+		{Name: "社团世界备份.zip", Size: 138 << 20, Modified: stamp},
+		{Name: "活动前备份.zip", Size: 89 << 20, Modified: stamp.Add(-24 * time.Hour)},
+		{Name: "初始地图.zip", Size: 8192, Modified: stamp.Add(-48 * time.Hour)},
+	}}
+	tt.Frame()
+	capture(t, tt, "instance-backups-light")
+	tt.SetSize(820, 530)
+	tt.SetDark(true)
+	tt.Frame()
+	tt.Advance(250 * time.Millisecond)
+	tt.Frame()
+	capture(t, tt, "instance-backups-compact")
+	// Keep the asynchronous file reader outside the UI fixture.
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	a.ctx = ctx
+	if err := tt.Click("预览备份 社团世界备份.zip"); err != nil {
+		t.Fatal(err)
+	}
+	p := a.restore
+	if p == nil || p.target.ID != target.ID || p.filename != "社团世界备份.zip" || a.state.Selected != 1 {
+		t.Fatal("recent preview opened a different backup or changed the home target")
+	}
+	p.loading, p.worlds = false, []string{"建筑测试", "红石实验", "社团生存"}
+	tt.SetSize(1140, 720)
+	tt.SetDark(false)
+	tt.Frame()
+	tt.Advance(250 * time.Millisecond)
 	tt.Frame()
 	capture(t, tt, "restore-worlds-light")
 	if err := tt.Click("红石实验"); err != nil || p.selected != 2 {

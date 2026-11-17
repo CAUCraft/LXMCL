@@ -116,6 +116,12 @@ func (a *desktop) view(c *ui.Context) {
 	}
 	ui.Column(c).Fill().Background(theme.TokensOf(c).BgContainer).Children(func() {
 		a.topBar(c)
+		if p := a.backups; p != nil && (a.page != pageLibrary || a.detailPage != detailFiles || a.inspected != p.instanceID) {
+			if p.cancel != nil {
+				p.cancel()
+			}
+			a.backups = nil
+		}
 		if a.page != pageDownloads {
 			a.clearResourceBindings(-1)
 		}
