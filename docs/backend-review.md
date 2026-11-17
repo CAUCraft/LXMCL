@@ -2,6 +2,8 @@
 
 审查日期：2026-11-11。对象：`codex/backend-modules`，覆盖 Java / 传输收口（`01032fa`、`9e23ffc`）及后续账号提交收口，[PR #1](https://github.com/CAUCraft/LXMCL/pull/1) 合入目标为 `main`。
 
+2026-11-17 更新：完成下述任务记录与进度的依赖整理，任务资源类型改为原始字符串，旧任务 JSON 格式保持不变。
+
 核心后端分层、日志与 JSON 文案目录已经接入实际调用路径。上一轮列出的账号提交收口已完成，登录、刷新、外观和移除现在共用明确的提交结果与失败重试规则。后续依赖整理及实机验收仍单独列出；本审查按实际职责、依赖和调用方判断完成度。
 
 ## 已完成的职责划分
@@ -13,7 +15,7 @@
 | 游戏与 Java | [`minecraft.Runtime`](../internal/minecraft/runtime.go) 管理安装、校验和启动；[`javaruntime.Manager`](../internal/javaruntime/manager.go) 管理选择与安装，缓存验证和清单解析独立维护。 | 已实现；Java 自动安装限 Windows x64。 |
 | 账号协议与凭据 | [`account.Client`](../internal/account/client.go) 管理协议；[`Vault`](../internal/account/vault.go) 管理加密凭据；[`account_commit.go`](../internal/launcher/account_commit.go) 和 [`account_authorize.go`](../internal/launcher/account_authorize.go) 统一提交与授权用例。 | 已收口；部分成功显式返回，不承诺跨文件原子性。 |
 | 平台、资源与整合包 | `catalog` 管理元数据，`distribution` 管理下载缓存，`content` 管理实例资源，`modpack` 管理计划和安装事务；游戏安装与配置提交通过回调注入。 | 已实现；无反向依赖应用层，沿用原数据格式。 |
-| 任务、服务器与存档 | [`tasks.Journal`](../internal/tasks/journal.go) 管理历史；[`server.Client`](../internal/server/client.go) 管理查询；`saves` 分离计划、归档和发布。 | 已实现；任务资源类型仍有轻量依赖，见下文。 |
+| 任务、服务器与存档 | [`tasks.Journal`](../internal/tasks/journal.go) 管理历史；[`server.Client`](../internal/server/client.go) 管理查询；`saves` 分离计划、归档和发布。 | 已实现；任务资源类型依赖已于 2026-11-17 整理。 |
 | 文件与传输 | `storage.PublishNew` / `ReplaceFile` 明确区分禁止覆盖与允许替换；`transfer.Artifact` 封装摘要与大小约束，`Retry` 管理有限重试。 | 已实现；本轮修复成功提交后迟到取消的结果。 |
 | 日志与国际化 | [`log`](../internal/log/game.go) 接管游戏和安装器日志创建及游戏日志尾部预览；[`i18n`](../internal/i18n/i18n.go) 使用嵌入的中英 JSON 键值目录、回退和错误链。 | 已接入；桌面标签、应用级日志轮转尚未实现。 |
 
@@ -30,11 +32,13 @@
 
 账号提交的收口标准已满足：桌面登录与移除、启动授权、外观刷新接入共享用例，配置失败返回原快照，最新凭据与实际完成的操作保留；两提供者的保存及删除失败回归通过。两份文件之间仍可能部分成功，这由结果与错误显式表达，未引入通用事务或账号注册框架。
 
-**次要依赖整理：任务记录与进度。** [`tasks.Record.Resource`](../internal/tasks/record.go) 使用 `content.Kind`，使只需要 `tasks.Progress` 的 Minecraft 运行时也间接依赖资源下载模块。目前没有循环依赖或行为缺陷；若后续需要独立运行时或任务历史，可用稳定的任务资源标识收窄依赖，同时保留旧 JSON。无需单为缩短依赖图增加通用事件总线。
+**已完成：任务记录与进度的依赖整理（2026-11-17）。** [`tasks.Record.Resource`](../internal/tasks/record.go) 使用字符串保存原资源类型，取消对 `content.Kind` 的依赖；Minecraft 运行时不再通过 `tasks.Progress` 间接导入资源下载模块。桌面下载与 `launcher.RetryTarget` 在调用业务操作时转换类型，原有兼容性检查继续生效。旧 JSON 字段和值、未知资源标识、实例修订和资源版本均保留，未引入新的注册框架或事件总线。
 
 **按需求扩展：** 应用级结构化日志与轮转、桌面语言切换、非 Windows 受管 Java、断点恢复调度。当前日志仅覆盖游戏和加载器安装器；语言在进程启动时选择，桌面标签仍为中文。这些能力尚未实现，不算本轮已完成项。
 
 ## 验证范围
+
+2026-11-17 任务依赖整理在 Linux 上通过全部 `internal` 包测试与 `go vet`；通过 Windows x64 目标的全量 `go vet`、主程序构建和根包测试程序编译。扩展旧历史用例检查资源标识（含未知值）往返保存；原实例资源重试用例移至 `internal/launcher`，覆盖三种资源类型、未知类型拒绝和修订变化。`go list` 确认 `tasks` 与 `minecraft` 的传递依赖中均无 `content`、`catalog`、`distribution` 或 `modpack`。这些本地检查未运行 Windows 测试程序或真实登录、游戏启动。
 
 Java / 传输轮次仅新增两项回归：下载完成后将清单替换为同长度合法 JSON 时拒绝发布；重试函数在成功或失败返回时同时取消的结果。两项均在修复前复现失败，修复后通过。其余复用现有缓存复用与修复、自选 Java、取消清理、Forge / NeoForge、资源发布和启动流程测试。
 
