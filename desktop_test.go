@@ -310,7 +310,8 @@ func TestTaskCenterFiltersAndDisablesStaleRetry(t *testing.T) {
 	i := a.state.Instances[1]
 	a.history = []taskRecord{
 		{InstanceID: i.ID, Revision: i.Revision, Name: i.Name, Version: i.Version, Action: taskVerify, Status: taskFailed, At: time.Now()},
-		{Name: "已完成的任务", Version: "1.21.1", Action: taskVerify, Status: taskCompleted, At: time.Now().Add(-time.Minute)},
+		{Name: "已完成的任务", Version: "1.21.1", Action: "下载资源", Status: taskCompleted, At: time.Now().Add(-time.Minute),
+			Resource: &resourceTask{Title: "高清资源包"}},
 	}
 	if err := tt.Click("任务中心"); err != nil {
 		t.Fatal(err)
@@ -326,6 +327,19 @@ func TestTaskCenterFiltersAndDisablesStaleRetry(t *testing.T) {
 	if a.page != pageDownloads || a.downloadPage != downloadTasks || a.state.Selected != 1 {
 		t.Fatal("task shortcut did not preserve the launch selection")
 	}
+	tt.SetSize(820, 530)
+	tt.Frame()
+	completed := a.history[1]
+	for _, label := range []string{"选择历史任务", completed.Name + " · " + completed.Status + " · " + completed.At.Local().Format("01-02 15:04")} {
+		if err := tt.Click(label); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, ok := tt.Find("资源 · 高清资源包"); !ok || a.browsedTask != taskKey(completed) {
+		t.Fatal("compact task selection lost the resource or selected record")
+	}
+	tt.SetSize(1140, 720)
+	tt.Frame()
 	if err := tt.Click("失败 / 取消"); err != nil {
 		t.Fatal(err)
 	}

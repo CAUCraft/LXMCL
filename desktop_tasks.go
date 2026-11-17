@@ -190,6 +190,9 @@ func (a *desktop) taskRow(c *ui.Context, row taskRecord) {
 		if row.Server != "" {
 			muted(c, "服务器 · "+row.Server).FontSize(13).Selectable()
 		}
+		if row.Resource != nil && row.Resource.Title != "" {
+			muted(c, "资源 · "+row.Resource.Title).FontSize(13).Selectable()
+		}
 		if row.Detail != "" {
 			if row.Status == taskFailed {
 				feedback.Alert(c, "任务未完成", feedback.AlertProps{Type: feedback.Error, Description: row.Detail})
