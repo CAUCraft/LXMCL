@@ -310,7 +310,7 @@ func (a *desktop) packResults(c *ui.Context, p *packBrowser) {
 		if catalogRetry(c, "搜索失败", p.err, "重试搜索", "复制搜索错误") {
 			a.searchPacks(p, p.page)
 		}
-	case len(p.result.Hits) == 0:
+	case len(p.result.Hits) == 0 && p.page == 0:
 		muted(c, "没有匹配项目").Padding(6)
 	default:
 		items := make([]display.ListItem, 0, len(p.result.Hits))
@@ -319,6 +319,10 @@ func (a *desktop) packResults(c *ui.Context, p *packBrowser) {
 				Description: hit.Author, Avatar: func() { a.projectIcon(c, "resource-"+hit.ID, hit.IconURL, downloadTabs[downloadTab(p.kind)].Icon, 28) }})
 		}
 		layout.ScrollArea(c, layout.ScrollAreaProps{State: &p.scroll}, func() {
+			if len(items) == 0 {
+				muted(c, "本页没有匹配项目").Padding(6)
+				return
+			}
 			if id := display.List(c, display.ListProps{Items: items, Active: p.project.ID, Compact: true}); id != "" && id != p.project.ID {
 				if n := slices.IndexFunc(p.result.Hits, func(v launcher.PackProject) bool { return v.ID == id }); n >= 0 {
 					a.browsePack(p, p.result.Hits[n])
