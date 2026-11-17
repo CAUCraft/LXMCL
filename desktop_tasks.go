@@ -100,7 +100,7 @@ func (a *desktop) taskHistoryPane(c *ui.Context, rows []taskRecord) {
 		options := make([]field.SelectOption, 0, len(rows))
 		for _, row := range rows {
 			options = append(options, field.SelectOption{Value: taskKey(row),
-				Label: row.Name + " · " + row.Status + " · " + row.At.Local().Format("01-02 15:04")})
+				Label: row.Name + " · " + row.Action + " · " + row.Status + " · " + row.At.Local().Format("01-02 15:04")})
 		}
 		key := taskKey(selected)
 		catalogPicker(c, &key, options, "选择历史任务", "", false).FillWidth()
@@ -206,8 +206,14 @@ func (a *desktop) taskRow(c *ui.Context, row taskRecord) {
 		if failed && !retry && !folderRetry {
 			reason := "此任务不支持直接重试，请从原入口重新发起。"
 			if row.InstanceID != 0 {
-				if _, exists := a.state.Find(row.InstanceID); !exists {
+				if i, exists := a.state.Find(row.InstanceID); !exists {
 					reason = "原实例已移除，请在实例页重新选择。"
+				} else if row.Resource != nil && row.Resource.Project == "" && row.Resource.Kind != "" {
+					if kind := launcher.ContentKind(row.Resource.Kind); kind.Supports(i) {
+						reason = "查看实例中的" + contentLabel(kind) + "，检查已完成的项目后可继续操作。"
+					} else {
+						reason = "当前实例配置已不支持该资源类型，请检查实例的加载器。"
+					}
 				} else if row.Action == taskLaunch || row.Action == taskVerify || row.Resource != nil {
 					reason = "实例配置、登录账号或资源信息已变化，请检查后重新发起。"
 				}
@@ -231,7 +237,9 @@ func (a *desktop) taskRow(c *ui.Context, row taskRecord) {
 				case row.Action == "备份存档" || row.Action == "恢复存档" || strings.HasPrefix(row.Action, "恢复存档 · "):
 					a.detailPage = detailFiles
 				case row.Resource != nil:
-					a.inspectContent(i, launcher.ContentKind(row.Resource.Kind))
+					if kind := launcher.ContentKind(row.Resource.Kind); kind.Supports(i) {
+						a.inspectContent(i, kind)
+					}
 				case strings.HasSuffix(row.Action, "资源"):
 					a.detailPage = detailContent
 				case failed && (row.Action == taskVerify || row.Action == taskLaunch):

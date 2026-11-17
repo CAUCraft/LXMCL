@@ -145,7 +145,7 @@ func (a *desktop) startRestore(p *restoreView) bool {
 		count = 1
 	}
 	label := fmt.Sprintf("恢复存档 · %d 个世界", count)
-	a.runInstanceTask(p.target, label, func(ctx context.Context) error {
+	a.runInstanceTask(p.target, label, "", func(ctx context.Context) error {
 		_, err := p.preview.Restore(ctx, p.target.GameDir, world)
 		return err
 	})

@@ -293,7 +293,7 @@ func (a *desktop) instanceFiles(c *ui.Context, i launcher.Instance) {
 		}
 		if button(c, "备份存档", action.Primary, disabled) {
 			root := a.store.Root
-			a.runInstanceTask(i, "备份存档", func(ctx context.Context) error {
+			a.runInstanceTask(i, "备份存档", "", func(ctx context.Context) error {
 				_, err := launcher.BackupSaves(ctx, i, root)
 				return err
 			})

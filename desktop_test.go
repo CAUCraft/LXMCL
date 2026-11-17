@@ -363,7 +363,7 @@ func TestTaskCenterFiltersAndDisablesStaleRetry(t *testing.T) {
 	tt.SetSize(820, 530)
 	tt.Frame()
 	completed := a.history[1]
-	for _, label := range []string{"选择历史任务", completed.Name + " · " + completed.Status + " · " + completed.At.Local().Format("01-02 15:04")} {
+	for _, label := range []string{"选择历史任务", completed.Name + " · " + completed.Action + " · " + completed.Status + " · " + completed.At.Local().Format("01-02 15:04")} {
 		if err := tt.Click(label); err != nil {
 			t.Fatal(err)
 		}
@@ -402,6 +402,22 @@ func TestTaskCenterFiltersAndDisablesStaleRetry(t *testing.T) {
 	tt.Frame()
 	if err := tt.Click("查看实例"); err != nil || a.detailPage != detailFiles || a.inspected != i.ID || a.state.Selected != 1 {
 		t.Fatalf("restore history did not return to the target's files: %v", err)
+	}
+	a.state.Instances[1].Loader, a.state.Instances[1].LoaderVersion = "Fabric", "0.16.14"
+	a.history = []taskRecord{{InstanceID: i.ID, Name: i.Name, Version: i.Version, Action: "导入 2 项模组", Status: taskFailed,
+		At: time.Now(), Detail: "已导入 1 / 2 项：notes.txt: 资源文件名或大小不受支持", Resource: &resourceTask{Kind: string(launcher.Mods)}}}
+	a.openTasks()
+	tt.SetSize(820, 530)
+	tt.SetDark(true)
+	tt.Frame()
+	tt.Advance(300 * time.Millisecond)
+	tt.Frame()
+	if _, ok := tt.Find("重试"); ok {
+		t.Fatal("local files cannot be replayed as a download")
+	}
+	capture(t, tt, "local-resource-task-compact")
+	if err := tt.Click("查看实例"); err != nil || a.content.kind() != launcher.Mods || a.inspected != i.ID || a.state.Selected != 1 {
+		t.Fatalf("local task did not reopen the original mod list: %v", err)
 	}
 
 }
