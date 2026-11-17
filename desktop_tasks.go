@@ -318,14 +318,9 @@ func (a *desktop) logDialog(c *ui.Context) {
 					a.reloadLog()
 				}
 			})
-			if a.logError != "" {
-				feedback.Alert(c, "无法读取日志", feedback.AlertProps{Type: feedback.Error, Description: a.logError})
-			}
-			if a.logExportErr != "" {
-				feedback.Alert(c, "无法导出日志", feedback.AlertProps{Type: feedback.Error, Description: a.logExportErr})
-			}
-			if a.logLibrary != nil && a.logLibrary.err != "" {
-				feedback.Alert(c, "部分日志目录无法读取", feedback.AlertProps{Type: feedback.Error, Description: a.logLibrary.err})
+			problem, detail := a.logProblem()
+			if detail != "" {
+				feedback.Alert(c, problem, feedback.AlertProps{Type: feedback.Error, Description: detail})
 			}
 			filtered := launcherlog.Filter(a.logText, a.logQuery, a.logFilter == 1)
 			preview := filtered
@@ -344,14 +339,8 @@ func (a *desktop) logDialog(c *ui.Context) {
 			reserved := float32(340)
 			if a.logLibrary != nil {
 				reserved += 42
-				if a.logLibrary.err != "" {
-					reserved += 90
-				}
 			}
-			if a.logError != "" {
-				reserved += 90
-			}
-			if a.logExportErr != "" {
+			if detail != "" {
 				reserved += 90
 			}
 			layout.ScrollArea(c.Key(a.logPath), layout.ScrollAreaProps{State: &a.logScroll}, func() {
@@ -392,4 +381,19 @@ func (a *desktop) logDialog(c *ui.Context) {
 			})
 		})
 	})
+}
+
+func (a *desktop) logProblem() (string, string) {
+	// Resolve the preview failure first; secondary errors remain available after
+	// it clears, without pushing recovery actions outside a small window.
+	if a.logError != "" {
+		return "无法读取日志", a.logError
+	}
+	if a.logExportErr != "" {
+		return "无法导出日志", a.logExportErr
+	}
+	if a.logLibrary != nil {
+		return "部分日志目录无法读取", a.logLibrary.err
+	}
+	return "", ""
 }

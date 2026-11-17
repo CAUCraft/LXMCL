@@ -607,6 +607,22 @@ func TestInstanceLogSelectionKeepsTargetAndResetsPreview(t *testing.T) {
 	tt.Advance(500 * time.Millisecond)
 	tt.Frame()
 	capture(t, tt, "instance-crash-compact")
+	a.logError = "所选报告已移动或被其他程序占用，请刷新列表或选择其他文件。"
+	a.logExportErr = "目标文件夹没有写入权限，请选择其他保存位置。"
+	a.logLibrary.err = "无法读取部分日志目录，请检查实例目录权限后刷新。"
+	tt.Frame()
+	capture(t, tt, "instance-log-errors-compact")
+	if _, ok := tt.Find("无法读取日志"); !ok {
+		t.Fatal("preview error is not visible")
+	}
+	if _, ok := tt.Find("无法导出日志"); ok {
+		t.Fatal("secondary errors crowd the preview recovery action")
+	}
+	if err := tt.Click("关闭"); err != nil || a.logOpen {
+		t.Fatalf("close action is not reachable with multiple errors: %v", err)
+	}
+	a.showInstanceLogs(i)
+	tt.Frame()
 	tt.Key(0, ui.KeyEscape)
 	if a.logOpen {
 		t.Fatal("Escape did not close instance logs")
