@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"slices"
 
 	launcherlog "github.com/CAUCraft/LXMCL/internal/log"
 	"github.com/CAUCraft/LXMCL/internal/tasks"
@@ -43,6 +44,10 @@ func (a *desktop) saveTask(record taskRecord, render func()) {
 	a.post(func() {
 		a.history = a.journal.Snapshot()
 		render()
+		key := taskKey(record)
+		if a.noticeError && slices.ContainsFunc(a.history, func(row taskRecord) bool { return taskKey(row) == key }) {
+			a.noticeTaskKey = key
+		}
 		if err != nil {
 			// Preserve the game outcome and report the separate disk error.
 			a.notice += " · 任务记录保存失败：" + err.Error()

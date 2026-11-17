@@ -20,6 +20,13 @@ func (a *desktop) openTasks() {
 	a.page, a.downloadPage = pageDownloads, downloadTasks
 }
 
+func (a *desktop) openNoticeTask() {
+	if a.noticeTaskKey != "" {
+		a.browsedTask = a.noticeTaskKey
+	}
+	a.openTasks()
+}
+
 func (a *desktop) tasks(c *ui.Context) {
 	ui.Column(c).Grow(1).Basis(0).MinHeight(0).Gap(8).Children(func() {
 		if a.task.Stage != "" {

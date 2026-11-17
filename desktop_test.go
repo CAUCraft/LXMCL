@@ -418,6 +418,11 @@ func TestTaskCenterFiltersAndDisablesStaleRetry(t *testing.T) {
 	}
 	tt.SetSize(1140, 720)
 	tt.Frame()
+	a.notice, a.noticeError, a.noticeTaskKey = "任务失败", true, taskKey(a.history[0])
+	tt.Frame()
+	if err := tt.Click("查看任务"); err != nil || a.browsedTask != taskKey(a.history[0]) || a.state.Selected != 1 {
+		t.Fatalf("task notice did not focus the failed record: %v", err)
+	}
 	if err := tt.Click("失败 / 取消"); err != nil {
 		t.Fatal(err)
 	}
