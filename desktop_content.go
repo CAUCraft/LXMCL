@@ -447,7 +447,6 @@ func (a *desktop) runFileTask(row taskRecord, work func(context.Context, func(la
 			a.busy, a.cancelTask, a.task = false, nil, launcher.Progress{}
 			a.taskCanceling = false
 			a.message(row.Action+" · "+row.Status, err)
-			a.noticeTask = err != nil
 			if refresh != nil {
 				refresh()
 			}

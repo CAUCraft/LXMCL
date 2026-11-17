@@ -176,6 +176,7 @@ func (a *desktop) view(c *ui.Context) {
 }
 
 func (a *desktop) noticeBar(c *ui.Context) {
+	showingNoticeTask := a.page == pageDownloads && a.downloadPage == downloadTasks && a.browsedTask == a.noticeTaskKey
 	tk := theme.TokensOf(c)
 	layout.Divider(c, layout.DividerProps{})
 	ui.Row(c).Padding(5, 18).Gap(8).AlignItems(ui.Center).Background(tk.BgContainer).Children(func() {
@@ -197,11 +198,11 @@ func (a *desktop) noticeBar(c *ui.Context) {
 					a.inspect(i)
 					a.detailPage = detailLaunch
 				} else {
-					a.openTasks()
+					a.openNoticeTask()
 				}
 			}
-		} else if a.noticeTask && button(c, "查看任务", action.Text, false) {
-			a.openTasks()
+		} else if a.noticeTaskKey != "" && !showingNoticeTask && button(c, "查看任务", action.Text, false) {
+			a.openNoticeTask()
 		}
 		if icon(c, lucide.X(), "关闭通知", false) {
 			a.notice = ""

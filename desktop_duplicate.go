@@ -57,7 +57,6 @@ func (a *desktop) copyInstanceContent(form editor, next launcher.State, target l
 				a.message("实例复制已取消", nil)
 			} else {
 				a.message("实例复制失败 · "+target.Name, err)
-				a.noticeTask = true
 			}
 		})
 	})
