@@ -929,6 +929,12 @@ func TestServerDialogsKeepTemporaryAndSavedTargetsSeparate(t *testing.T) {
 	if a.serverForm != nil {
 		t.Fatal("Escape did not close direct connection")
 	}
+	auto := launcher.Server{Name: "old.example:25565", Address: "old.example:25565"}
+	a.openServerForm(serverEdit, auto)
+	if a.serverForm.name != "" || a.serverForm.original != auto {
+		t.Fatal("editing an address-derived favorite turned its old address into a custom name")
+	}
+	a.serverForm = nil
 	if err := a.state.AddServer("社团生存服", "play.example.org"); err != nil {
 		t.Fatal(err)
 	}
@@ -936,7 +942,7 @@ func TestServerDialogsKeepTemporaryAndSavedTargetsSeparate(t *testing.T) {
 	tt.SetDark(true)
 	tt.Frame()
 	click("编辑服务器 社团生存服")
-	if a.serverForm.original != a.state.Servers[0] || a.serverForm.address != "play.example.org:25565" {
+	if a.serverForm.original != a.state.Servers[0] || a.serverForm.address != "play.example.org:25565" || a.serverForm.name != "社团生存服" {
 		t.Fatal("edit did not capture the selected server")
 	}
 	capture(t, tt, "server-edit-dark")

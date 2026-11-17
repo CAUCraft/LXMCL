@@ -100,8 +100,12 @@ func (a *desktop) network(c *ui.Context) {
 		server := a.state.Servers[0]
 		items := make([]display.ListItem, 0, len(a.state.Servers))
 		for _, entry := range a.state.Servers {
+			description := entry.Address
+			if entry.Name == entry.Address {
+				description = ""
+			}
 			items = append(items, display.ListItem{
-				Key: entry.Address, Label: entry.Name, Description: entry.Address,
+				Key: entry.Address, Label: entry.Name, Description: description,
 				Avatar: func() { a.serverBadge(c, entry.Address, 28) },
 			})
 			if entry.Address == a.browsedServer {
@@ -130,7 +134,9 @@ func (a *desktop) network(c *ui.Context) {
 						a.serverBadge(c, server.Address, 36)
 						ui.Column(c).Gap(3).Grow(1).MinWidth(0).Children(func() {
 							display.Text(c, server.Name, display.TextProps{Strong: true, FontSize: 15, Rows: 1}).Ellipsis("…")
-							muted(c, server.Address).SingleLine().Ellipsis("…")
+							if server.Name != server.Address {
+								muted(c, server.Address).SingleLine().Ellipsis("…")
+							}
 						})
 						action.CopyButton(c, server.Address, action.CopyButtonProps{}).Label("复制服务器地址")
 					})

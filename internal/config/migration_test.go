@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/CAUCraft/LXMCL/internal/config"
@@ -61,7 +62,7 @@ func TestEditServerKeepsOrderAndRejectsStaleOrDuplicateEdits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, address := range []string{"one.example", "two.example", "three.example"} {
+	for _, address := range []string{"one.example", "two.example", strings.Repeat("lan-", 11) + "java." + strings.Repeat("region-", 5) + "eu.example"} {
 		if err := state.AddServer("", address); err != nil {
 			t.Fatal(err)
 		}
