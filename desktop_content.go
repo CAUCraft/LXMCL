@@ -143,19 +143,10 @@ func (a *desktop) instanceContent(c *ui.Context, i launcher.Instance) {
 			a.openResourceDownloads(i, kind)
 		}
 		if button(c, "导入…", action.Default, disabled) {
-			ext := "zip"
-			if kind == launcher.Mods {
-				ext = "jar"
-			}
+			ext, _, _ := kind.Format(i)
 			a.pickPaths(mygo.OpenDialogOptions{Title: "选择本地资源（可多选）", Multiple: true,
-				Filters: []mygo.FileFilter{{Name: "游戏资源", Extensions: []string{ext}}}}, func(paths []string) {
-				a.runInstanceTask(i, fmt.Sprintf("导入 %d 项资源", len(paths)), func(ctx context.Context) error {
-					completed, err := launcher.ImportContents(ctx, i, kind, paths)
-					if err != nil {
-						return fmt.Errorf("已导入 %d / %d 项：%w", completed, len(paths), err)
-					}
-					return nil
-				})
+				Filters: []mygo.FileFilter{{Name: "游戏资源", Extensions: []string{strings.TrimPrefix(ext, ".")}}}}, func(paths []string) {
+				a.importResourceFiles(i, kind, paths)
 			})
 		}
 		if icon(c, lucide.RefreshCw(), "刷新资源", v.reading) {
@@ -165,16 +156,57 @@ func (a *desktop) instanceContent(c *ui.Context, i launcher.Instance) {
 			a.openPath(filepath.Join(i.GameDir, string(kind)), true)
 		}
 	})
-	switch {
-	case v.reading:
-		flightLoading(c, "正在读取资源…")
-	case v.err != "":
-		feedback.Alert(c, v.err, feedback.AlertProps{Type: feedback.Error})
-	case len(v.files) == 0:
-		emptyPanel(c, lucide.PackageOpen(), "暂无本地资源")
-	default:
-		a.contentList(c, i, disabled)
+	kind := v.kind()
+	zone := ui.Column(c.Key(fmt.Sprintf("resource-drop-%d-%d-%s", i.ID, i.Revision, kind))).
+		Label("本地资源区").Grow(1).MinHeight(0).Gap(8)
+	dropOver := false
+	if !disabled {
+		dropOver = zone.FileDragOver()
+		if paths := zone.DroppedFiles(); len(paths) > 0 {
+			a.importResourceFiles(i, kind, paths)
+		}
 	}
+	if dropOver {
+		ink, wash := brand(c)
+		zone.Background(wash).Border(1, ink).Radius(8)
+	}
+	zone.Children(func() {
+		switch {
+		case dropOver:
+			ui.Column(c).Grow(1).Center().Children(func() {
+				display.Empty(c, display.EmptyProps{Icon: lucide.FolderInput(), Title: "松开以导入" + contentLabel(kind), Description: "目标实例 · " + i.Name})
+			})
+		case v.reading:
+			flightLoading(c, "正在读取资源…")
+		case v.err != "":
+			feedback.Alert(c, v.err, feedback.AlertProps{Type: feedback.Error})
+		case len(v.files) == 0:
+			ext, _, _ := kind.Format(i)
+			hint := "将 " + ext + " 文件拖到此处，或点击「导入」。"
+			if a.running != nil {
+				hint = "退出游戏后可导入文件。"
+			} else if a.busy {
+				hint = "当前任务结束后可导入文件。"
+			}
+			ui.Column(c).Grow(1).Center().Children(func() {
+				display.Empty(c, display.EmptyProps{Icon: lucide.PackageOpen(), Title: "暂无本地" + contentLabel(kind), Description: hint})
+			})
+		default:
+			a.contentList(c, i, disabled)
+		}
+	})
+}
+
+func (a *desktop) importResourceFiles(i launcher.Instance, kind launcher.ContentKind, paths []string) {
+	// Native drop events and file pickers own the original slice.
+	sources := slices.Clone(paths)
+	a.runInstanceTask(i, fmt.Sprintf("导入 %d 项资源", len(sources)), func(ctx context.Context) error {
+		completed, err := launcher.ImportContents(ctx, i, kind, sources)
+		if err != nil {
+			return fmt.Errorf("已导入 %d / %d 项：%w", completed, len(sources), err)
+		}
+		return nil
+	})
 }
 
 func contentKey(file launcher.ContentFile) string {
