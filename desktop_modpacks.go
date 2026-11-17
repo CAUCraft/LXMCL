@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -536,6 +537,10 @@ func (a *desktop) installModpack() {
 				a.post(func() { a.task = progress })
 			}
 		})
+		installed := readInstallStatus(game, next.Instances, i.Version)
+		if err != nil {
+			delete(installed, i.ID)
+		}
 		switch {
 		case errors.Is(err, context.Canceled):
 			record.Status, record.Detail = taskCanceled, "已校验的文件可在下次安装时复用"
@@ -548,15 +553,16 @@ func (a *desktop) installModpack() {
 		a.saveTask(record, func() {
 			a.busy, a.cancelTask, a.task = false, nil, launcher.Progress{}
 			a.taskCanceling = false
+			if a.installed == nil {
+				a.installed = make(map[int]bool)
+			}
+			maps.Copy(a.installed, installed)
 			if err == nil {
 				a.state = next
-				if a.installed == nil {
-					a.installed = make(map[int]bool)
-				}
-				a.installed[i.ID] = true
 				if p.prepared == pack {
 					p.clearPreview()
 					if a.page == pageDownloads && a.downloadPage == downloadModpacks {
+						a.query, a.instanceFilter, a.scroll.Y = "", 0, 0
 						a.inspect(i)
 					}
 				}

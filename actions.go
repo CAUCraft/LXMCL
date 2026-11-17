@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -43,10 +44,7 @@ func (a *desktop) load() {
 		account, accountErr := a.store.LoadMicrosoftAccount()
 		history, historyErr := a.journal.Load(a.store.Root)
 		curseForgeKey := launcher.LoadCurseForgeAPIKey(a.store.Root)
-		installed := make(map[int]bool, len(s.Instances))
-		for _, i := range s.Instances {
-			installed[i.ID] = a.game.Installed(i)
-		}
+		installed := readInstallStatus(a.game, s.Instances, "")
 		a.post(func() {
 			a.loading = false
 			a.state, a.draft, a.installed, a.ready = s, s.Settings, installed, true
@@ -390,6 +388,17 @@ func (a *desktop) openPath(path string, create bool) {
 	}()
 }
 
+// Installation receipts are shared by game version, with extra loader-specific files.
+func readInstallStatus(game launcher.Game, instances []launcher.Instance, version string) map[int]bool {
+	status := make(map[int]bool)
+	for _, i := range instances {
+		if version == "" || i.Version == version {
+			status[i.ID] = game.Installed(i)
+		}
+	}
+	return status
+}
+
 func (a *desktop) play(i launcher.Instance, installOnly bool) {
 	a.playOnServer(i, installOnly, "")
 }
@@ -435,12 +444,7 @@ func (a *desktop) playOnServer(i launcher.Instance, installOnly bool, server str
 		run := result.Running
 		account, session, stationSession, stationState := result.Account, result.Session, result.StationSession, result.State
 		refreshed, stationStateChanged, authFailed := result.CredentialsChanged, result.StateChanged, result.AuthFailed
-		installed := make(map[int]bool)
-		for _, inst := range instances {
-			if inst.Version == i.Version {
-				installed[inst.ID] = g.Installed(inst)
-			}
-		}
+		installed := readInstallStatus(g, instances, i.Version)
 		switch {
 		case errors.Is(err, context.Canceled):
 			record.Status, record.Detail = taskCanceled, "已校验的文件会在下次复用"
@@ -464,9 +468,7 @@ func (a *desktop) playOnServer(i launcher.Instance, installOnly bool, server str
 			if stationSession.Profile.Key != "" {
 				a.rememberStation(stationSession)
 			}
-			for id, ok := range installed {
-				a.installed[id] = ok
-			}
+			maps.Copy(a.installed, installed)
 			switch {
 			case errors.Is(err, context.Canceled):
 				a.message("任务已取消，可继续下载", nil)
