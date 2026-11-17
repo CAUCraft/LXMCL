@@ -142,8 +142,11 @@ func TestDesktopTasksReachableDuringDownload(t *testing.T) {
 	a, tt := testDesktop(t)
 	a.busy, a.taskName = true, "建筑测试"
 	a.task = launcher.Progress{Stage: "下载资源", Done: 8, Total: 24}
+	cancels := 0
+	a.cancelTask = func() { cancels++ }
 	a.history = []taskRecord{{
-		Name: "生存世界", Version: "1.21.1", Action: "启动游戏", Status: "已失败",
+		InstanceID: 1,
+		Name:       "生存世界", Version: "1.21.1", Action: "启动游戏", Status: "已失败",
 		Detail: "请检查 Java 设置后重试。", At: time.Date(2026, 11, 9, 9, 0, 0, 0, time.UTC),
 	}}
 	tt.SetSize(820, 530)
@@ -161,6 +164,19 @@ func TestDesktopTasksReachableDuringDownload(t *testing.T) {
 		t.Fatal("task history was not rendered")
 	}
 	capture(t, tt, "tasks-dark-compact")
+	if err := tt.Click("复制错误详情"); err != nil || tt.Clipboard() != a.history[0].Detail {
+		t.Fatalf("failed to copy the task error: %v", err)
+	}
+	if err := tt.Click("取消任务"); err != nil {
+		t.Fatal(err)
+	}
+	if !a.taskCanceling || cancels != 1 {
+		t.Fatal("cancel did not retain the pending task and show immediate feedback")
+	}
+	if err := tt.Click("正在取消…"); err != nil || cancels != 1 || !a.busy {
+		t.Fatalf("cancel could be submitted again or cleared the active operation: %v", err)
+	}
+	capture(t, tt, "tasks-canceling-compact")
 	a.logOpen, a.logPath, a.logText = true, "launcher.log", "Minecraft is starting."
 	tt.Frame()
 	if _, ok := tt.Find("游戏日志"); !ok {
@@ -296,6 +312,15 @@ func TestTaskCenterFiltersAndDisablesStaleRetry(t *testing.T) {
 	tt.Frame()
 	if _, ok := tt.Find("重试"); ok {
 		t.Fatal("a task for an obsolete revision can still be retried")
+	}
+	if _, ok := tt.Find("实例配置、登录账号或资源信息已变化，请检查后重新发起。"); !ok {
+		t.Fatal("unavailable retry has no explanation")
+	}
+	if err := tt.Click("查看实例"); err != nil {
+		t.Fatal(err)
+	}
+	if a.inspected != i.ID || a.detailPage != detailLaunch || a.state.Selected != 1 {
+		t.Fatal("task recovery did not open the captured instance settings without changing the launch target")
 	}
 }
 

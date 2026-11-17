@@ -166,6 +166,7 @@ func (a *desktop) runFileTask(row taskRecord, work func(context.Context, func(la
 	row = row.Submitted()
 	ctx, cancel := context.WithCancel(a.ctx)
 	a.busy, a.taskName, a.cancelTask = true, row.Name, cancel
+	a.taskCanceling = false
 	a.task, a.notice = launcher.Progress{Stage: row.Action}, ""
 	a.writes.Go(func() {
 		defer cancel()
@@ -176,6 +177,7 @@ func (a *desktop) runFileTask(row taskRecord, work func(context.Context, func(la
 		}
 		a.saveTask(row, func() {
 			a.busy, a.cancelTask, a.task = false, nil, launcher.Progress{}
+			a.taskCanceling = false
 			a.message(row.Action+" · "+row.Status, err)
 			a.noticeTask = err != nil
 			if refresh != nil {

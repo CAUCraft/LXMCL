@@ -522,6 +522,7 @@ func (a *desktop) installModpack() {
 	p.installErr = ""
 	ctx, cancel := context.WithCancel(a.ctx)
 	a.busy, a.taskName, a.cancelTask = true, i.Name, cancel
+	a.taskCanceling = false
 	a.task, a.notice = launcher.Progress{Stage: "检查整合包清单"}, ""
 	game, store := a.game, a.store
 	record := (taskRecord{Name: i.Name, Version: i.Version, Action: "安装整合包", At: time.Now()}).Submitted()
@@ -546,6 +547,7 @@ func (a *desktop) installModpack() {
 		}
 		a.saveTask(record, func() {
 			a.busy, a.cancelTask, a.task = false, nil, launcher.Progress{}
+			a.taskCanceling = false
 			if err == nil {
 				a.state = next
 				if a.installed == nil {

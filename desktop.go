@@ -503,7 +503,7 @@ func (a *desktop) instanceStatus(i launcher.Instance) (string, display.TagColor)
 	case a.runningID == i.ID:
 		return "游戏运行中", display.TagProcessing
 	case a.installed[i.ID]:
-		return "已校验", display.TagSuccess
+		return "已缓存", display.TagSuccess
 	default:
 		return "尚未安装", display.TagGray
 	}

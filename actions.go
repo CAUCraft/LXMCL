@@ -383,6 +383,7 @@ func (a *desktop) playOnServer(i launcher.Instance, installOnly bool, server str
 	a.task = launcher.Progress{Stage: "检查游戏文件"}
 	ctx, cancel := context.WithCancel(a.ctx)
 	a.cancelTask = cancel
+	a.taskCanceling = false
 	g := a.game
 	request := (launcher.LaunchRequest{Instance: i, State: a.state, Account: a.microsoftAccount, Session: a.minecraftSession, StationSession: a.stationSessions[a.state.StationKey], Server: server, InstallOnly: installOnly}).Snapshot()
 	instances := request.State.Instances
@@ -432,6 +433,7 @@ func (a *desktop) playOnServer(i launcher.Instance, installOnly bool, server str
 		}
 		a.saveTask(record, func() {
 			a.busy, a.cancelTask = false, nil
+			a.taskCanceling = false
 			a.task = launcher.Progress{}
 			if refreshed {
 				a.microsoftAccount, a.minecraftSession = account, session
