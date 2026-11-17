@@ -227,12 +227,22 @@ func (a *desktop) taskRow(c *ui.Context, row taskRecord) {
 			if i, exists := a.state.Find(row.InstanceID); exists && button(c, "查看实例", action.Default, false) {
 				a.query, a.instanceFilter = "", 0
 				a.inspect(i)
-				if failed {
+				switch {
+				case row.Action == "备份存档" || row.Action == "恢复存档" || strings.HasPrefix(row.Action, "恢复存档 · "):
+					a.detailPage = detailFiles
+				case row.Resource != nil:
+					a.inspectContent(i, launcher.ContentKind(row.Resource.Kind))
+				case strings.HasSuffix(row.Action, "资源"):
+					a.detailPage = detailContent
+				case failed && (row.Action == taskVerify || row.Action == taskLaunch):
 					a.detailPage = detailLaunch
 				}
 			}
 			if row.Log != "" && button(c, "查看日志", action.Default, false) {
 				a.showLog(row.Log)
+			}
+			if row.Action == "备份存档" && row.Status == taskCompleted && row.InstanceID > 0 && button(c, "打开备份目录", action.Default, false) {
+				a.openPath(launcher.BackupsDir(a.store.Root, row.InstanceID), false)
 			}
 			if row.Folder != "" && button(c, "打开文件夹", action.Default, false) {
 				a.openPath(row.Folder, false)

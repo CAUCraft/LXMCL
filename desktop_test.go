@@ -386,6 +386,13 @@ func TestTaskCenterFiltersAndDisablesStaleRetry(t *testing.T) {
 	if a.inspected != i.ID || a.detailPage != detailLaunch || a.state.Selected != 1 {
 		t.Fatal("task recovery did not open the captured instance settings without changing the launch target")
 	}
+	a.history = []taskRecord{{InstanceID: i.ID, Revision: i.Revision, Name: i.Name, Action: "恢复存档 · 1 个世界", Status: taskCanceled}}
+	a.openTasks()
+	tt.Frame()
+	if err := tt.Click("查看实例"); err != nil || a.detailPage != detailFiles || a.inspected != i.ID || a.state.Selected != 1 {
+		t.Fatalf("restore history did not return to the target's files: %v", err)
+	}
+
 }
 
 func TestInstanceSettingsKeepDraftAndLaunchTargetSeparate(t *testing.T) {

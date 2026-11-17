@@ -232,17 +232,7 @@ func (a *desktop) resourceTargetBar(c *ui.Context, p *packBrowser) {
 				if !kind.Supports(target) {
 					kind = p.kind
 				}
-				a.inspect(target)
-				a.detailPage = detailContent
-				tab := 0
-				switch kind {
-				case launcher.Mods:
-					tab = 1
-				case launcher.ShaderPacks:
-					tab = 2
-				}
-				a.content = contentView{id: target.ID, revision: target.Revision, tab: tab}
-				a.refreshContent(target)
+				a.inspectContent(target, kind)
 			}
 			if button(c, "独立下载", action.Text, false) {
 				p.setTarget(launcher.Instance{})

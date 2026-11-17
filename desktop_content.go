@@ -99,6 +99,22 @@ func (a *desktop) refreshContent(i launcher.Instance) {
 	}()
 }
 
+func (a *desktop) inspectContent(i launcher.Instance, kind launcher.ContentKind) {
+	a.inspect(i)
+	a.detailPage = detailContent
+	tab := 0
+	if kind.Supports(i) {
+		switch kind {
+		case launcher.Mods:
+			tab = 1
+		case launcher.ShaderPacks:
+			tab = 2
+		}
+	}
+	a.content = contentView{id: i.ID, revision: i.Revision, tab: tab}
+	a.refreshContent(i)
+}
+
 func (a *desktop) instanceContent(c *ui.Context, i launcher.Instance) {
 	v := &a.content
 	if v.id != i.ID || v.revision != i.Revision || v.tab != 0 && !v.kind().Supports(i) {
