@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/CAUCraft/LXMCL/internal/launcher"
+	"github.com/egoist/mygo/ui"
 )
 
 func TestVersionPickerKeepsLongCatalogInsidePopup(t *testing.T) {
@@ -36,10 +37,15 @@ func TestVersionPickerKeepsLongCatalogInsidePopup(t *testing.T) {
 	// The last choice must be selectable even at the minimum window height,
 	// without placing a long menu over the entire launcher.
 	capture(t, tt, "version-picker-long")
-	tt.Type("1.21.1")
-	if err := tt.Click("1.21.1"); err != nil {
-		t.Fatal(err)
+	tt.Type("1.21.")
+	tt.Key(0, ui.KeyEnter)
+	if _, open := tt.Find("筛选选择游戏版本"); !open || a.form.version != "1.21.4" {
+		t.Fatal("an ambiguous search applied a version")
 	}
+	tt.Type("1")
+	tt.Frame()
+	capture(t, tt, "version-picker-keyboard")
+	tt.Key(0, ui.KeyEnter)
 	if !a.form.open || a.form.version != "1.21.1" {
 		t.Fatalf("the picker did not apply the selected version: %+v", a.form)
 	}
