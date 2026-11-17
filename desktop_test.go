@@ -781,8 +781,18 @@ func TestResourceAndServerEntrypoints(t *testing.T) {
 	tt.Frame()
 	capture(t, tt, "server-query-failed")
 	a.state.Remove(2)
-	if target, ok := a.serverInstance(); !ok || target.ID != 1 {
-		t.Fatal("removed server instance did not fall back to the home target")
+	tt.Frame()
+	if _, ok := a.serverInstance(); ok || !tt.HasText("原实例已移除，请重新选择") {
+		t.Fatal("removing a pinned server instance silently switched the launch target")
+	}
+	capture(t, tt, "server-target-removed")
+	for _, label := range []string{"选择联机实例", "跟随主页 · 生存世界 · 1.21.1 · 原版"} {
+		if err := tt.Click(label); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if target, ok := a.serverInstance(); !ok || target.ID != a.state.Selected || a.serverInstanceID != 0 {
+		t.Fatal("could not follow the home target after removing a pinned instance")
 	}
 	a.inspectContent(a.state.Instances[0], launcher.ResourcePacks)
 	tt.Frame()
