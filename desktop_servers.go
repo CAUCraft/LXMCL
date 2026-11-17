@@ -53,49 +53,20 @@ func (a *desktop) serverBadge(c *ui.Context, address string, size float32) {
 	}
 }
 
-func (a *desktop) addServer() {
-	next := a.state.Clone()
-	if err := next.AddServer(a.serverName, a.serverAddress); err != nil {
-		a.serverError = err.Error()
-		return
-	}
-	a.save(next, 0, func(err error) {
-		if err != nil {
-			a.serverError = err.Error()
-			return
-		}
-		a.serverName, a.serverAddress, a.serverError = "", "", ""
-	})
-}
-
-func (a *desktop) removeServer(server launcher.Server) {
-	next := a.state.Clone()
-	next.RemoveServer(server.Address)
-	a.save(next, 0, func(err error) {
-		if err != nil {
-			a.message("无法移除服务器", err)
-		} else {
-			delete(a.serverStatus, server.Address)
-		}
-	})
-}
-
 func (a *desktop) network(c *ui.Context) {
 	workspace(c, func() {
-		heading(c, "收藏服务器")
-		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-			settingsInput(c, "服务器名称", &a.serverName, "名称（可选）", 180, a.busy)
-			submitted := false
-			ui.Column(c).Grow(1).MinWidth(0).Children(func() {
-				submitted = field.Input(c, &a.serverAddress, field.InputProps{Placeholder: "域名或 IP[:端口]"}).
-					Label("服务器地址").Disabled(a.busy).Submitted()
-			})
-			if button(c, "添加服务器", action.Primary, a.busy || a.serverAddress == "") || submitted && !a.busy {
-				a.addServer()
+		controls := func() {
+			if button(c, "临时直连…", action.Default, a.busy || a.running != nil) {
+				a.openServerForm(serverDirect, launcher.Server{})
 			}
-		})
-		if a.serverError != "" {
-			feedback.Alert(c, a.serverError, feedback.AlertProps{Type: feedback.Error})
+			if button(c, "添加服务器…", action.Primary, a.busy) {
+				a.openServerForm(serverAdd, launcher.Server{})
+			}
+		}
+		if len(a.state.Servers) == 0 {
+			heading(c, "联机")
+		} else {
+			heading(c, "联机", controls)
 		}
 		note := "离线账号仅能加入允许离线登录的服务器。"
 		if a.state.StationKey != "" {
@@ -105,14 +76,8 @@ func (a *desktop) network(c *ui.Context) {
 		}
 		muted(c, note).FontSize(12)
 		if len(a.state.Servers) == 0 {
-			w, _ := c.Size()
-			splitWorkspace(c, listWidth(w), func() {
-				muted(c, "服务器列表").Padding(3, 5)
-				muted(c, "暂无收藏").Padding(3, 5)
-			}, func() {
-				ui.Column(c).Grow(1).Center().Children(func() {
-					display.Empty(c, display.EmptyProps{Icon: lucide.Server(), Title: "暂无收藏", Description: "添加服务器后可查看状态并直接加入。"})
-				})
+			ui.Column(c).Grow(1).Center().Children(func() {
+				display.Empty(c, display.EmptyProps{Icon: lucide.Server(), Title: "暂无收藏的服务器", Action: func() { ui.Row(c).Gap(8).Children(controls) }})
 			})
 			return
 		}
@@ -129,7 +94,7 @@ func (a *desktop) network(c *ui.Context) {
 		}
 		w, _ := c.Size()
 		splitWorkspace(c, listWidth(w), func() {
-			muted(c, "服务器列表").Padding(3, 5)
+			muted(c, "收藏服务器").Padding(3, 5)
 			layout.ScrollArea(c, layout.ScrollAreaProps{}, func() {
 				if key := display.List(c, display.ListProps{Items: items, Active: server.Address, Compact: true}); key != "" {
 					a.browsedServer = key
@@ -163,24 +128,7 @@ func (a *desktop) network(c *ui.Context) {
 					} else {
 						muted(c, "尚未查询服务器状态").FontSize(12)
 					}
-					i, selected := a.serverInstance()
-					if len(a.state.Instances) > 0 {
-						options := make([]field.SelectOption, 0, len(a.state.Instances))
-						for _, instance := range a.state.Instances {
-							options = append(options, field.SelectOption{Value: strconv.Itoa(instance.ID),
-								Label: instance.Name + " · " + instance.Version + " · " + loaderName(instance)})
-						}
-						settingsRow(c, "加入时使用", func() {
-							value := strconv.Itoa(i.ID)
-							catalogPicker(c, &value, options, "选择联机实例", "", a.busy || a.running != nil).Grow(1).MinWidth(0)
-							if value != strconv.Itoa(i.ID) {
-								a.serverInstanceID, _ = strconv.Atoi(value)
-								i, selected = a.serverInstance()
-							}
-						})
-					} else if button(c, "先安装游戏实例…", action.Default, a.busy) {
-						a.create()
-					}
+					i, selected := a.serverInstancePicker(c)
 					ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 						if button(c, "启动并加入", action.Primary, !selected || a.busy || a.running != nil) {
 							a.playOnServer(i, false, server.Address)
@@ -189,8 +137,11 @@ func (a *desktop) network(c *ui.Context) {
 							a.checkServer(server)
 						}
 						ui.Spacer(c).Grow(1)
-						if icon(c, lucide.X(), "移除服务器 "+server.Name, a.busy) {
-							a.removeServer(server)
+						if icon(c, lucide.Pencil(), "编辑服务器 "+server.Name, a.busy) {
+							a.openServerForm(serverEdit, server)
+						}
+						if icon(c, lucide.Trash2(), "移除服务器 "+server.Name, a.busy) {
+							a.openServerForm(serverRemove, server)
 						}
 					})
 				})
@@ -204,4 +155,27 @@ func (a *desktop) serverInstance() (launcher.Instance, bool) {
 		return i, true
 	}
 	return a.state.Find(a.state.Selected)
+}
+
+func (a *desktop) serverInstancePicker(c *ui.Context) (launcher.Instance, bool) {
+	if len(a.state.Instances) == 0 {
+		if button(c, "先安装游戏实例…", action.Default, a.busy) {
+			a.serverForm = nil
+			a.create()
+		}
+		return launcher.Instance{}, false
+	}
+	i, _ := a.serverInstance()
+	value := strconv.Itoa(i.ID)
+	options := make([]field.SelectOption, 0, len(a.state.Instances))
+	for _, entry := range a.state.Instances {
+		options = append(options, field.SelectOption{Value: strconv.Itoa(entry.ID), Label: entry.Name + " · " + entry.Version + " · " + loaderName(entry)})
+	}
+	settingsRow(c, "加入时使用", func() {
+		catalogPicker(c, &value, options, "选择联机实例", "", a.busy || a.running != nil).Grow(1).MinWidth(0)
+	})
+	if value != strconv.Itoa(i.ID) {
+		a.serverInstanceID, _ = strconv.Atoi(value)
+	}
+	return a.serverInstance()
 }

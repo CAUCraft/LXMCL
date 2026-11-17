@@ -299,6 +299,7 @@
   "saves.restore_partial": "Restored %d worlds: %w",
   "saves.world_missing": "The archive no longer contains world %s. Select the ZIP again.",
   "server.address_invalid": "Enter a Java server hostname or IP address, optionally with a port",
+  "server.favorite_changed": "This favorite changed. Reopen it and try again.",
   "server.favorite_duplicate": "This server is already a favorite",
   "server.favorite_name_too_long": "The server name must be 80 characters or fewer",
   "server.port_invalid": "The server port must be 1–65535",
