@@ -8,7 +8,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/CAUCraft/LXMCL/internal/i18n"
 	"github.com/CAUCraft/LXMCL/internal/storage"
@@ -16,11 +15,13 @@ import (
 	"github.com/CAUCraft/LXMCL/internal/transfer"
 )
 
-// Values distinguish directory trees from individual files.
-var setupPaths = map[string]bool{
-	"mods": true, "resourcepacks": true, "shaderpacks": true, "config": true,
-	"defaultconfigs": true, "kubejs": true, "scripts": true,
-	"options.txt": false, "optionsof.txt": false, "optionsshaders.txt": false, "servers.dat": false,
+var setupPaths = []struct {
+	name      string
+	directory bool
+}{
+	{"mods", true}, {"resourcepacks", true}, {"shaderpacks", true}, {"config", true},
+	{"defaultconfigs", true}, {"kubejs", true}, {"scripts", true},
+	{"options.txt", false}, {"optionsof.txt", false}, {"optionsshaders.txt", false}, {"servers.dat", false},
 }
 
 // DuplicateSetup copies resources and game settings into a new, independent
@@ -117,24 +118,12 @@ func DuplicateSetup(ctx context.Context, source, destination string, commit func
 
 func copySetup(ctx context.Context, source, destination *os.Root, report func(tasks.Progress)) error {
 	count := 0
-	return fs.WalkDir(source.FS(), ".", func(name string, entry fs.DirEntry, walkErr error) error {
+	copyEntry := func(name string, entry fs.DirEntry, walkErr error) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if walkErr != nil || name == "." {
+		if walkErr != nil {
 			return walkErr
-		}
-		if !strings.Contains(name, "/") {
-			directory, include := setupPaths[name]
-			if !include {
-				if entry.IsDir() {
-					return fs.SkipDir
-				}
-				return nil
-			}
-			if entry.IsDir() != directory {
-				return i18n.Error("instance.duplicate_file_unsupported", name)
-			}
 		}
 		if !storage.ValidPortablePath(name) || entry.Type()&os.ModeSymlink != 0 || (!entry.IsDir() && !entry.Type().IsRegular()) {
 			return i18n.Error("instance.duplicate_file_unsupported", name)
@@ -155,7 +144,28 @@ func copySetup(ctx context.Context, source, destination *os.Root, report func(ta
 		}
 		count++
 		return nil
-	})
+	}
+	// Let the source filesystem resolve Minecraft's names (e.g. Mods on NTFS).
+	// WalkDir follows its starting path, so reject links before starting each walk.
+	for _, top := range setupPaths {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		info, err := source.Lstat(top.name)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if info.Mode()&os.ModeSymlink != 0 || info.IsDir() != top.directory {
+			return i18n.Error("instance.duplicate_file_unsupported", top.name)
+		}
+		if err := fs.WalkDir(source.FS(), top.name, copyEntry); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func copySetupFile(ctx context.Context, source, destination *os.Root, name string, expected fs.FileInfo) error {

@@ -12,7 +12,7 @@ import (
 
 func TestDuplicateSetupPublishesOnlyChosenContent(t *testing.T) {
 	source := t.TempDir()
-	for _, name := range []string{"options.txt", "mods/test.jar.disabled", "config/a/b.cfg", "saves/World/level.dat", "logs/latest.log"} {
+	for _, name := range []string{"options.txt", "OptionsOF.txt", "mods/test.jar.disabled", "config/a/b.cfg", "saves/World/level.dat", "logs/latest.log"} {
 		path := filepath.Join(source, name)
 		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 			t.Fatal(err)
@@ -46,6 +46,12 @@ func TestDuplicateSetupPublishesOnlyChosenContent(t *testing.T) {
 		if err != nil || string(b) != name {
 			t.Fatalf("copied %s: %q %v", name, b, err)
 		}
+	}
+	_, lookupErr := os.Stat(filepath.Join(source, "optionsof.txt"))
+	copied, copyErr := os.ReadFile(filepath.Join(target, "optionsof.txt"))
+	if lookupErr == nil && (copyErr != nil || string(copied) != "OptionsOF.txt") ||
+		errors.Is(lookupErr, os.ErrNotExist) && !errors.Is(copyErr, os.ErrNotExist) {
+		t.Fatalf("copy disagrees with filesystem name lookup: %v %v", lookupErr, copyErr)
 	}
 	for _, name := range []string{"saves", "logs"} {
 		if _, err := os.Stat(filepath.Join(target, name)); !errors.Is(err, os.ErrNotExist) {
