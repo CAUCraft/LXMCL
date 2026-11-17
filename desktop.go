@@ -126,11 +126,20 @@ func (a *desktop) view(c *ui.Context) {
 		}
 		switch {
 		case a.loadErr != "":
-			ui.Column(c).Grow(1).Padding(28).Gap(12).Children(func() {
-				feedback.Alert(c, "无法读取本机配置", feedback.AlertProps{Type: feedback.Error, Description: a.loadErr})
-				if button(c, "打开配置目录", action.Default, false) {
-					a.openPath(a.store.Root, false)
-				}
+			ui.Column(c).Grow(1).Padding(24).Center().Children(func() {
+				ui.Column(c).FillWidth().MaxWidth(680).Gap(12).Children(func() {
+					feedback.Alert(c, "无法读取本机配置", feedback.AlertProps{Type: feedback.Error, Description: a.loadErr})
+					muted(c, "修复提示中的文件或恢复读取权限后，可重新读取配置。").FontSize(13)
+					ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+						if button(c, "重新读取配置", action.Primary, false) {
+							a.load()
+						}
+						if button(c, "打开配置目录", action.Default, false) {
+							a.openPath(a.store.Root, false)
+						}
+						action.CopyButton(c, a.loadErr, action.CopyButtonProps{}).Label("复制错误详情")
+					})
+				})
 			})
 		case !a.ready:
 			ui.Column(c).Grow(1).Center().Children(func() { flightLoading(c, "正在读取启动器设置…") })
@@ -215,14 +224,17 @@ func (a *desktop) topBar(c *ui.Context) {
 	w, _ := c.Size()
 	height := max(bar.Height, titleBarHeight)
 	ui.Box(c).Height(height).FillWidth().Background(tk.BgContainer).Shrink(0).DragWindow().Children(func() {
-		ui.Row(c).Absolute().Left(0).Right(0).Top(0).Bottom(0).
-			Justify(ui.Center).AlignItems(ui.Center).Children(func() {
-			a.mainNavigation(c)
-		})
 		ui.Row(c).Absolute().Left(bar.Left + 14).Top(0).Bottom(0).
 			Gap(7).AlignItems(ui.Center).Children(func() {
 			ui.Image(c, a.logo).Size(23, 23).Fit(ui.Contain)
 			display.Text(c, "LXMCL", display.TextProps{Strong: true, FontSize: 14})
+		})
+		if !a.ready {
+			return
+		}
+		ui.Row(c).Absolute().Left(0).Right(0).Top(0).Bottom(0).
+			Justify(ui.Center).AlignItems(ui.Center).Children(func() {
+			a.mainNavigation(c)
 		})
 		ui.Row(c).Absolute().Right(bar.Right + 10).Top(0).Bottom(0).Gap(6).
 			AlignItems(ui.Center).Children(func() {
