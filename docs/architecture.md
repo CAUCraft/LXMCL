@@ -2,7 +2,7 @@
 
 LXMCL 使用 Go、MyGo 原生窗口和 Lobe MyGo 组件。主包负责界面状态和事件分发，后端包不依赖 UI。文件、网络和进程操作由后台任务执行，结果通过 UI 线程展示。
 
-当前实现的完成情况、剩余职责交叉与验证范围见 [2026-11-11 后端进度审查](backend-review.md)。
+当前实现的完成情况、剩余职责交叉与验证范围见[后端进度审查](backend-review.md)。
 
 ## 模块与接口
 
@@ -27,7 +27,7 @@ LXMCL 使用 Go、MyGo 原生窗口和 Lobe MyGo 组件。主包负责界面状�
 | `internal/log` | 游戏与加载器安装器的日志路径、写入文件创建及游戏日志预览。 |
 | `internal/i18n` | 从嵌入式 JSON 按键读取后端文案，保留错误链与语言回退。 |
 
-依赖向下流动：桌面调用应用编排，编排组合领域模块和基础设施。`config`、`minecraft`、`account`、`catalog`、`content`、`distribution`、`modpack`、`javaruntime`、`tasks`、`instance` 等包不反向导入 `launcher`。任务记录可引用资源类型，不能引用桌面组件或启动器实例状态。`launcher` 的公开类型别名和薄包装保留现有调用接口，协议和文件操作交给对应模块。
+依赖向下流动：桌面调用应用编排，编排组合领域模块和基础设施。`config`、`minecraft`、`account`、`catalog`、`content`、`distribution`、`modpack`、`javaruntime`、`tasks`、`instance` 等包不反向导入 `launcher`。任务记录只保存资源类型标识，不导入资源业务模块、桌面组件或启动器实例状态。`launcher` 的公开类型别名和薄包装保留现有调用接口，协议和文件操作交给对应模块。
 
 ```mermaid
 flowchart TD
@@ -66,7 +66,6 @@ flowchart TD
     Launcher --> Saves[saves 存档]
     Saves --> Storage
     Saves --> Transfer
-    Tasks --> Content
     Tasks --> Storage
     Content --> Instance
     Content --> Distribution
@@ -141,6 +140,8 @@ flowchart TD
 首次读取历史失败时不会标记为已加载，后续写入继续报告读取错误并保留原文件；修复文件后可以重试加载。读写限制均为 2 MiB，完整 JSON 文档必须有效，合法数组后的垃圾数据也会拒绝。超大结果不会覆盖已保存的历史。
 
 `tasks.json` 保持原 JSON 数组和最近 24 条上限；旧记录通过时间戳匹配，原有中文状态与动作值保留为存储标识，不能随界面语言改变。重试目标由 `launcher.RetryTarget` 检查实例 ID、修订、版本及账号；资源重试还保留资源版本或独立文件夹。旧配置变化后不猜测新的目标。
+
+`tasks.Resource.Kind` 保存原始字符串（如 `mods`、`resourcepacks`、`shaderpacks`），未知标识也原样读写。应用层在重试检查、资源展示和下载时转换为 `content.Kind`，继续由资源模块判断兼容性；未知标识不会获得默认资源类型。任务进度和历史因此不再间接引入资源下载模块。
 
 ## 服务器状态
 

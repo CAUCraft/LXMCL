@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -31,16 +32,31 @@ func TestJournalUpdatesOriginalTaskWithoutLosingNewerRecords(t *testing.T) {
 }
 func TestLegacyHistoryKeepsIdentity(t *testing.T) {
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, "tasks.json"), []byte(`[{"at":"2026-01-01T00:00:00Z","status":"已失败","action":"启动游戏","instance_id":4,"instance_revision":2}]`), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "tasks.json"), []byte(`[
+		{"at":"2026-01-01T00:00:00Z","status":"已失败","action":"启动游戏","instance_id":4,"instance_revision":2},
+		{"at":"2026-01-02T00:00:00Z","status":"已失败","action":"安装模组","instance_id":4,"instance_revision":2,"resource":{"kind":"mods","project":"modA","version":"releaseA","title":"Example mod"}},
+		{"at":"2026-01-03T00:00:00Z","status":"已取消","action":"保存资源","folder":"downloads","resource":{"kind":"future-kind","project":"packA","version":"releaseB","title":"Future resource"}}
+	]`), 0600); err != nil {
 		t.Fatal(err)
 	}
 	records, err := Load(root)
-	if err != nil || len(records) != 1 || records[0].Status != Failed || records[0].Revision != 2 {
+	if err != nil || len(records) != 3 || records[0].Status != Failed || records[0].Revision != 2 {
 		t.Fatalf("legacy: %v %v", records, err)
+	}
+	if records[0].Resource != nil || records[1].Resource == nil || records[2].Resource == nil ||
+		records[1].Resource.Kind != "mods" || records[2].Resource.Kind != "future-kind" {
+		t.Fatalf("legacy resource kinds changed: %+v", records)
+	}
+	if err := Save(root, records); err != nil {
+		t.Fatal(err)
+	}
+	roundTrip, err := Load(root)
+	if err != nil || !reflect.DeepEqual(roundTrip, records) {
+		t.Fatalf("legacy history changed after save: %+v %v", roundTrip, err)
 	}
 	updated := records[0]
 	updated.Status = Completed
-	if got := Update(records, updated); len(got) != 1 {
+	if got := Update(records, updated); len(got) != len(records) {
 		t.Fatal("duplicated legacy task")
 	}
 }

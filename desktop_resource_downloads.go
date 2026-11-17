@@ -442,7 +442,7 @@ func (a *desktop) packVersions(c *ui.Context, p *packBrowser, kind launcher.Cont
 		}
 		muted(c, note).FontSize(12).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 		if button(c, labelAction, action.Primary, locked) {
-			r := resourceTask{Kind: kind, Project: p.project.ID, Version: version.ID, Title: p.project.Title}
+			r := resourceTask{Kind: string(kind), Project: p.project.ID, Version: version.ID, Title: p.project.Title}
 			if p.target.ID != 0 {
 				a.downloadResource(p.target, r, version)
 			} else {
@@ -457,7 +457,8 @@ func (a *desktop) packVersions(c *ui.Context, p *packBrowser, kind launcher.Cont
 
 func (a *desktop) saveResourceFile(folder string, r resourceTask, version launcher.PackVersion) {
 	game := a.game
-	a.runFolderDownload(folder, "保存"+contentLabel(r.Kind), r.Title, &r, func(ctx context.Context, report func(launcher.Progress)) error {
+	kind := launcher.ContentKind(r.Kind)
+	a.runFolderDownload(folder, "保存"+contentLabel(kind), r.Title, &r, func(ctx context.Context, report func(launcher.Progress)) error {
 		if version.ID == "" {
 			var err error
 			version, err = launcher.ModrinthVersion(ctx, r.Project, r.Version)
@@ -465,12 +466,13 @@ func (a *desktop) saveResourceFile(folder string, r resourceTask, version launch
 				return err
 			}
 		}
-		return game.DownloadResourceFile(ctx, r.Kind, version, folder, report)
+		return game.DownloadResourceFile(ctx, kind, version, folder, report)
 	})
 }
 
 func (a *desktop) downloadResource(i launcher.Instance, r resourceTask, version launcher.PackVersion) {
-	a.runContentTask(i, "安装"+contentLabel(r.Kind), &r, func(ctx context.Context, report func(launcher.Progress)) error {
+	kind := launcher.ContentKind(r.Kind)
+	a.runContentTask(i, "安装"+contentLabel(kind), &r, func(ctx context.Context, report func(launcher.Progress)) error {
 		if version.ID == "" {
 			var err error
 			version, err = launcher.ModrinthVersion(ctx, r.Project, r.Version)
@@ -478,6 +480,6 @@ func (a *desktop) downloadResource(i launcher.Instance, r resourceTask, version 
 				return err
 			}
 		}
-		return launcher.DownloadModrinth(ctx, i, r.Kind, version, report)
+		return launcher.DownloadModrinth(ctx, i, kind, version, report)
 	})
 }

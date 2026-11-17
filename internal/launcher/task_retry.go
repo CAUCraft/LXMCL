@@ -13,5 +13,5 @@ func RetryTarget(r tasks.Record, s State) (Instance, bool) {
 	}
 	i, ok := s.Find(r.InstanceID)
 	return i, ok && i.Revision == r.Revision && i.Version == r.Version &&
-		(r.Resource == nil || (r.Resource.Project != "" && r.Resource.Version != "" && r.Resource.Kind.Supports(i)))
+		(r.Resource == nil || (r.Resource.Project != "" && r.Resource.Version != "" && ContentKind(r.Resource.Kind).Supports(i)))
 }
