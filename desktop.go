@@ -412,6 +412,7 @@ func (a *desktop) library(c *ui.Context) {
 			})
 			return
 		}
+		query, filter := a.query, a.instanceFilter
 		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
 			ui.Column(c).Grow(1).MinWidth(0).MaxWidth(340).Children(func() {
 				hotkey := searchHotkey
@@ -433,18 +434,17 @@ func (a *desktop) library(c *ui.Context) {
 				a.create()
 			}
 		})
+		if a.query != query || a.instanceFilter != filter {
+			a.scroll.Y = 0
+		}
 		w, _ := c.Size()
 		splitWorkspace(c, listWidth(w), func() {
 			muted(c, "实例列表").Padding(3, 5)
-			list := layout.ScrollArea(c, layout.ScrollAreaProps{State: &a.scroll}, func() {
-				a.instanceList(c)
-			}).MinHeight(0)
-			if _, ok := a.state.Find(a.inspected); ok {
-				list.Height(min(188, float32(len(a.state.Instances))*48+4)).Shrink(1)
+			_, inspecting := a.state.Find(a.inspected)
+			a.instanceList(c, inspecting)
+			if inspecting {
 				layout.Divider(c, layout.DividerProps{})
 				sidebarNavigation(c.Key("instance-nav"), &a.detailPage, instanceDetailTabs)
-			} else {
-				list.Grow(1)
 			}
 		}, func() {
 			i, ok := a.state.Find(a.inspected)
@@ -462,11 +462,7 @@ func (a *desktop) library(c *ui.Context) {
 	})
 }
 
-func (a *desktop) instanceList(c *ui.Context) {
-	if len(a.state.Instances) == 0 {
-		muted(c, "暂无实例").Padding(5)
-		return
-	}
+func (a *desktop) instanceList(c *ui.Context, inspecting bool) {
 	query := strings.ToLower(strings.TrimSpace(a.query))
 	var items []display.ListItem
 	for _, i := range a.state.Instances {
@@ -490,14 +486,25 @@ func (a *desktop) instanceList(c *ui.Context) {
 	if len(items) == 0 {
 		display.Empty(c, display.EmptyProps{Icon: lucide.SearchX(), Title: "未找到实例", Action: func() {
 			if button(c, "清除筛选", action.Default, false) {
-				a.query, a.instanceFilter = "", 0
+				a.query, a.instanceFilter, a.scroll.Y = "", 0, 0
 			}
 		}})
 		return
 	}
-	clicked := display.List(c, display.ListProps{
-		Items: items, Active: strconv.Itoa(a.inspected), Compact: true,
-	})
+	var clicked string
+	rows := func() {
+		clicked = display.List(c, display.ListProps{Items: items, Active: strconv.Itoa(a.inspected), Compact: true})
+	}
+	if inspecting && len(items) <= 3 {
+		rows()
+	} else {
+		list := layout.ScrollArea(c, layout.ScrollAreaProps{State: &a.scroll}, rows).MinHeight(0)
+		if inspecting {
+			list.Height(188).Shrink(1)
+		} else {
+			list.Grow(1)
+		}
+	}
 	if id, err := strconv.Atoi(clicked); err == nil && id != a.inspected {
 		if i, ok := a.state.Find(id); ok {
 			a.inspect(i)

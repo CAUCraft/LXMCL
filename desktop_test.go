@@ -139,6 +139,15 @@ func TestDesktopNavigationKeepsLaunchTarget(t *testing.T) {
 	if a.inspected != 0 || a.state.Selected != 1 {
 		t.Fatalf("second Escape should return to the list; inspected = %d, selected = %d", a.inspected, a.state.Selected)
 	}
+	a.state.Instances = a.state.Instances[:1]
+	a.inspect(a.state.Instances[0])
+	a.query = "不存在的实例"
+	tt.SetSize(820, 530)
+	tt.Frame()
+	capture(t, tt, "instance-filter-empty-compact")
+	if err := tt.Click("清除筛选"); err != nil || a.query != "" || a.state.Selected != 1 {
+		t.Fatalf("cannot clear a search from single-instance details: %v", err)
+	}
 	a.state.Instances, a.state.Selected, a.page = nil, 0, pageHome
 	tt.SetSize(820, 530)
 	tt.Frame()
