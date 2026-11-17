@@ -50,13 +50,13 @@ func TestPingJavaServer(t *testing.T) {
 			reply <- fmt.Errorf("invalid status request: %v, %v", request, err)
 			return
 		}
-		data := fmt.Appendf(nil, `{"version":{"name":"1.21.1"},"players":{"online":3,"max":12},"favicon":"data:image/png;base64,%s"}`, base64.StdEncoding.EncodeToString(favicon.Bytes()))
+		data := fmt.Appendf(nil, `{"version":{"name":"1.21.1"},"players":{"online":3,"max":12},"description":{"text":"§9CAU","extra":[{"text":"Craft\n"},{"text":"欢迎回来"}]},"favicon":"data:image/png;base64,%s"}`, base64.StdEncoding.EncodeToString(favicon.Bytes()))
 		packet := append(binary.AppendUvarint([]byte{0}, uint64(len(data))), data...)
 		_, err = c.Write(append(binary.AppendUvarint(nil, uint64(len(packet))), packet...))
 		reply <- err
 	}()
 	status, err := PingServer(t.Context(), address)
-	if err != nil || status.Version != "1.21.1" || status.Online != 3 || status.Max != 12 || status.Icon == nil {
+	if err != nil || status.Version != "1.21.1" || status.Description != "CAUCraft\n欢迎回来" || !status.PlayersReported || status.Online != 3 || status.Max != 12 || status.Icon == nil {
 		t.Fatalf("status = %+v, %v", status, err)
 	}
 	if err := <-reply; err != nil {
