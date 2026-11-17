@@ -70,11 +70,12 @@ func TestChangeVersionKeepsDirectoryAndSelection(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	state.Instances[0].Loader, state.Instances[0].LoaderVersion = instance.LoaderNeoForge, "21.1.100"
 	target := state.Instances[0]
-	if err := state.ChangeVersion(target.ID, target.Revision, "1.21.4"); err != nil {
+	if err := state.ChangeVersion(target.ID, target.Revision, "1.21.4", "21.4.120"); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.ChangeVersion(target.ID, target.Revision, "1.21.5"); err == nil {
+	if err := state.ChangeVersion(target.ID, target.Revision, "1.21.5", target.LoaderVersion); err == nil {
 		t.Fatal("a stale version editor could replace the saved version")
 	}
 	if err := store.Save(state); err != nil {
@@ -85,7 +86,8 @@ func TestChangeVersionKeepsDirectoryAndSelection(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, ok := saved.Find(target.ID)
-	if !ok || got.Version != "1.21.4" || got.GameDir != target.GameDir || got.Revision != target.Revision+1 || saved.Selected != state.Instances[1].ID {
+	if !ok || got.Version != "1.21.4" || got.Loader != target.Loader || got.LoaderVersion != "21.4.120" ||
+		got.GameDir != target.GameDir || got.Revision != target.Revision+1 || saved.Selected != state.Instances[1].ID {
 		t.Fatalf("version change did not preserve the instance: %+v", saved)
 	}
 }

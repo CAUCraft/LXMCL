@@ -10,8 +10,9 @@ import (
 
 func TestVersionPickerKeepsLongCatalogInsidePopup(t *testing.T) {
 	a, tt := testDesktop(t)
+	a.state.Instances[1].Loader, a.state.Instances[1].LoaderVersion = launcher.LoaderNeoForge, "21.4.120"
 	for i := 31; i > 0; i-- {
-		a.releases = append(a.releases, launcher.Version{ID: fmt.Sprintf("1.21.%02d", i)})
+		a.releases = append(a.releases, launcher.Version{ID: fmt.Sprintf("1.21.%d", i)})
 	}
 	tt.SetSize(820, 530)
 	tt.SetDark(true)
@@ -35,13 +36,22 @@ func TestVersionPickerKeepsLongCatalogInsidePopup(t *testing.T) {
 	// The last choice must be selectable even at the minimum window height,
 	// without placing a long menu over the entire launcher.
 	capture(t, tt, "version-picker-long")
-	tt.Type("1.21.01")
-	if err := tt.Click("1.21.01"); err != nil {
+	tt.Type("1.21.1")
+	if err := tt.Click("1.21.1"); err != nil {
 		t.Fatal(err)
 	}
-	if !a.form.open || a.form.version != "1.21.01" {
+	if !a.form.open || a.form.version != "1.21.1" {
 		t.Fatalf("the picker did not apply the selected version: %+v", a.form)
 	}
+	p := a.form.loaders
+	if p == nil || p.validLoader() || p.version != "1.21.1" {
+		t.Fatal("new game selection reused an unverified loader")
+	}
+	p.loaderGame, p.loaderKind, p.loaderVersion = p.version, launcher.LoaderNeoForge, "21.1.100"
+	p.loaderVersions = []launcher.LoaderRelease{{Version: p.loaderVersion}}
+	tt.Frame()
+	tt.Advance(300 * time.Millisecond)
+	capture(t, tt, "change-modded-version")
 }
 
 func TestSkinStationSignInOpensFromAddAccount(t *testing.T) {
