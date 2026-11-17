@@ -26,6 +26,22 @@ type restorePlan struct {
 	signature [sha256.Size]byte
 }
 
+// A world named "saves" has its own level.dat and keeps its name.
+func wrapsWorlds(entries []*zip.File) bool {
+	hasWorld := false
+	for _, entry := range entries {
+		relative, ok := strings.CutPrefix(entry.Name, "saves/")
+		if !ok || relative == "level.dat" {
+			return false
+		}
+		_, rest, nested := strings.Cut(relative, "/")
+		if nested && rest == "level.dat" && entry.Mode().IsRegular() {
+			hasWorld = true
+		}
+	}
+	return hasWorld
+}
+
 // planRestore checks the whole ZIP before opening or creating the game directory.
 func planRestore(ctx context.Context, source string, entries []*zip.File) (restorePlan, error) {
 	var plan restorePlan
@@ -40,6 +56,7 @@ func planRestore(ctx context.Context, source string, entries []*zip.File) (resto
 			prefix = "World"
 		}
 	}
+	wrapped := prefix == "" && wrapsWorlds(entries)
 	paths := make(archivePaths)
 	worlds := make(map[string]bool)
 	index := sha256.New()
@@ -56,6 +73,16 @@ func planRestore(ctx context.Context, source string, entries []*zip.File) (resto
 		// The validated names, types, sizes and CRCs describe the preview without
 		// reading gigabytes of world data just to populate a selection dialog.
 		fmt.Fprintf(index, "%q %t %d %08x\n", name, directory, entry.UncompressedSize64, entry.CRC32)
+		if entry.UncompressedSize64 > maxSaveBytes-size {
+			return plan, i18n.Error("saves.archive_expanded_too_large")
+		}
+		size += entry.UncompressedSize64
+		if wrapped {
+			if entry.Name == "saves/" {
+				continue
+			}
+			name = strings.TrimPrefix(name, "saves/")
+		}
 		if prefix != "" {
 			if path.Base(name) == "level.dat" && strings.Count(name, "/") == 1 && !directory {
 				return plan, i18n.Error("saves.archive_mixed_worlds")
@@ -70,10 +97,6 @@ func planRestore(ctx context.Context, source string, entries []*zip.File) (resto
 			return plan, i18n.Error("saves.archive_world_directory_required")
 		}
 		worlds[world] = worlds[world] || (rest == "level.dat" && entry.Mode().IsRegular())
-		if entry.UncompressedSize64 > maxSaveBytes-size {
-			return plan, i18n.Error("saves.archive_expanded_too_large")
-		}
-		size += entry.UncompressedSize64
 		if directory || path.Base(name) != "session.lock" {
 			plan.entries = append(plan.entries, restoreEntry{file: entry, name: name})
 		}

@@ -282,6 +282,19 @@ func TestBackupAndRestoreKeepExistingWorld(t *testing.T) {
 	if err := os.WriteFile(selection, testZIP(t, files), 0600); err != nil {
 		t.Fatal(err)
 	}
+	wrapped := filepath.Join(t.TempDir(), "wrapped.zip")
+	wrappedFiles := make(map[string]string)
+	for name, body := range files {
+		wrappedFiles["saves/"+name] = body
+	}
+	if err := os.WriteFile(wrapped, testZIP(t, wrappedFiles), 0600); err != nil {
+		t.Fatal(err)
+	}
+	wrappedPreview, err := InspectSaveArchive(t.Context(), wrapped)
+	if err != nil || strings.Join(wrappedPreview.Worlds(), ",") != "Survival,Survival2,Workshop" {
+		t.Fatalf("wrapped saves preview: %v %v", wrappedPreview.Worlds(), err)
+	}
+
 	preview, err := InspectSaveArchive(t.Context(), selection)
 	if err != nil || strings.Join(preview.Worlds(), ",") != "Survival,Survival2,Workshop" {
 		t.Fatalf("world preview: %v %v", preview.Worlds(), err)
