@@ -19,6 +19,7 @@ const (
 	Canceled  = "已取消"
 	Launch    = "启动游戏"
 	Verify    = "下载 / 校验"
+	Backup    = "备份存档"
 )
 
 type Resource struct {

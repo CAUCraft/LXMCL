@@ -265,6 +265,12 @@ func TestBackupAndRestoreKeepExistingWorld(t *testing.T) {
 	if err != nil || string(b) != "first" {
 		t.Fatalf("selected restore overwrote an existing world: %q %v", b, err)
 	}
+	if err := os.Rename(level, level+"_old"); err != nil {
+		t.Fatal(err)
+	}
+	if partial, err := BackupSaves(t.Context(), i, t.TempDir()); partial != "" || err == nil || !strings.Contains(err.Error(), "Survival") {
+		t.Fatalf("backup omitted a world needing recovery: %q %v", partial, err)
+	}
 	files["Survival/level.dat"] = "other"
 	if err := os.WriteFile(selection, testZIP(t, files), 0600); err != nil {
 		t.Fatal(err)
