@@ -30,3 +30,7 @@ func SetContentEnabledBatch(ctx context.Context, i Instance, kind ContentKind, f
 func ImportContent(ctx context.Context, i Instance, kind ContentKind, source string) error {
 	return content.Import(ctx, i, kind, source)
 }
+
+func ImportContents(ctx context.Context, i Instance, kind ContentKind, sources []string) (int, error) {
+	return content.ImportMany(ctx, i, kind, sources)
+}

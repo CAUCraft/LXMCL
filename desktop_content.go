@@ -97,9 +97,14 @@ func (a *desktop) instanceContent(c *ui.Context, i launcher.Instance) {
 			if kind == launcher.Mods {
 				ext = "jar"
 			}
-			a.pickPath(mygo.OpenDialogOptions{Title: "选择本地资源", Filters: []mygo.FileFilter{{Name: "游戏资源", Extensions: []string{ext}}}}, func(path string) {
-				a.runInstanceTask(i, "导入资源", func(ctx context.Context) error {
-					return launcher.ImportContent(ctx, i, kind, path)
+			a.pickPaths(mygo.OpenDialogOptions{Title: "选择本地资源（可多选）", Multiple: true,
+				Filters: []mygo.FileFilter{{Name: "游戏资源", Extensions: []string{ext}}}}, func(paths []string) {
+				a.runInstanceTask(i, fmt.Sprintf("导入 %d 项资源", len(paths)), func(ctx context.Context) error {
+					completed, err := launcher.ImportContents(ctx, i, kind, paths)
+					if err != nil {
+						return fmt.Errorf("已导入 %d / %d 项：%w", completed, len(paths), err)
+					}
+					return nil
 				})
 			})
 		}

@@ -207,6 +207,16 @@ func TestImportFabricModDoesNotReplaceExistingFile(t *testing.T) {
 	if err := ImportContent(t.Context(), i, Mods, source); err == nil {
 		t.Fatal("overwrote the existing mod")
 	}
+	second := filepath.Join(filepath.Dir(source), "second.jar")
+	if err := os.WriteFile(second, content, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := ImportContents(t.Context(), i, Mods, []string{source, second}); n != 1 || err == nil || !strings.Contains(err.Error(), "example.jar") {
+		t.Fatalf("batch import should retain the conflict and import the other file: %d, %v", n, err)
+	}
+	if files, err := ListContent(i, Mods); err != nil || len(files) != 2 {
+		t.Fatalf("batch import lost resources: %v, %v", files, err)
+	}
 }
 
 func TestBackupAndRestoreKeepExistingWorld(t *testing.T) {

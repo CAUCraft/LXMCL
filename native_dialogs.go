@@ -8,6 +8,10 @@ import (
 )
 
 func (a *desktop) pickPath(options mygo.OpenDialogOptions, accept func(string)) {
+	a.pickPaths(options, func(paths []string) { accept(paths[0]) })
+}
+
+func (a *desktop) pickPaths(options mygo.OpenDialogOptions, accept func([]string)) {
 	if !a.ready || a.busy || a.pickerBusy {
 		return
 	}
@@ -20,7 +24,7 @@ func (a *desktop) pickPath(options mygo.OpenDialogOptions, accept func(string)) 
 			if err != nil {
 				a.message("无法打开系统选择窗口", err)
 			} else if len(paths) > 0 {
-				accept(paths[0])
+				accept(paths)
 			}
 		})
 	}()
