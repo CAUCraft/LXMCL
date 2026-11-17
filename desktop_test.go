@@ -188,12 +188,27 @@ func TestDesktopTasksReachableDuringDownload(t *testing.T) {
 		t.Fatalf("cancel could be submitted again or cleared the active operation: %v", err)
 	}
 	capture(t, tt, "tasks-canceling-compact")
-	a.logOpen, a.logPath, a.logText = true, "launcher.log", "Minecraft is starting."
+	const failure = "[12:00:01] [main/ERROR] Failed to load mod\njava.lang.RuntimeException: demo\n\tat demo.Client.start(Client.java:42)\n"
+	a.logOpen, a.logPath, a.logText = true, "launcher.log", "[12:00:00] [main/INFO] Minecraft is starting.\n"+failure
 	tt.Frame()
 	if _, ok := tt.Find("游戏日志"); !ok {
 		t.Fatal("the log viewer did not open")
 	}
 	capture(t, tt, "log-dark-compact")
+	if err := tt.Click("警告 / 错误"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.Click("复制当前日志"); err != nil || tt.Clipboard() != failure {
+		t.Fatalf("log filter lost the stack trace: %v", err)
+	}
+	if err := tt.Click("搜索游戏日志"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Type("Client.java")
+	capture(t, tt, "log-filtered-compact")
+	if err := tt.Click("复制当前日志"); err != nil || tt.Clipboard() != failure {
+		t.Fatalf("log search lost the event context: %v", err)
+	}
 	tt.Key(0, ui.KeyEscape)
 	if a.logOpen {
 		t.Fatal("Escape did not close the log viewer")
@@ -446,7 +461,9 @@ func TestResourceAndServerEntrypoints(t *testing.T) {
 	a, tt := testDesktop(t)
 	a.state.Instances[1].Loader, a.state.Instances[1].LoaderVersion = "Fabric", "0.16.14"
 	i := a.state.Instances[1]
-	a.content = contentView{id: i.ID, revision: i.Revision, tab: 1, files: []launcher.ContentFile{{Name: "demo.jar", Enabled: true}}}
+	a.content = contentView{id: i.ID, revision: i.Revision, tab: 1, files: []launcher.ContentFile{
+		{Name: "demo.jar", Enabled: true, Size: 2 << 20}, {Name: "sodium.jar", Enabled: true, Size: 1 << 20}, {Name: "old.jar", Enabled: false},
+	}}
 	a.inspect(i)
 	tt.Frame()
 	if _, ok := tt.Find("加载器"); !ok {
@@ -456,6 +473,38 @@ func TestResourceAndServerEntrypoints(t *testing.T) {
 		t.Fatal(err)
 	}
 	capture(t, tt, "fabric-mods")
+	tt.SetSize(820, 530)
+	tt.SetDark(true)
+	tt.Advance(500 * time.Millisecond)
+	tt.Frame()
+	if err := tt.Click("全选当前列表"); err != nil {
+		t.Fatal(err)
+	}
+	if len(a.content.selection(a.content.files)) != 3 {
+		t.Fatal("select all missed local resources")
+	}
+	tt.Advance(250 * time.Millisecond)
+	tt.Frame()
+	capture(t, tt, "resources-selected-compact")
+	if err := tt.Click("搜索本地资源"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Type("SODIUM")
+	if len(a.content.visibleFiles()) != 1 || len(a.content.selection(a.content.files)) != 0 {
+		t.Fatal("filter did not narrow files and clear hidden selections")
+	}
+	if err := tt.Click("复制资源列表"); err != nil || tt.Clipboard() != "[启用] sodium.jar\n" {
+		t.Fatalf("filtered list copy: %v", err)
+	}
+	a.content.query = ""
+	tt.Frame()
+	if err := tt.Click("已停用"); err != nil {
+		t.Fatal(err)
+	}
+	if files := a.content.visibleFiles(); len(files) != 1 || files[0].Name != "old.jar" || a.state.Selected != 1 {
+		t.Fatal("disabled filter or launch target changed")
+	}
+	capture(t, tt, "resources-disabled-compact")
 	if err := tt.Click("添加模组…"); err != nil {
 		t.Fatal(err)
 	}

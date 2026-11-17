@@ -132,6 +132,40 @@ func TestModrinthPackVerifiesContentAndTargetsInstance(t *testing.T) {
 	}
 }
 
+func TestBulkContentKeepsConflictsAndReportsPartialChanges(t *testing.T) {
+	i := Instance{GameDir: t.TempDir()}
+	dir := filepath.Join(i.GameDir, "resourcepacks")
+	if err := os.Mkdir(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"good.zip", "conflict.zip", "conflict.zip.disabled"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(name), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	files := []ContentFile{{Name: "good.zip", Enabled: true}, {Name: "conflict.zip", Enabled: true}}
+	if n, err := SetContentEnabledBatch(t.Context(), i, ResourcePacks, files, false); n != 1 || err == nil || !strings.Contains(err.Error(), "conflict.zip") {
+		t.Fatalf("expected one change and a named conflict: %d, %v", n, err)
+	}
+	for _, name := range []string{"conflict.zip", "conflict.zip.disabled"} {
+		if b, err := os.ReadFile(filepath.Join(dir, name)); err != nil || string(b) != name {
+			t.Fatalf("conflict replaced: %q, %v", b, err)
+		}
+	}
+	files = []ContentFile{{Name: "good.zip"}, {Name: "../outside.zip"}}
+	if n, err := SetContentEnabledBatch(t.Context(), i, ResourcePacks, files, true); n != 0 || err == nil {
+		t.Fatalf("invalid batch partially applied: %d, %v", n, err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if n, err := SetContentEnabledBatch(ctx, i, ResourcePacks, files[:1], true); n != 0 || !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled batch applied: %d, %v", n, err)
+	}
+	if n, err := SetContentEnabledBatch(t.Context(), i, ResourcePacks, files[:1], true); n != 1 || err != nil {
+		t.Fatalf("could not restore disabled resource: %d, %v", n, err)
+	}
+}
+
 func TestShaderPackRequiresShadersDirectoryAndFabricInstance(t *testing.T) {
 	i := Instance{GameDir: t.TempDir(), Loader: "Vanilla"}
 	source := filepath.Join(t.TempDir(), "test.zip")
@@ -172,6 +206,16 @@ func TestImportFabricModDoesNotReplaceExistingFile(t *testing.T) {
 	}
 	if err := ImportContent(t.Context(), i, Mods, source); err == nil {
 		t.Fatal("overwrote the existing mod")
+	}
+	second := filepath.Join(filepath.Dir(source), "second.jar")
+	if err := os.WriteFile(second, content, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := ImportContents(t.Context(), i, Mods, []string{source, second}); n != 1 || err == nil || !strings.Contains(err.Error(), "example.jar") {
+		t.Fatalf("batch import should retain the conflict and import the other file: %d, %v", n, err)
+	}
+	if files, err := ListContent(i, Mods); err != nil || len(files) != 2 {
+		t.Fatalf("batch import lost resources: %v, %v", files, err)
 	}
 }
 

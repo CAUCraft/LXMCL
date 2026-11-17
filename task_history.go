@@ -1,8 +1,6 @@
 package main
 
 import (
-	"fmt"
-
 	launcherlog "github.com/CAUCraft/LXMCL/internal/log"
 	"github.com/CAUCraft/LXMCL/internal/tasks"
 )
@@ -54,17 +52,30 @@ func (a *desktop) showLog(path string) {
 	if !launcherlog.IsGame(path) {
 		return
 	}
+	if a.logPath != path || !a.logOpen {
+		a.logQuery, a.logFilter, a.logScroll.Y, a.logText = "", 0, 0, ""
+	}
+	a.logPath, a.logOpen = path, true
+	a.reloadLog()
+}
+
+func (a *desktop) reloadLog() {
+	if a.ctx == nil || !launcherlog.IsGame(a.logPath) {
+		return
+	}
 	a.logRequest++
 	request := a.logRequest
-	a.logPath, a.logText, a.logOpen = path, "正在读取游戏日志…", true
+	path := a.logPath
+	a.logReading, a.logError = true, ""
 	go func() {
 		log, err := launcherlog.ReadGame(path)
 		a.post(func() {
 			if a.logRequest != request {
 				return
 			}
+			a.logReading = false
 			if err != nil {
-				a.logText = fmt.Sprintf("无法读取日志：%s", err)
+				a.logText, a.logError = "", err.Error()
 			} else {
 				a.logText = log
 			}

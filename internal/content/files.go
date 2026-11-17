@@ -1,7 +1,9 @@
 package content
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -104,4 +106,36 @@ func SetEnabled(i instance.Instance, kind Kind, name string, enabled bool) error
 		return i18n.Error("resource.name_conflict")
 	}
 	return root.Rename(from, to)
+}
+
+// SetEnabledBatch changes only the captured files that need the requested state.
+// Earlier changes remain applied if a later file fails or the operation is canceled.
+func SetEnabledBatch(ctx context.Context, i instance.Instance, kind Kind, files []File, enabled bool) (int, error) {
+	ext, _, err := kind.Format(i)
+	if err != nil {
+		return 0, err
+	}
+	for _, file := range files {
+		if !ValidName(file.Name, ext) {
+			return 0, i18n.Error("resource.filename_invalid")
+		}
+	}
+	changed := 0
+	var failures []error
+	seen := make(map[string]bool, len(files))
+	for _, file := range files {
+		if err := ctx.Err(); err != nil {
+			return changed, errors.Join(append(failures, err)...)
+		}
+		if file.Enabled == enabled || seen[file.Name] {
+			continue
+		}
+		seen[file.Name] = true
+		if err := SetEnabled(i, kind, file.Name, enabled); err != nil {
+			failures = append(failures, fmt.Errorf("%s: %w", file.Name, err))
+		} else {
+			changed++
+		}
+	}
+	return changed, errors.Join(failures...)
 }

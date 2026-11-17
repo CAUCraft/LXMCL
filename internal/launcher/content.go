@@ -23,6 +23,14 @@ func SetContentEnabled(i Instance, kind ContentKind, name string, enabled bool) 
 	return content.SetEnabled(i, kind, name, enabled)
 }
 
+func SetContentEnabledBatch(ctx context.Context, i Instance, kind ContentKind, files []ContentFile, enabled bool) (int, error) {
+	return content.SetEnabledBatch(ctx, i, kind, files, enabled)
+}
+
 func ImportContent(ctx context.Context, i Instance, kind ContentKind, source string) error {
 	return content.Import(ctx, i, kind, source)
+}
+
+func ImportContents(ctx context.Context, i Instance, kind ContentKind, sources []string) (int, error) {
+	return content.ImportMany(ctx, i, kind, sources)
 }
