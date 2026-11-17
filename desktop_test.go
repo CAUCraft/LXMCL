@@ -603,6 +603,21 @@ func TestResourceAndServerEntrypoints(t *testing.T) {
 		t.Fatal(err)
 	}
 	capture(t, tt, "fabric-mods")
+	zone, ok := tt.Find("本地资源区")
+	if !ok {
+		t.Fatal("missing resource drop target")
+	}
+	x, y := zone.X+zone.W/2, zone.Y+zone.H/2
+	a.pickerBusy = true
+	tt.Frame()
+	if tt.DropFiles(x, y, "demo.jar") {
+		t.Fatal("accepted a drop during another file selection")
+	}
+	a.pickerBusy = false
+	tt.Frame()
+	if !tt.DropFiles(x, y, "demo.jar") || a.state.Selected != 1 || a.content.id != i.ID {
+		t.Fatal("resource drop did not stay on the viewed instance")
+	}
 	tt.SetSize(820, 530)
 	tt.SetDark(true)
 	tt.Advance(500 * time.Millisecond)
@@ -702,6 +717,12 @@ func TestResourceAndServerEntrypoints(t *testing.T) {
 	a.state.Remove(2)
 	if target, ok := a.serverInstance(); !ok || target.ID != 1 {
 		t.Fatal("removed server instance did not fall back to the home target")
+	}
+	a.inspectContent(a.state.Instances[0], launcher.ResourcePacks)
+	tt.Frame()
+	capture(t, tt, "resource-drop-empty-compact")
+	if !tt.HasText(".zip 文件拖到此处") {
+		t.Fatal("missing file type hint for an empty resource pack directory")
 	}
 }
 
