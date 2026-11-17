@@ -350,6 +350,7 @@
   "version.catalog_empty": "The official version catalog is empty",
   "version.modern_required": "Minecraft 1.20.1 or a later release is required",
   "version.release_not_found": "The official release catalog does not contain %s",
+  "version.no_supported_releases": "The catalog contains no supported Minecraft releases.",
   "version.select_supported": "Select a supported Minecraft release",
   "xbox.authorization_denied": "Xbox authorization failed (%d). Check your Xbox profile, region or family settings",
   "xbox.minecraft_token_missing": "Xbox did not return the credentials required by Minecraft",

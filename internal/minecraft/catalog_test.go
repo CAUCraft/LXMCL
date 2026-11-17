@@ -22,6 +22,7 @@ func TestCatalogRequiresCompleteBoundedJSON(t *testing.T) {
 		valid      bool
 	}{
 		{"valid", valid, true},
+		{"unsupported releases", strings.Replace(valid, "1.21.1", "1.7.10", 1), false},
 		{"exact limit", valid + strings.Repeat(" ", (8<<20)-len(valid)), true},
 		{"oversized", valid + strings.Repeat(" ", (8<<20)-len(valid)+1), false},
 		{"garbage suffix", valid + "garbage", false},
