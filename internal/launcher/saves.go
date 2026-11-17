@@ -15,3 +15,9 @@ func BackupSaves(ctx context.Context, i Instance, dataRoot string) (string, erro
 func RestoreSaves(ctx context.Context, i Instance, source string) (int, error) {
 	return saves.Restore(ctx, i.GameDir, source)
 }
+
+type SavePreview = saves.Preview
+
+func InspectSaveArchive(ctx context.Context, source string) (SavePreview, error) {
+	return saves.Inspect(ctx, source)
+}

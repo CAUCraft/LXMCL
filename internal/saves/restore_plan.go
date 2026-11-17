@@ -3,6 +3,8 @@ package saves
 import (
 	"archive/zip"
 	"context"
+	"crypto/sha256"
+	"fmt"
 	"path"
 	"sort"
 	"strings"
@@ -11,8 +13,9 @@ import (
 )
 
 type restorePlan struct {
-	entries []*zip.File
-	worlds  []string
+	entries   []*zip.File
+	worlds    []string
+	signature [sha256.Size]byte
 }
 
 // planRestore checks the whole ZIP before opening or creating the game directory.
@@ -23,6 +26,7 @@ func planRestore(ctx context.Context, entries []*zip.File) (restorePlan, error) 
 	}
 	paths := make(archivePaths)
 	worlds := make(map[string]bool)
+	index := sha256.New()
 	var size uint64
 	for _, entry := range entries {
 		if err := ctx.Err(); err != nil {
@@ -36,6 +40,9 @@ func planRestore(ctx context.Context, entries []*zip.File) (restorePlan, error) 
 		if err := paths.add(name, directory); err != nil {
 			return plan, err
 		}
+		// The validated names, types, sizes and CRCs describe the preview without
+		// reading gigabytes of world data just to populate a selection dialog.
+		fmt.Fprintf(index, "%q %t %d %08x\n", name, directory, entry.UncompressedSize64, entry.CRC32)
 		world, rest, nested := strings.Cut(name, "/")
 		if !nested && !directory {
 			return plan, i18n.Error("saves.archive_world_directory_required")
@@ -55,6 +62,7 @@ func planRestore(ctx context.Context, entries []*zip.File) (restorePlan, error) 
 		}
 		plan.worlds = append(plan.worlds, name)
 	}
+	copy(plan.signature[:], index.Sum(nil))
 	sort.Strings(plan.worlds)
 	return plan, nil
 }

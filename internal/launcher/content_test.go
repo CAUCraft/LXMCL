@@ -244,6 +244,38 @@ func TestBackupAndRestoreKeepExistingWorld(t *testing.T) {
 	if string(got) != "newer" || string(copy) != "original" {
 		t.Fatalf("restore replaced the current world or lost the backup: %q %q", got, copy)
 	}
+	selection := filepath.Join(t.TempDir(), "worlds.zip")
+	files := map[string]string{"Workshop/level.dat": "machines", "Survival/level.dat": "first", "Survival2/level.dat": "unrelated"}
+	if err := os.WriteFile(selection, testZIP(t, files), 0600); err != nil {
+		t.Fatal(err)
+	}
+	preview, err := InspectSaveArchive(t.Context(), selection)
+	if err != nil || strings.Join(preview.Worlds(), ",") != "Survival,Survival2,Workshop" {
+		t.Fatalf("world preview: %v %v", preview.Worlds(), err)
+	}
+	if n, err := preview.Restore(t.Context(), i.GameDir, "Survival"); n != 1 || err != nil {
+		t.Fatalf("selected restore: %d %v", n, err)
+	}
+	for _, world := range []string{"Workshop", "Survival2"} {
+		if _, err := os.Stat(filepath.Join(filepath.Dir(dir), world)); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("restored unselected world %s: %v", world, err)
+		}
+	}
+	b, err := os.ReadFile(filepath.Join(filepath.Dir(dir), "Survival (3)", "level.dat"))
+	if err != nil || string(b) != "first" {
+		t.Fatalf("selected restore overwrote an existing world: %q %v", b, err)
+	}
+	files["Survival/level.dat"] = "other"
+	if err := os.WriteFile(selection, testZIP(t, files), 0600); err != nil {
+		t.Fatal(err)
+	}
+	absent := filepath.Join(t.TempDir(), "absent")
+	if _, err := preview.Restore(t.Context(), absent, ""); err == nil {
+		t.Fatal("restored a changed archive without a new preview")
+	}
+	if _, err := os.Stat(absent); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("stale preview created a destination: %v", err)
+	}
 	malicious := filepath.Join(t.TempDir(), "unsafe.zip")
 	if err := os.WriteFile(malicious, testZIP(t, map[string]string{"../outside/level.dat": "evil", "World/level.dat": "valid"}), 0600); err != nil {
 		t.Fatal(err)

@@ -169,6 +169,7 @@ type desktop struct {
 	history       []taskRecord
 	logOpen       bool
 	logLibrary    *instanceLogView
+	restore       *restoreView
 	logText       string
 	logPath       string
 	logRequest    uint64

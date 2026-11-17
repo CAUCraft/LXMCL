@@ -477,6 +477,43 @@ func TestInstanceSettingsKeepDraftAndLaunchTargetSeparate(t *testing.T) {
 
 }
 
+func TestSaveRestorePreviewKeepsTarget(t *testing.T) {
+	a, tt := testDesktop(t)
+	target := a.state.Instances[1]
+	a.inspect(target)
+	a.detailPage = detailFiles
+	p := &restoreView{target: target, filename: "社团世界备份.zip", worlds: []string{"建筑测试", "红石实验", "社团生存"}}
+	a.restore = p
+	tt.Frame()
+	capture(t, tt, "restore-worlds-light")
+	if err := tt.Click("红石实验"); err != nil || p.selected != 2 {
+		t.Fatalf("world selection: %d %v", p.selected, err)
+	}
+	tt.SetSize(820, 530)
+	tt.SetDark(true)
+	tt.Frame()
+	tt.Advance(250 * time.Millisecond)
+	tt.Frame()
+	capture(t, tt, "restore-selected-compact")
+	tt.Key(0, ui.KeyF2)
+	if a.form.open || a.state.Selected != 1 {
+		t.Fatal("preview leaked a global shortcut or changed launch target")
+	}
+	a.state.Instances[1].Revision++
+	tt.Frame()
+	if _, ok := tt.Find("恢复世界"); ok || a.busy {
+		t.Fatal("stale restore can still be submitted")
+	}
+	if _, ok := tt.Find("返回实例"); !ok {
+		t.Fatal("stale target has no recovery action")
+	}
+	capture(t, tt, "restore-error-compact")
+	tt.Key(0, ui.KeyEscape)
+	if a.restore != nil || a.detailPage != detailFiles || a.inspected != target.ID {
+		t.Fatal("Escape left the originating files tab")
+	}
+}
+
 func testDesktop(t *testing.T) (*desktop, *ui.Tester) {
 	t.Helper()
 	logo, err := ui.DecodeImage(logoPNG)

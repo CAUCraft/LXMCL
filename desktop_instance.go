@@ -11,7 +11,6 @@ import (
 
 	"github.com/CAUCraft/LXMCL/internal/launcher"
 	launcherlog "github.com/CAUCraft/LXMCL/internal/log"
-	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"github.com/lobehub/lobe-mygo/pkg/action"
 	"github.com/lobehub/lobe-mygo/pkg/feedback"
@@ -290,13 +289,7 @@ func (a *desktop) instanceFiles(c *ui.Context, i launcher.Instance) {
 			a.openPath(dir, true)
 		}
 		if button(c, "恢复存档…", action.Default, disabled) {
-			a.pickPath(mygo.OpenDialogOptions{Title: "选择存档 ZIP（保留已有世界）", DefaultPath: dir,
-				Filters: []mygo.FileFilter{{Name: "存档归档", Extensions: []string{"zip"}}}}, func(path string) {
-				a.runInstanceTask(i, "恢复存档", func(ctx context.Context) error {
-					_, err := launcher.RestoreSaves(ctx, i, path)
-					return err
-				})
-			})
+			a.pickSaveArchive(i)
 		}
 		if button(c, "备份存档", action.Primary, disabled) {
 			root := a.store.Root
