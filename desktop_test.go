@@ -737,3 +737,61 @@ func capture(t *testing.T, tt *ui.Tester, name string) {
 		t.Fatal(err)
 	}
 }
+
+func TestServerDialogsKeepTemporaryAndSavedTargetsSeparate(t *testing.T) {
+	a, tt := testDesktop(t)
+	click := func(label string) {
+		t.Helper()
+		if err := tt.Click(label); err != nil {
+			t.Fatal(err)
+		}
+	}
+	click("联机")
+	capture(t, tt, "server-empty-light")
+	click("临时直连…")
+	tt.Type("not a valid address")
+	click("启动并连接")
+	if a.serverForm == nil || a.serverForm.err == "" || len(a.state.Servers) != 0 {
+		t.Fatal("invalid direct address was accepted or saved")
+	}
+	tt.Key(0, ui.KeyF1)
+	if a.page != pageNetwork {
+		t.Fatal("global navigation escaped the direct connection dialog")
+	}
+	click("选择联机实例")
+	click("建筑测试 · 1.21.4 · 原版")
+	if a.serverInstanceID != 2 || a.state.Selected != 1 {
+		t.Fatal("temporary connection changed the home launch target")
+	}
+	tt.Key(0, ui.KeyEscape)
+	if a.serverForm != nil {
+		t.Fatal("Escape did not close direct connection")
+	}
+	if err := a.state.AddServer("社团生存服", "play.example.org"); err != nil {
+		t.Fatal(err)
+	}
+	tt.SetSize(820, 530)
+	tt.SetDark(true)
+	tt.Frame()
+	click("编辑服务器 社团生存服")
+	if a.serverForm.original != a.state.Servers[0] || a.serverForm.address != "play.example.org:25565" {
+		t.Fatal("edit did not capture the selected server")
+	}
+	capture(t, tt, "server-edit-dark")
+	click("取消")
+	click("移除服务器 社团生存服")
+	click("取消")
+	if a.serverForm != nil || len(a.state.Servers) != 1 {
+		t.Fatal("canceling removal changed favorites")
+	}
+	click("添加服务器…")
+	tt.Type("PLAY.EXAMPLE.ORG")
+	click("添加到收藏")
+	if a.serverForm == nil || a.serverForm.err == "" || len(a.state.Servers) != 1 {
+		t.Fatal("duplicate favorite was accepted")
+	}
+	click("取消")
+	click("临时直连…")
+	tt.Type("[2001:db8::2]:25566")
+	capture(t, tt, "server-direct-dark")
+}

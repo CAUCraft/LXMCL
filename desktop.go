@@ -86,7 +86,7 @@ const (
 
 func (a *desktop) view(c *ui.Context) {
 	theme.Apply(c)
-	if a.ready && !a.form.open && a.restore == nil && !a.logOpen && !a.licensesOpen &&
+	if a.ready && !a.form.open && a.serverForm == nil && a.restore == nil && !a.logOpen && !a.licensesOpen &&
 		!a.modpacks.keyOpen &&
 		(a.stationLogin == nil || !a.stationLogin.open) &&
 		(a.microsoft == nil || !a.microsoft.open) {
@@ -153,6 +153,7 @@ func (a *desktop) view(c *ui.Context) {
 		a.editor(c.Key("instance-editor"))
 		a.logDialog(c.Key("game-log"))
 		a.restoreDialog(c.Key("restore-save"))
+		a.serverDialog(c.Key("server-editor"))
 		a.licensesDialog(c.Key("third-party-licenses"))
 		a.microsoftLoginDialog(c.Key("microsoft-login"))
 		a.stationLoginDialog(c.Key("station-login"))
