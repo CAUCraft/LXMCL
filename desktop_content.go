@@ -200,7 +200,7 @@ func (a *desktop) instanceContent(c *ui.Context, i launcher.Instance) {
 func (a *desktop) importResourceFiles(i launcher.Instance, kind launcher.ContentKind, paths []string) {
 	// Native drop events and file pickers own the original slice.
 	sources := slices.Clone(paths)
-	a.runInstanceTask(i, fmt.Sprintf("导入 %d 项资源", len(sources)), func(ctx context.Context) error {
+	a.runInstanceTask(i, fmt.Sprintf("导入 %d 项%s", len(sources), contentLabel(kind)), kind, func(ctx context.Context) error {
 		completed, err := launcher.ImportContents(ctx, i, kind, sources)
 		if err != nil {
 			return fmt.Errorf("已导入 %d / %d 项：%w", completed, len(sources), err)
@@ -355,7 +355,7 @@ func (a *desktop) contentList(c *ui.Context, i launcher.Instance, disabled bool)
 			}
 			if button(c, label, action.Default, disabled) {
 				kind := v.kind()
-				a.runInstanceTask(i, label+"资源", func(context.Context) error {
+				a.runInstanceTask(i, label+contentLabel(kind), kind, func(context.Context) error {
 					return launcher.SetContentEnabled(i, kind, file.Name, !file.Enabled)
 				})
 			}
@@ -385,11 +385,11 @@ func (a *desktop) contentList(c *ui.Context, i launcher.Instance, disabled bool)
 }
 
 func (a *desktop) setSelectedContent(i launcher.Instance, kind launcher.ContentKind, files []launcher.ContentFile, enabled bool) {
-	label := "批量停用资源"
+	label := "批量停用"
 	if enabled {
-		label = "批量启用资源"
+		label = "批量启用"
 	}
-	a.runInstanceTask(i, label, func(ctx context.Context) error {
+	a.runInstanceTask(i, label+contentLabel(kind), kind, func(ctx context.Context) error {
 		changed, err := launcher.SetContentEnabledBatch(ctx, i, kind, files, enabled)
 		if err != nil {
 			return fmt.Errorf("已更改 %d 项，其余资源请刷新后检查：%w", changed, err)
@@ -398,8 +398,12 @@ func (a *desktop) setSelectedContent(i launcher.Instance, kind launcher.ContentK
 	})
 }
 
-func (a *desktop) runInstanceTask(i launcher.Instance, label string, work func(context.Context) error) {
-	a.runContentTask(i, label, nil, func(ctx context.Context, _ func(launcher.Progress)) error { return work(ctx) })
+func (a *desktop) runInstanceTask(i launcher.Instance, label string, kind launcher.ContentKind, work func(context.Context) error) {
+	var resource *resourceTask
+	if kind != "" {
+		resource = &resourceTask{Kind: string(kind)}
+	}
+	a.runContentTask(i, label, resource, func(ctx context.Context, _ func(launcher.Progress)) error { return work(ctx) })
 }
 
 func (a *desktop) runContentTask(i launcher.Instance, label string, resource *resourceTask, work func(context.Context, func(launcher.Progress)) error) {
