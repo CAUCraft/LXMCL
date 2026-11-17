@@ -136,6 +136,17 @@ func TestDesktopNavigationKeepsLaunchTarget(t *testing.T) {
 	if a.inspected != 0 || a.state.Selected != 1 {
 		t.Fatalf("second Escape should return to the list; inspected = %d, selected = %d", a.inspected, a.state.Selected)
 	}
+	a.state.Instances, a.state.Selected, a.page = nil, 0, pageHome
+	tt.SetSize(820, 530)
+	tt.Frame()
+	capture(t, tt, "home-first-run")
+	if err := tt.Click("切换启动账号"); err != nil || a.page != pageAccount {
+		t.Fatalf("first-run account setup is unreachable: %v", err)
+	}
+	tt.Key(0, ui.KeyEscape)
+	if err := tt.Click("安装实例…"); err != nil || a.downloadPage != downloadGame || a.page != pageDownloads {
+		t.Fatalf("first-run install is unreachable: %v", err)
+	}
 }
 
 func TestDesktopTasksReachableDuringDownload(t *testing.T) {
@@ -230,7 +241,24 @@ func TestCompactSettingsAndLicenses(t *testing.T) {
 	if a.memory != "4096" {
 		t.Fatalf("restored memory = %q", a.memory)
 	}
+	tt.SetSize(820, 530)
+	a.memory = "4GiB"
+	tt.Frame()
+	capture(t, tt, "settings-invalid-compact")
+	if _, ok := tt.Find("最大内存须为 1024–65536 MiB 的整数"); !ok {
+		t.Fatal("invalid memory has no inline explanation")
+	}
+	if err := tt.Click("应用设置"); err != nil || a.busy || a.state.Settings.Memory != 4096 {
+		t.Fatalf("invalid memory was submitted: %v", err)
+	}
 	tt.Key(0, ui.KeyF1)
+	if _, ok := tt.Find("有未保存的更改"); !ok || a.memory != "4GiB" {
+		t.Fatal("changing settings tabs hid or discarded pending changes")
+	}
+	if err := tt.Click("还原更改"); err != nil || a.memory != "4096" {
+		t.Fatalf("cannot restore settings from the about tab: %v", err)
+	}
+	capture(t, tt, "about-compact")
 	if err := tt.Click("查看许可证"); err != nil {
 		t.Fatal(err)
 	}

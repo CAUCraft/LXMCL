@@ -290,10 +290,11 @@ func (a *desktop) home(c *ui.Context) {
 func (a *desktop) launchCard(c *ui.Context) {
 	i, ok := a.state.Find(a.state.Selected)
 	if len(a.state.Instances) == 0 {
-		panelHeading(c, lucide.PackageOpen(), "暂无实例", "")
+		panelHeading(c, lucide.PackageOpen(), "开始游戏", "选择游戏版本，创建你的第一个实例。")
 		if launchButton(c, "安装实例…", lucide.Download(), false) {
 			a.create()
 		}
+		a.homeAccount(c)
 		return
 	}
 	ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
@@ -329,6 +330,23 @@ func (a *desktop) launchCard(c *ui.Context) {
 		if icon(c, lucide.SlidersHorizontal(), "实例设置", !ok) {
 			a.inspect(i)
 			a.detailPage = detailLaunch
+		}
+	})
+	a.homeAccount(c)
+}
+
+func (a *desktop) homeAccount(c *ui.Context) {
+	layout.Divider(c, layout.DividerProps{})
+	ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+		kind := "离线"
+		if a.state.StationKey != "" {
+			kind = "皮肤站"
+		} else if a.state.MicrosoftProfile != "" {
+			kind = "Microsoft"
+		}
+		muted(c, kind+" · "+a.accountName()).FontSize(12).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
+		if action.Button(c, "切换账号", action.ButtonProps{Variant: action.Text, Size: theme.Small}).Label("切换启动账号").Clicked() {
+			a.openAccounts(false)
 		}
 	})
 }

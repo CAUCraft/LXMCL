@@ -1,12 +1,15 @@
 package main
 
 import (
+	"runtime"
 	"strconv"
 
 	"github.com/CAUCraft/LXMCL/internal/launcher"
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"github.com/lobehub/lobe-mygo/pkg/action"
 	"github.com/lobehub/lobe-mygo/pkg/display"
+	"github.com/lobehub/lobe-mygo/pkg/feedback"
 	"github.com/lobehub/lobe-mygo/pkg/field"
 	"github.com/lobehub/lobe-mygo/pkg/layout"
 	"github.com/lobehub/lobe-mygo/pkg/lucide"
@@ -252,9 +255,7 @@ func (a *desktop) settings(c *ui.Context) {
 						}
 					})
 				}).Grow(1).MinHeight(0)
-				if a.settingsPage < 2 {
-					a.settingsFooter(c)
-				}
+				a.settingsFooter(c)
 			})
 		})
 	})
@@ -265,18 +266,23 @@ func (a *desktop) settingsFooter(c *ui.Context) {
 	if !dirty {
 		return
 	}
-	settingsActions(c, a.busy || a.pickerBusy, func() {
+	_, err := a.settingsDraft()
+	if err != nil {
+		feedback.Alert(c, err.Error(), feedback.AlertProps{Type: feedback.Error})
+	}
+	settingsActions(c, a.busy || a.pickerBusy, err != nil, func() {
 		a.draft, a.memory, a.javaInfo = a.state.Settings, strconv.Itoa(a.state.Settings.Memory), ""
 	}, a.saveSettings)
 }
 
-func settingsActions(c *ui.Context, disabled bool, reset, apply func()) {
+func settingsActions(c *ui.Context, disabled, invalid bool, reset, apply func()) {
 	layout.Divider(c, layout.DividerProps{})
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Justify(ui.End).Children(func() {
+		muted(c, "有未保存的更改").FontSize(12).Grow(1).MinWidth(0)
 		if button(c, "还原更改", action.Text, disabled) {
 			reset()
 		}
-		if button(c, "应用设置", action.Primary, disabled) {
+		if button(c, "应用设置", action.Primary, disabled || invalid) {
 			apply()
 		}
 	})
@@ -285,6 +291,25 @@ func settingsActions(c *ui.Context, disabled bool, reset, apply func()) {
 func (a *desktop) help(c *ui.Context) {
 	heading(c, "关于 LXMCL")
 	sectionPane(c).Padding(8, 14).Gap(5).Children(func() {
+		settingsRow(c, "版本", func() {
+			version := mygo.App.Version()
+			if version == "" {
+				version = "开发版本"
+			}
+			info := "LXMCL " + version + " · " + runtime.GOOS + "/" + runtime.GOARCH
+			display.Text(c, info, display.TextProps{}).Grow(1).MinWidth(0)
+			action.CopyButton(c, info, action.CopyButtonProps{}).Label("复制版本信息")
+		})
+		layout.Divider(c, layout.DividerProps{})
+		settingsRow(c, "项目", func() {
+			if button(c, "源代码", action.Default, false) {
+				c.OpenURL("https://github.com/CAUCraft/LXMCL")
+			}
+			if button(c, "反馈问题", action.Default, false) {
+				c.OpenURL("https://github.com/CAUCraft/LXMCL/issues")
+			}
+		})
+		layout.Divider(c, layout.DividerProps{})
 		settingsRow(c, "许可证", func() {
 			display.Tag(c, "GPLv3", display.TagProps{Color: display.TagGreen, Size: theme.Small})
 			if button(c, "查看许可证", action.Default, false) {

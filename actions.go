@@ -262,23 +262,28 @@ func (a *desktop) refreshCatalog() {
 	}()
 }
 
-func (a *desktop) saveSettings() {
-	next := a.state.Clone()
-	previousPlayer := next.Settings.Player
-	next.Settings = a.draft
-	next.Settings.GameRoot = strings.TrimSpace(a.draft.GameRoot)
-	next.Settings.JavaPath = strings.TrimSpace(a.draft.JavaPath)
-	next.Settings.Player = strings.TrimSpace(a.draft.Player)
+func (a *desktop) settingsDraft() (launcher.Settings, error) {
+	s := a.draft
+	s.GameRoot = strings.TrimSpace(s.GameRoot)
+	s.JavaPath = strings.TrimSpace(s.JavaPath)
+	s.Player = strings.TrimSpace(s.Player)
 	m, err := strconv.Atoi(strings.TrimSpace(a.memory))
 	if err != nil {
-		a.message("最大内存须填写整数 MiB", err)
-		return
+		return s, errors.New("最大内存须为 1024–65536 MiB 的整数")
 	}
-	next.Settings.Memory = m
-	if err := launcher.ValidateSettings(next.Settings); err != nil {
+	s.Memory = m
+	return s, launcher.ValidateSettings(s)
+}
+
+func (a *desktop) saveSettings() {
+	settings, err := a.settingsDraft()
+	if err != nil {
 		a.message("无法保存设置", err)
 		return
 	}
+	next := a.state.Clone()
+	previousPlayer := next.Settings.Player
+	next.Settings = settings
 	player := next.Settings.Player
 	next.Settings.Player = previousPlayer
 	_ = next.UseOfflinePlayer(player)

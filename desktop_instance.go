@@ -110,7 +110,7 @@ func (a *desktop) instanceLaunchSettings(c *ui.Context, i launcher.Instance) {
 		feedback.Alert(c, d.err, feedback.AlertProps{Type: feedback.Error})
 	}
 	if d.fields != launchFields(i.Launch) {
-		settingsActions(c, disabled, func() {
+		settingsActions(c, disabled, false, func() {
 			d.fields, d.err, d.javaResult = launchFields(i.Launch), "", ""
 		}, func() { a.saveInstanceLaunch(i, d, false) })
 	}
