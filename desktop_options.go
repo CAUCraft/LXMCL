@@ -1,6 +1,7 @@
 package main
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/egoist/mygo/ui"
@@ -63,8 +64,12 @@ func catalogPicker(c *ui.Context, value *string, options []field.SelectOption, l
 					!strings.Contains(strings.ToLower(option.Value), q) {
 					continue
 				}
-				items = append(items, display.ListItem{Key: "v:" + option.Value,
-					Label: option.Label, Icon: option.Icon, Disabled: option.Disabled})
+				item := display.ListItem{Key: "v:" + option.Value, Label: option.Label, Icon: option.Icon, Disabled: option.Disabled}
+				if q != "" && (strings.EqualFold(option.Value, q) || strings.EqualFold(option.Label, q)) {
+					items = slices.Insert(items, 0, item)
+				} else {
+					items = append(items, item)
+				}
 			}
 			if len(items) == 0 {
 				muted(c, "无匹配选项").Padding(6)

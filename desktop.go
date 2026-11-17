@@ -589,7 +589,7 @@ func (a *desktop) editor(c *ui.Context) {
 	}
 	submit := false
 	if feedback.Modal(c, &a.form.open, feedback.ModalProps{
-		Title: title, OkText: okText, CancelText: "取消", Width: 480, NoFooter: a.form.mode == "loader",
+		Title: title, OkText: okText, CancelText: "取消", Width: 480, NoFooter: a.form.loaders != nil,
 	}, func() {
 		ui.Column(c).Gap(12).Children(func() {
 			if a.form.mode == "loader" {
@@ -605,7 +605,7 @@ func (a *desktop) editor(c *ui.Context) {
 				return
 			}
 			if a.form.mode == "version" {
-				panelHeading(c, lucide.Package(), a.form.target.Name, "当前版本 "+a.form.target.Version)
+				panelHeading(c, lucide.Package(), a.form.target.Name, "当前版本 "+a.form.target.Version+" · "+loaderName(a.form.target))
 				feedback.Alert(c, "更换版本会继续使用原游戏目录。降级前请备份存档。",
 					feedback.AlertProps{Type: feedback.Warning})
 			} else {
@@ -635,30 +635,18 @@ func (a *desktop) editor(c *ui.Context) {
 				}
 			}
 			if a.form.mode == "version" {
-				ui.Column(c).Gap(5).Children(func() {
-					display.Text(c, "游戏版本", display.TextProps{Strong: true})
-					opts := make([]field.SelectOption, 0, len(a.releases))
-					for _, v := range a.releases {
-						opts = append(opts, field.SelectOption{Value: v.ID, Label: v.ID})
-					}
-					ui.Row(c).Gap(6).Children(func() {
-						field.Input(c, &a.form.version, field.InputProps{Placeholder: "例如 1.21.1"}).
-							Label("游戏版本").Disabled(a.busy).Grow(1).MinWidth(0)
-						catalogPicker(c.Key("versions"), &a.form.version, opts, "选择游戏版本", "浏览版本", a.busy)
-					})
-				})
-				switch {
-				case a.catalogBusy:
-					flightLoading(c, "正在读取官方版本列表…")
-				case a.catalogErr != "":
-					feedback.Alert(c, a.catalogErr, feedback.AlertProps{Type: feedback.Warning})
-					if button(c, "重试获取版本列表", action.Text, a.busy) {
-						a.refreshCatalog()
-					}
-				}
+				a.versionFields(c)
 			}
 			if a.form.err != "" {
 				feedback.Alert(c, a.form.err, feedback.AlertProps{Type: feedback.Error})
+			}
+			if p := a.form.loaders; a.form.mode == "version" && p != nil {
+				ui.Row(c).Gap(8).Justify(ui.End).Children(func() {
+					if button(c, "取消", action.Default, false) {
+						a.form.open = false
+					}
+					submit = button(c, "保存版本", action.Primary, a.busy || p.version == a.form.target.Version || !p.validLoader())
+				})
 			}
 		})
 	}) || submit {

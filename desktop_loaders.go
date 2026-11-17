@@ -88,6 +88,11 @@ func (a *desktop) loaderFields(c *ui.Context, p *loaderSelection, current launch
 		}
 		return before != p.loader
 	}
+	a.loaderVersionField(c, p, current, disabled)
+	return before != p.loader || version != p.loaderVersion
+}
+
+func (a *desktop) loaderVersionField(c *ui.Context, p *loaderSelection, current launcher.Instance, disabled bool) {
 	kind := p.kind()
 	if !disabled && !p.currentLoaderCatalog() {
 		a.loadLoaderCatalog(p, current)
@@ -123,7 +128,46 @@ func (a *desktop) loaderFields(c *ui.Context, p *loaderSelection, current launch
 		}
 	})
 	if p.loaderErr != "" {
-		feedback.Alert(c, p.loaderErr, feedback.AlertProps{Type: feedback.Warning})
+		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+			feedback.Alert(c, "无法获取 Minecraft "+p.version+" 的 "+kind+" 版本列表。", feedback.AlertProps{Type: feedback.Warning}).Grow(1).MinWidth(0)
+			action.CopyButton(c, p.loaderErr, action.CopyButtonProps{}).Label("复制加载器目录错误")
+		})
 	}
-	return before != p.loader || version != p.loaderVersion
+}
+
+func (a *desktop) versionFields(c *ui.Context) {
+	f := &a.form
+	options := make([]field.SelectOption, 0, len(a.releases))
+	for _, v := range a.releases {
+		options = append(options, field.SelectOption{Value: v.ID, Label: v.ID})
+	}
+	before := f.version
+	settingsRow(c, "游戏版本", func() {
+		if f.loaders == nil {
+			field.Input(c, &f.version, field.InputProps{Placeholder: "例如 1.21.1"}).
+				Label("游戏版本").Disabled(a.busy).Grow(1).MinWidth(0)
+			catalogPicker(c.Key("versions"), &f.version, options, "选择游戏版本", "浏览版本", a.busy)
+		} else {
+			catalogPicker(c.Key("versions"), &f.version, options, "选择游戏版本", "", a.busy || len(options) == 0).
+				Grow(1).MinWidth(0).MaxWidth(254)
+		}
+	})
+	if before != f.version {
+		f.err = ""
+	}
+	if p := f.loaders; p != nil {
+		p.version = f.version
+		if p.version != f.target.Version {
+			a.loaderVersionField(c, p, launcher.Instance{}, a.busy || !f.open)
+		}
+	}
+	switch {
+	case a.catalogBusy:
+		flightLoading(c, "正在读取官方版本列表…")
+	case a.catalogErr != "":
+		feedback.Alert(c, a.catalogErr, feedback.AlertProps{Type: feedback.Warning})
+		if button(c, "重试获取版本列表", action.Text, a.busy) {
+			a.refreshCatalog()
+		}
+	}
 }

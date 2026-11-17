@@ -55,20 +55,20 @@ func (s *State) Rename(id int, revision uint64, name string) error {
 	return i18n.Error("instance.form_target_changed")
 }
 
-func (s *State) ChangeVersion(id int, revision uint64, version string) error {
+func (s *State) ChangeVersion(id int, revision uint64, version, loaderVersion string) error {
 	for n := range s.Instances {
 		i := &s.Instances[n]
 		if i.ID != id || i.Revision != revision {
 			continue
 		}
 		next := *i
-		next.Version = version
+		next.Version, next.LoaderVersion = version, loaderVersion
 		if err := next.Validate(); err != nil {
 			return err
 		}
-		if i.Version != version {
-			i.Version = version
-			i.Revision++
+		if next != *i {
+			next.Revision++
+			*i = next
 		}
 		return nil
 	}

@@ -76,8 +76,7 @@ func (a *desktop) instanceOverview(c *ui.Context, i launcher.Instance) {
 		sectionPane(c).Padding(12, 16).Gap(8).Children(func() {
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 				ui.Column(c).Grow(1).MinWidth(0).Children(func() { property(c, "版本", i.Version+" · "+loaderName(i)) })
-				if (i.Vanilla() || i.Fabric()) &&
-					button(c, "更换版本", action.Default, a.busy || a.runningID == i.ID) {
+				if button(c, "更换版本", action.Default, a.busy || a.runningID == i.ID) {
 					a.changeVersion(i)
 				}
 				if button(c, "加载器", action.Default, a.busy || a.runningID == i.ID) {

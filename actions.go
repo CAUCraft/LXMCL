@@ -127,6 +127,9 @@ func (a *desktop) edit(i launcher.Instance) {
 
 func (a *desktop) changeVersion(i launcher.Instance) {
 	a.form = editor{open: true, mode: "version", target: i, version: i.Version}
+	if i.UsesInstaller() || i.Quilt() {
+		a.form.loaders = currentLoaderSelection(i)
+	}
 	if len(a.releases) == 0 {
 		a.refreshCatalog()
 	}
@@ -139,7 +142,7 @@ func (a *desktop) duplicate(i launcher.Instance) {
 		name: availableInstanceName(a.state, title, "副本")}
 }
 
-func (a *desktop) configureLoader(i launcher.Instance) {
+func currentLoaderSelection(i launcher.Instance) *loaderSelection {
 	p := &loaderSelection{version: i.Version}
 	for n, kind := range installLoaders {
 		if strings.EqualFold(i.Loader, kind) {
@@ -147,7 +150,11 @@ func (a *desktop) configureLoader(i launcher.Instance) {
 			break
 		}
 	}
-	a.form = editor{open: true, mode: "loader", target: i, loaders: p}
+	return p
+}
+
+func (a *desktop) configureLoader(i launcher.Instance) {
+	a.form = editor{open: true, mode: "loader", target: i, loaders: currentLoaderSelection(i)}
 }
 
 func (a *desktop) inspect(i launcher.Instance) {
@@ -194,7 +201,15 @@ func (a *desktop) submitEditor() {
 			return
 		}
 		version := strings.TrimSpace(form.version)
-		err = next.ChangeVersion(form.target.ID, form.target.Revision, version)
+		loaderVersion := form.target.LoaderVersion
+		if p := form.loaders; p != nil && version != form.target.Version {
+			if p.version != version || !p.validLoader() {
+				a.form.err = "请选择与目标游戏版本兼容的加载器版本"
+				return
+			}
+			loaderVersion = p.loaderVersion
+		}
+		err = next.ChangeVersion(form.target.ID, form.target.Revision, version, loaderVersion)
 		if err == nil && version != form.target.Version && len(a.releases) > 0 &&
 			!slices.ContainsFunc(a.releases, func(v launcher.Version) bool { return v.ID == version }) {
 			err = errors.New("官方版本列表中没有此版本")
