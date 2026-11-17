@@ -140,6 +140,8 @@
   "loader.unsupported": "Unsupported loader: %s",
   "loader.vanilla": "Vanilla",
   "loader.version_invalid": "Invalid loader version for Minecraft %s / %s: %q",
+  "log.archive_limit": "This archive exceeds 32 MiB before or after decompression. Open the file to view it.",
+  "log.archive_read_failed": "Could not decompress the archived log: %w",
   "log.crash_head": "\n\nShowing only the first 64 KiB of the crash report.\n",
   "log.directory_read_failed": "Could not read %s: %w",
   "log.export_path_required": "Choose an absolute destination path",

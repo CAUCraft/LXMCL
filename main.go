@@ -174,6 +174,7 @@ type desktop struct {
 	logText       string
 	logPath       string
 	logRequest    uint64
+	logCancel     context.CancelFunc
 	logReading    bool
 	logExporting  bool
 	logExported   bool

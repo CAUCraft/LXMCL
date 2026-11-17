@@ -140,6 +140,8 @@
   "loader.unsupported": "不支持加载器 %s",
   "loader.vanilla": "原版",
   "loader.version_invalid": "Minecraft %s 的 %s 加载器版本无效：%q",
+  "log.archive_limit": "归档文件或解压内容超过 32 MiB，请打开文件查看。",
+  "log.archive_read_failed": "无法解压归档日志：%w",
   "log.crash_head": "\n\n仅显示崩溃报告开头 64 KiB。\n",
   "log.directory_read_failed": "无法读取 %s：%w",
   "log.export_path_required": "请选择完整的保存路径",

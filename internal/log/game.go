@@ -1,6 +1,9 @@
 package log
 
 import (
+	"bytes"
+	"compress/gzip"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -14,6 +17,7 @@ const (
 	GameDirectory = "launcher-logs"
 	gamePrefix    = "game-"
 	tailLimit     = 64 << 10
+	archiveLimit  = 32 << 20
 )
 
 // GameHeader records the runtime without logging launch arguments or tokens.
@@ -48,10 +52,13 @@ func ReadGame(path string) (string, error) {
 	if !IsGame(path) {
 		return "", i18n.Error("log.game_path_invalid")
 	}
-	return ReadPreview(path)
+	return ReadPreview(context.Background(), path)
 }
 
-func ReadPreview(path string) (string, error) {
+func ReadPreview(ctx context.Context, path string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	if !IsPreview(path) {
 		return "", i18n.Error("log.game_path_invalid")
 	}
@@ -81,31 +88,74 @@ func ReadPreview(path string) (string, error) {
 		return "", i18n.Error("log.game_not_regular")
 	}
 	crash := filepath.Base(filepath.Dir(path)) == "crash-reports"
-	offset := int64(0)
-	if !crash {
-		offset = max(st.Size()-tailLimit, 0)
+	var b []byte
+	switch {
+	case strings.HasSuffix(name, ".log.gz"):
+		if st.Size() > archiveLimit {
+			return "", i18n.Error("log.archive_limit")
+		}
+		b, err = archivedTail(ctx, io.NewSectionReader(f, 0, st.Size()))
+	case crash:
+		b, err = io.ReadAll(io.LimitReader(f, tailLimit))
+	default:
+		// Include the preceding byte so a complete first line is preserved.
+		offset := max(st.Size()-(tailLimit+1), 0)
+		b, err = io.ReadAll(io.NewSectionReader(f, offset, st.Size()-offset))
 	}
-	if _, err := f.Seek(offset, io.SeekStart); err != nil {
-		return "", err
-	}
-	b, err := io.ReadAll(io.LimitReader(f, tailLimit))
 	if err != nil {
 		return "", err
 	}
-	if offset != 0 {
-		if _, tail, ok := strings.Cut(string(b), "\n"); ok {
-			b = []byte(tail)
+	truncated := len(b) > tailLimit
+	if truncated {
+		preceding := b[0]
+		b = b[1:]
+		if preceding != '\n' {
+			if _, tail, ok := bytes.Cut(b, []byte{'\n'}); ok && len(tail) > 0 {
+				b = tail
+			}
 		}
 	}
 	log := strings.ToValidUTF8(string(b), "\uFFFD")
 	if log == "" {
 		return i18n.Text("log.game_empty"), nil
 	}
-	if offset != 0 {
+	if truncated {
 		return i18n.Text("log.game_tail") + log, nil
 	}
 	if crash && st.Size() > tailLimit {
 		return log + i18n.Text("log.crash_head"), nil
 	}
 	return log, nil
+}
+
+// Keep the same tail and preceding byte as a plain log, regardless of archive size.
+func archivedTail(ctx context.Context, source io.Reader) ([]byte, error) {
+	reader, err := gzip.NewReader(source)
+	if err != nil {
+		return nil, i18n.Error("log.archive_read_failed", err)
+	}
+	defer reader.Close()
+	buf := make([]byte, tailLimit+1)
+	total, pos := 0, 0
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		n, err := reader.Read(buf[pos:])
+		total += n
+		if total > archiveLimit {
+			return nil, i18n.Error("log.archive_limit")
+		}
+		pos = (pos + n) % len(buf)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, i18n.Error("log.archive_read_failed", err)
+		}
+	}
+	if total < len(buf) {
+		return buf[:total], nil
+	}
+	return append(buf[pos:], buf[:pos]...), nil
 }
