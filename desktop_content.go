@@ -183,6 +183,9 @@ func (a *desktop) instanceContent(c *ui.Context, i launcher.Instance) {
 		case len(v.files) == 0:
 			ext, _, _ := kind.Format(i)
 			hint := "将 " + ext + " 文件拖到此处，或点击「导入」。"
+			if kind == launcher.ShaderPacks {
+				hint = "将 .zip 文件拖到此处，再到游戏内的光影模组中选择。"
+			}
 			if a.running != nil {
 				hint = "退出游戏后可导入文件。"
 			} else if a.busy {

@@ -44,7 +44,7 @@ func (k Kind) Format(i instance.Instance) (ext string, markers []string, err err
 			return ".jar", []string{"quilt.mod.json", "fabric.mod.json"}, nil
 		}
 	case ShaderPacks:
-		if i.Fabric() {
+		if i.UsesKnot() || i.UsesInstaller() {
 			return ".zip", []string{"shaders/"}, nil
 		}
 	}

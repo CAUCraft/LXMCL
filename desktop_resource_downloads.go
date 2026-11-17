@@ -441,7 +441,7 @@ func (a *desktop) packVersions(c *ui.Context, p *packBrowser, kind launcher.Cont
 		}
 	})
 	if kind == launcher.ShaderPacks {
-		muted(c, "在游戏中使用光影需要安装 Iris 等兼容模组。").FontSize(12)
+		muted(c, "使用光影需要与实例版本和加载器兼容的光影模组。").FontSize(12)
 	}
 }
 
