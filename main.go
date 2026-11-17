@@ -107,7 +107,7 @@ type desktop struct {
 	state            launcher.State
 	draft            launcher.Settings
 	memory           string
-	ready            bool
+	ready, loading   bool
 	loadErr          string
 	notice           string
 	noticeError      bool

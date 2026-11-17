@@ -30,8 +30,16 @@ func (a *desktop) post(fn func()) {
 }
 
 func (a *desktop) load() {
+	if a.ctx == nil || a.loading || a.ready {
+		return
+	}
+	a.loading, a.loadErr = true, ""
 	go func() {
 		s, err := a.store.Load()
+		if err != nil {
+			a.post(func() { a.loading, a.loadErr = false, err.Error() })
+			return
+		}
 		account, accountErr := a.store.LoadMicrosoftAccount()
 		history, historyErr := a.journal.Load(a.store.Root)
 		curseForgeKey := launcher.LoadCurseForgeAPIKey(a.store.Root)
@@ -40,10 +48,7 @@ func (a *desktop) load() {
 			installed[i.ID] = a.game.Installed(i)
 		}
 		a.post(func() {
-			if err != nil {
-				a.loadErr = err.Error()
-				return
-			}
+			a.loading = false
 			a.state, a.draft, a.installed, a.ready = s, s.Settings, installed, true
 			a.modpacks.key = curseForgeKey
 			a.memory = strconv.Itoa(s.Settings.Memory)

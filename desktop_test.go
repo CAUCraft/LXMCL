@@ -251,7 +251,21 @@ func TestDesktopTasksReachableDuringDownload(t *testing.T) {
 }
 
 func TestCompactTitleBarCentersNavigationWithWindowsControls(t *testing.T) {
-	_, tt := testDesktop(t)
+	a, tt := testDesktop(t)
+	tt.SetSize(820, 530)
+	a.ready, a.loadErr = false, "无法读取 launcher.json"
+	tt.Frame()
+	if _, ok := tt.Find("主导航"); ok {
+		t.Fatal("unavailable navigation offered before startup")
+	}
+	if err := tt.Click("复制错误详情"); err != nil || tt.Clipboard() != a.loadErr {
+		t.Fatalf("cannot copy startup failure: %v", err)
+	}
+	if _, ok := tt.Find("重新读取配置"); !ok {
+		t.Fatal("missing startup recovery action")
+	}
+	capture(t, tt, "startup-config-recovery")
+	a.ready, a.loadErr = true, ""
 	for _, width := range []int{820, 1140} {
 		tt.SetSize(width, 580)
 		tt.Frame()
