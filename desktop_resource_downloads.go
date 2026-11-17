@@ -395,7 +395,7 @@ func (a *desktop) packVersions(c *ui.Context, p *packBrowser, kind launcher.Cont
 		if !v.Published.IsZero() {
 			description = append(description, v.Published.Local().Format("2006-01-02"))
 		}
-		description = append(description, fmt.Sprintf("%.1f MiB", float64(file.Size)/(1<<20)), file.Filename)
+		description = append(description, fileSizeLabel(file.Size), file.Filename)
 		if p.target.ID == 0 {
 			if len(v.GameVersions) > 0 {
 				description = append([]string{strings.Join(v.GameVersions[:min(3, len(v.GameVersions))], " / ")}, description...)

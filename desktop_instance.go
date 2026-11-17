@@ -300,6 +300,8 @@ func (a *desktop) instanceFiles(c *ui.Context, i launcher.Instance) {
 		}
 	})
 	layout.ScrollArea(c, layout.ScrollAreaProps{}, func() {
+		a.recentBackupList(c, i, disabled)
+		layout.Divider(c, layout.DividerProps{})
 		sectionPane(c).Padding(10, 14).Gap(5).Children(func() {
 			for idx, folder := range instanceFolders {
 				if idx != 0 {

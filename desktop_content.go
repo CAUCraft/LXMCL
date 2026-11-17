@@ -311,7 +311,7 @@ func (a *desktop) contentList(c *ui.Context, i launcher.Instance, disabled bool)
 			}
 			leadIcon(c, downloadTabs[downloadTab(v.kind())].Icon, 26)
 			display.Text(c, file.Name, display.TextProps{Strong: true, Rows: 1}).Grow(1).MinWidth(0).Ellipsis("…")
-			detail := fmt.Sprintf("%.1f MiB", float64(file.Size)/(1<<20))
+			detail := fileSizeLabel(file.Size)
 			if v.order == "modified" && !file.Modified.IsZero() {
 				detail = file.Modified.Local().Format("01-02 15:04") + " · " + detail
 			}
@@ -377,6 +377,9 @@ func (a *desktop) runContentTask(i launcher.Instance, label string, resource *re
 	}
 	row := taskRecord{InstanceID: i.ID, Revision: i.Revision, Name: i.Name, Version: i.Version, Action: label, At: time.Now(), Resource: resource}
 	a.runFileTask(row, work, func() {
+		if label == "备份存档" && a.backups != nil && a.backups.instanceID == i.ID {
+			a.refreshBackups(i.ID)
+		}
 		if a.content.id == i.ID && a.content.revision == i.Revision {
 			a.refreshContent(i)
 		}
@@ -414,4 +417,17 @@ func (a *desktop) runFileTask(row taskRecord, work func(context.Context, func(la
 			}
 		})
 	})
+}
+
+func fileSizeLabel(bytes int64) string {
+	switch {
+	case bytes >= 1<<30:
+		return fmt.Sprintf("%.1f GiB", float64(bytes)/(1<<30))
+	case bytes >= 1<<20:
+		return fmt.Sprintf("%.1f MiB", float64(bytes)/(1<<20))
+	case bytes >= 1<<10:
+		return fmt.Sprintf("%.1f KiB", float64(bytes)/(1<<10))
+	default:
+		return fmt.Sprintf("%d B", bytes)
+	}
 }
