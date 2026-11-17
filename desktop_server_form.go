@@ -31,7 +31,11 @@ type serverForm struct {
 }
 
 func (a *desktop) openServerForm(mode serverFormMode, original launcher.Server) {
-	a.serverForm = &serverForm{mode: mode, original: original, name: original.Name, address: original.Address, focus: true}
+	name := original.Name
+	if mode == serverEdit && name == original.Address {
+		name = ""
+	}
+	a.serverForm = &serverForm{mode: mode, original: original, name: name, address: original.Address, focus: true}
 }
 
 func (a *desktop) serverDialog(c *ui.Context) {

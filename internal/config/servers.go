@@ -28,8 +28,7 @@ func (s *State) saveServer(index int, name, address string) error {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		name = address
-	}
-	if len([]rune(name)) > 80 {
+	} else if len([]rune(name)) > 80 {
 		return i18n.Error("server.favorite_name_too_long")
 	}
 	for i, entry := range s.Servers {
