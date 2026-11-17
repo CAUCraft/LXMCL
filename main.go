@@ -142,6 +142,7 @@ type desktop struct {
 	downloadFolder                         string
 	serverName, serverAddress, serverError string
 	serverStatus                           map[string]*serverCheck
+	serverInstanceID                       int
 	query                                  string
 	focusSearch                            bool
 	instanceFilter                         int

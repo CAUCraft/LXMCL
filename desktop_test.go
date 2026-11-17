@@ -458,7 +458,27 @@ func TestResourceAndServerEntrypoints(t *testing.T) {
 	if _, ok := tt.Find("启动并加入"); !ok || a.page != pageNetwork {
 		t.Fatal("the saved Java server has no quick join entry")
 	}
+	tt.SetSize(820, 530)
+	tt.Frame()
+	for _, label := range []string{"选择联机实例", "建筑测试 · 1.21.4 · Fabric 0.16.14"} {
+		if err := tt.Click(label); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if target, ok := a.serverInstance(); !ok || target.ID != 2 || a.state.Selected != 1 {
+		t.Fatal("server selection changed the home launch target or captured the wrong instance")
+	}
+	if err := tt.Click("复制服务器地址"); err != nil || tt.Clipboard() != "localhost:25565" {
+		t.Fatalf("server address copy failed: %v", err)
+	}
 	capture(t, tt, "saved-servers")
+	a.serverStatus = map[string]*serverCheck{"localhost:25565": {err: "连接超时，请检查服务器地址或稍后重试。"}}
+	tt.Frame()
+	capture(t, tt, "server-query-failed")
+	a.state.Remove(2)
+	if target, ok := a.serverInstance(); !ok || target.ID != 1 {
+		t.Fatal("removed server instance did not fall back to the home target")
+	}
 }
 
 func capture(t *testing.T, tt *ui.Tester, name string) {
