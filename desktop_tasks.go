@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/CAUCraft/LXMCL/internal/launcher"
@@ -293,8 +294,15 @@ func (a *desktop) progress(c *ui.Context) {
 }
 
 func (a *desktop) logDialog(c *ui.Context) {
-	feedback.Modal(c, &a.logOpen, feedback.ModalProps{Title: "游戏日志", NoFooter: true, Width: 760}, func() {
+	title := "游戏日志"
+	if a.logLibrary != nil {
+		title = "日志与崩溃报告"
+	}
+	feedback.Modal(c, &a.logOpen, feedback.ModalProps{Title: title, NoFooter: true, Width: 760}, func() {
 		ui.Column(c).Gap(10).Children(func() {
+			if a.logLibrary != nil {
+				a.logFilePicker(c)
+			}
 			muted(c, a.logPath).FontSize(12).SingleLine().Ellipsis("…").Selectable()
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 				query, filter := a.logQuery, a.logFilter
@@ -310,11 +318,9 @@ func (a *desktop) logDialog(c *ui.Context) {
 					a.reloadLog()
 				}
 			})
-			if a.logError != "" {
-				feedback.Alert(c, "无法读取日志", feedback.AlertProps{Type: feedback.Error, Description: a.logError})
-			}
-			if a.logExportErr != "" {
-				feedback.Alert(c, "无法导出日志", feedback.AlertProps{Type: feedback.Error, Description: a.logExportErr})
+			problem, detail := a.logProblem()
+			if detail != "" {
+				feedback.Alert(c, problem, feedback.AlertProps{Type: feedback.Error, Description: detail})
 			}
 			filtered := launcherlog.Filter(a.logText, a.logQuery, a.logFilter == 1)
 			preview := filtered
@@ -322,20 +328,32 @@ func (a *desktop) logDialog(c *ui.Context) {
 				preview = "没有匹配的日志，请调整筛选或刷新。"
 				if a.logReading {
 					preview = "正在读取游戏日志…"
+				} else if a.logLibrary != nil && a.logPath == "" {
+					preview = "暂无日志或崩溃报告，运行游戏后可刷新列表。"
+					if a.logLibrary.reading {
+						preview = "正在查找实例日志…"
+					}
 				}
 			}
 			_, height := c.Size()
 			reserved := float32(340)
-			if a.logError != "" {
-				reserved += 90
+			if a.logLibrary != nil {
+				reserved += 42
 			}
-			if a.logExportErr != "" {
+			if detail != "" {
 				reserved += 90
 			}
 			layout.ScrollArea(c.Key(a.logPath), layout.ScrollAreaProps{State: &a.logScroll}, func() {
 				display.Text(c, preview, display.TextProps{Code: true, FontSize: 12}).Padding(12).Selectable()
 			}).Height(max(80, min(340, height-reserved))).Radius(8).Background(theme.TokensOf(c).FillTertiary)
-			muted(c, "最近 64 KiB · 按日志条目筛选，保留堆栈").FontSize(12)
+			hint := "最近 64 KiB · 按日志条目筛选，保留堆栈"
+			if a.logLibrary != nil {
+				hint = "最近 30 个文件 · 预览末尾 64 KiB · 保留堆栈"
+				if filepath.Base(filepath.Dir(a.logPath)) == "crash-reports" {
+					hint = "最近 30 个文件 · 报告开头 64 KiB · 保留堆栈"
+				}
+			}
+			muted(c, hint).FontSize(12)
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Justify(ui.End).Children(func() {
 				lines := 0
 				if filtered != "" {
@@ -363,4 +381,19 @@ func (a *desktop) logDialog(c *ui.Context) {
 			})
 		})
 	})
+}
+
+func (a *desktop) logProblem() (string, string) {
+	// Resolve the preview failure first; secondary errors remain available after
+	// it clears, without pushing recovery actions outside a small window.
+	if a.logError != "" {
+		return "无法读取日志", a.logError
+	}
+	if a.logExportErr != "" {
+		return "无法导出日志", a.logExportErr
+	}
+	if a.logLibrary != nil {
+		return "部分日志目录无法读取", a.logLibrary.err
+	}
+	return "", ""
 }

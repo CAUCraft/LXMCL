@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/CAUCraft/LXMCL/internal/launcher"
+	launcherlog "github.com/CAUCraft/LXMCL/internal/log"
 	"github.com/egoist/mygo/ui"
 	"github.com/lobehub/lobe-mygo/pkg/display"
 )
@@ -468,7 +469,9 @@ func TestResourceAndServerEntrypoints(t *testing.T) {
 	a.state.Instances[1].Loader, a.state.Instances[1].LoaderVersion = "Fabric", "0.16.14"
 	i := a.state.Instances[1]
 	a.content = contentView{id: i.ID, revision: i.Revision, tab: 1, files: []launcher.ContentFile{
-		{Name: "demo.jar", Enabled: true, Size: 2 << 20}, {Name: "sodium.jar", Enabled: true, Size: 1 << 20}, {Name: "old.jar", Enabled: false},
+		{Name: "demo.jar", Enabled: true, Size: 2 << 20},
+		{Name: "sodium.jar", Enabled: true, Size: 1 << 20, Modified: time.Date(2026, 11, 18, 10, 30, 0, 0, time.Local)},
+		{Name: "old.jar", Enabled: false},
 	}}
 	a.inspect(i)
 	tt.Frame()
@@ -492,6 +495,20 @@ func TestResourceAndServerEntrypoints(t *testing.T) {
 	tt.Advance(250 * time.Millisecond)
 	tt.Frame()
 	capture(t, tt, "resources-selected-compact")
+	for _, order := range []struct{ label, first string }{{"文件较大", "demo.jar"}, {"最近修改", "sodium.jar"}} {
+		if err := tt.Click("本地资源排序"); err != nil {
+			t.Fatal(err)
+		}
+		if err := tt.Click(order.label); err != nil {
+			t.Fatal(err)
+		}
+		if files := a.content.visibleFiles(); files[0].Name != order.first || len(a.content.selection(files)) != 3 {
+			t.Fatal("sorting lost the selection or put the wrong file first")
+		}
+	}
+	tt.Advance(250 * time.Millisecond)
+	tt.Frame()
+	capture(t, tt, "resources-sorted-compact")
 	if err := tt.Click("搜索本地资源"); err != nil {
 		t.Fatal(err)
 	}
@@ -547,6 +564,72 @@ func TestResourceAndServerEntrypoints(t *testing.T) {
 	a.state.Remove(2)
 	if target, ok := a.serverInstance(); !ok || target.ID != 1 {
 		t.Fatal("removed server instance did not fall back to the home target")
+	}
+}
+
+func TestInstanceLogSelectionKeepsTargetAndResetsPreview(t *testing.T) {
+	a, tt := testDesktop(t)
+	i := a.state.Instances[1]
+	a.inspect(i)
+	a.detailPage = detailFiles
+	tt.SetSize(820, 530)
+	tt.Frame()
+	capture(t, tt, "instance-files-compact")
+	if err := tt.Click("日志与崩溃报告…"); err != nil {
+		t.Fatal(err)
+	}
+	if a.logLibrary == nil || a.logLibrary.instance.ID != i.ID || a.state.Selected != 1 {
+		t.Fatal("log browser did not capture the viewed instance")
+	}
+	capture(t, tt, "instance-logs-empty")
+	modified := time.Date(2026, 11, 18, 10, 30, 0, 0, time.Local)
+	latest := filepath.Join(i.GameDir, "logs", "latest.log")
+	crash := filepath.Join(i.GameDir, "crash-reports", "crash-test-client.txt")
+	a.logLibrary.entries = []launcherlog.Entry{{Path: latest, Modified: modified}, {Path: crash, Modified: modified}}
+	a.selectLog(latest)
+	a.logText, a.logQuery, a.logFilter = "old preview", "old", 1
+	tt.Frame()
+	if err := tt.Click("选择实例日志"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Advance(250 * time.Millisecond)
+	tt.Frame()
+	capture(t, tt, "instance-log-picker")
+	if err := tt.Click("11-18 10:30 · 崩溃报告 · crash-test-client.txt"); err != nil {
+		t.Fatal(err)
+	}
+	if a.logPath != crash || a.logText != "" || a.logQuery != "" || a.logFilter != 0 || a.state.Selected != 1 {
+		t.Fatal("switching reports retained a stale preview or changed launch target")
+	}
+	a.logText = "---- Minecraft Crash Report ----\nDescription: Initializing game\n\njava.lang.RuntimeException: failed to load mod\n\tat demo.Client.start(Client.java:42)\n"
+	tt.SetDark(true)
+	tt.Frame()
+	tt.Advance(500 * time.Millisecond)
+	tt.Frame()
+	capture(t, tt, "instance-crash-compact")
+	a.logError = "所选报告已移动或被其他程序占用，请刷新列表或选择其他文件。"
+	a.logExportErr = "目标文件夹没有写入权限，请选择其他保存位置。"
+	a.logLibrary.err = "无法读取部分日志目录，请检查实例目录权限后刷新。"
+	tt.Frame()
+	capture(t, tt, "instance-log-errors-compact")
+	if _, ok := tt.Find("无法读取日志"); !ok {
+		t.Fatal("preview error is not visible")
+	}
+	if _, ok := tt.Find("无法导出日志"); ok {
+		t.Fatal("secondary errors crowd the preview recovery action")
+	}
+	if err := tt.Click("关闭"); err != nil || a.logOpen {
+		t.Fatalf("close action is not reachable with multiple errors: %v", err)
+	}
+	a.showInstanceLogs(i)
+	tt.Frame()
+	tt.Key(0, ui.KeyEscape)
+	if a.logOpen {
+		t.Fatal("Escape did not close instance logs")
+	}
+	a.showLog(filepath.Join(i.GameDir, "launcher-logs", "game-test.log"))
+	if a.logLibrary != nil {
+		t.Fatal("task log retained an unrelated instance catalog")
 	}
 }
 

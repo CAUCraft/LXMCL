@@ -52,6 +52,16 @@ func (a *desktop) showLog(path string) {
 	if !launcherlog.IsGame(path) {
 		return
 	}
+	a.logLibrary = nil
+	a.selectLog(path)
+}
+
+func (a *desktop) selectLog(path string) {
+	if !launcherlog.IsPreview(path) {
+		return
+	}
+	a.logRequest++
+	a.logReading = false
 	if a.logPath != path || !a.logOpen {
 		a.logQuery, a.logFilter, a.logScroll.Y, a.logText = "", 0, 0, ""
 		a.logExported, a.logExportErr = false, ""
@@ -61,7 +71,7 @@ func (a *desktop) showLog(path string) {
 }
 
 func (a *desktop) reloadLog() {
-	if a.ctx == nil || !launcherlog.IsGame(a.logPath) {
+	if a.ctx == nil || !launcherlog.IsPreview(a.logPath) {
 		return
 	}
 	a.logRequest++
@@ -70,7 +80,7 @@ func (a *desktop) reloadLog() {
 	a.logReading, a.logError = true, ""
 	a.logExported = false
 	go func() {
-		log, err := launcherlog.ReadGame(path)
+		log, err := launcherlog.ReadPreview(path)
 		a.post(func() {
 			if a.logRequest != request {
 				return
@@ -86,7 +96,7 @@ func (a *desktop) reloadLog() {
 }
 
 func (a *desktop) openLog(path string) {
-	if launcherlog.IsGame(path) {
+	if launcherlog.IsPreview(path) {
 		a.openPath(path, false)
 	}
 }

@@ -278,6 +278,9 @@ var instanceFolders = []struct{ label, path string }{
 func (a *desktop) instanceFiles(c *ui.Context, i launcher.Instance) {
 	disabled := a.busy || a.pickerBusy || a.running != nil
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+		if button(c, "日志与崩溃报告…", action.Default, false) {
+			a.showInstanceLogs(i)
+		}
 		ui.Spacer(c).Grow(1)
 		dir := launcher.BackupsDir(a.store.Root, i.ID)
 		if button(c, "打开备份目录", action.Text, false) {

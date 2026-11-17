@@ -65,7 +65,7 @@ func List(i instance.Instance, kind Kind) ([]File, error) {
 		if err != nil {
 			return nil, err
 		}
-		result = append(result, File{Name: name, Size: info.Size(), Enabled: !disabled})
+		result = append(result, File{Name: name, Size: info.Size(), Enabled: !disabled, Modified: info.ModTime()})
 	}
 	return result, nil
 }

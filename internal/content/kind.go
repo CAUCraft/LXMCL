@@ -1,6 +1,8 @@
 package content
 
 import (
+	"time"
+
 	"github.com/CAUCraft/LXMCL/internal/i18n"
 	"github.com/CAUCraft/LXMCL/internal/instance"
 )
@@ -15,9 +17,10 @@ const (
 )
 
 type File struct {
-	Name    string
-	Size    int64
-	Enabled bool
+	Name     string
+	Size     int64
+	Enabled  bool
+	Modified time.Time
 }
 
 func (k Kind) Format(i instance.Instance) (ext string, markers []string, err error) {

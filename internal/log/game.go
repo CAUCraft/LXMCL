@@ -48,7 +48,27 @@ func ReadGame(path string) (string, error) {
 	if !IsGame(path) {
 		return "", i18n.Error("log.game_path_invalid")
 	}
-	f, err := os.Open(path)
+	return ReadPreview(path)
+}
+
+func ReadPreview(path string) (string, error) {
+	if !IsPreview(path) {
+		return "", i18n.Error("log.game_path_invalid")
+	}
+	root, err := os.OpenRoot(filepath.Dir(filepath.Dir(path)))
+	if err != nil {
+		return "", err
+	}
+	defer root.Close()
+	name := filepath.Join(filepath.Base(filepath.Dir(path)), filepath.Base(path))
+	info, err := root.Lstat(name)
+	if err != nil {
+		return "", err
+	}
+	if !info.Mode().IsRegular() {
+		return "", i18n.Error("log.game_not_regular")
+	}
+	f, err := root.Open(name)
 	if err != nil {
 		return "", err
 	}
@@ -60,7 +80,11 @@ func ReadGame(path string) (string, error) {
 	if !st.Mode().IsRegular() {
 		return "", i18n.Error("log.game_not_regular")
 	}
-	offset := max(st.Size()-tailLimit, 0)
+	crash := filepath.Base(filepath.Dir(path)) == "crash-reports"
+	offset := int64(0)
+	if !crash {
+		offset = max(st.Size()-tailLimit, 0)
+	}
 	if _, err := f.Seek(offset, io.SeekStart); err != nil {
 		return "", err
 	}
@@ -79,6 +103,9 @@ func ReadGame(path string) (string, error) {
 	}
 	if offset != 0 {
 		return i18n.Text("log.game_tail") + log, nil
+	}
+	if crash && st.Size() > tailLimit {
+		return log + i18n.Text("log.crash_head"), nil
 	}
 	return log, nil
 }
