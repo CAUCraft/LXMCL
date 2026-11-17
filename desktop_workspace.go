@@ -208,6 +208,7 @@ func (a *desktop) gameSettings(c *ui.Context, disabled bool) {
 }
 
 func (a *desktop) javaSettings(c *ui.Context, disabled bool) {
+	disabled = disabled || a.javaChecking
 	sectionPane(c).Padding(8, 14).Gap(5).Children(func() {
 		settingsRow(c, "Java 路径", func() {
 			previous := a.draft.JavaPath
@@ -225,8 +226,14 @@ func (a *desktop) javaSettings(c *ui.Context, disabled bool) {
 				a.draft.JavaPath, a.javaInfo = "", ""
 			}
 		})
-		if a.javaInfo != "" {
-			muted(c, a.javaInfo).FontSize(12).Selectable()
+		switch {
+		case a.javaChecking:
+			flightLoading(c, "正在检测本机 Java…")
+		case a.javaError && a.javaInfo != "":
+			feedback.Alert(c, "Java 检测失败", feedback.AlertProps{Type: feedback.Error, Description: a.javaInfo})
+		case a.javaInfo != "":
+			display.Text(c, a.javaInfo, display.TextProps{Strong: true}).Selectable()
+			muted(c, "在实例的「启动设置」中可检测该游戏版本所需的 Java。").FontSize(12)
 		}
 	})
 }
@@ -275,7 +282,7 @@ func (a *desktop) settingsFooter(c *ui.Context) {
 	if err != nil {
 		feedback.Alert(c, err.Error(), feedback.AlertProps{Type: feedback.Error})
 	}
-	settingsActions(c, a.busy || a.pickerBusy, err != nil, func() {
+	settingsActions(c, a.busy || a.pickerBusy || a.javaChecking, err != nil, func() {
 		a.draft, a.memory, a.javaInfo = a.state.Settings, strconv.Itoa(a.state.Settings.Memory), ""
 	}, a.saveSettings)
 }

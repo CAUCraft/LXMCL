@@ -157,6 +157,7 @@ type desktop struct {
 	catalogBusy                      bool
 	catalogErr                       string
 	javaInfo                         string
+	javaChecking, javaError          bool
 
 	busy          bool
 	cancelTask    context.CancelFunc
