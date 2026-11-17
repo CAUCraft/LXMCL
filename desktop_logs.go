@@ -12,6 +12,25 @@ import (
 	"github.com/lobehub/lobe-mygo/pkg/lucide"
 )
 
+// Keep filtering and line counting off the repeated scroll and hover frames.
+type logPreview struct {
+	source, query, text string
+	problemsOnly        bool
+	lines               int
+}
+
+func (p *logPreview) update(source, query string, problemsOnly bool) {
+	if p.source == source && p.query == query && p.problemsOnly == problemsOnly {
+		return
+	}
+	p.source, p.query, p.problemsOnly = source, query, problemsOnly
+	p.text = launcherlog.Filter(source, query, problemsOnly)
+	p.lines = 0
+	if p.text != "" {
+		p.lines = strings.Count(strings.TrimSuffix(p.text, "\n"), "\n") + 1
+	}
+}
+
 type instanceLogView struct {
 	instance launcher.Instance
 	entries  []launcherlog.Entry

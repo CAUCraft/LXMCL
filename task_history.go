@@ -89,7 +89,7 @@ func (a *desktop) reloadLog() {
 	request := a.logRequest
 	path := a.logPath
 	a.logReading, a.logError = true, ""
-	a.logExported = false
+	a.logExported, a.logExportErr = false, ""
 	go func() {
 		defer cancel()
 		log, err := launcherlog.ReadPreview(ctx, path)
