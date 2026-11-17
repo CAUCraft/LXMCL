@@ -469,7 +469,9 @@ func TestResourceAndServerEntrypoints(t *testing.T) {
 	a.state.Instances[1].Loader, a.state.Instances[1].LoaderVersion = "Fabric", "0.16.14"
 	i := a.state.Instances[1]
 	a.content = contentView{id: i.ID, revision: i.Revision, tab: 1, files: []launcher.ContentFile{
-		{Name: "demo.jar", Enabled: true, Size: 2 << 20}, {Name: "sodium.jar", Enabled: true, Size: 1 << 20}, {Name: "old.jar", Enabled: false},
+		{Name: "demo.jar", Enabled: true, Size: 2 << 20},
+		{Name: "sodium.jar", Enabled: true, Size: 1 << 20, Modified: time.Date(2026, 11, 18, 10, 30, 0, 0, time.Local)},
+		{Name: "old.jar", Enabled: false},
 	}}
 	a.inspect(i)
 	tt.Frame()
@@ -493,6 +495,20 @@ func TestResourceAndServerEntrypoints(t *testing.T) {
 	tt.Advance(250 * time.Millisecond)
 	tt.Frame()
 	capture(t, tt, "resources-selected-compact")
+	for _, order := range []struct{ label, first string }{{"文件较大", "demo.jar"}, {"最近修改", "sodium.jar"}} {
+		if err := tt.Click("本地资源排序"); err != nil {
+			t.Fatal(err)
+		}
+		if err := tt.Click(order.label); err != nil {
+			t.Fatal(err)
+		}
+		if files := a.content.visibleFiles(); files[0].Name != order.first || len(a.content.selection(files)) != 3 {
+			t.Fatal("sorting lost the selection or put the wrong file first")
+		}
+	}
+	tt.Advance(250 * time.Millisecond)
+	tt.Frame()
+	capture(t, tt, "resources-sorted-compact")
 	if err := tt.Click("搜索本地资源"); err != nil {
 		t.Fatal(err)
 	}

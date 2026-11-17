@@ -1,9 +1,11 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -29,6 +31,7 @@ type contentView struct {
 	err      string
 	query    string
 	filter   int
+	order    string
 	selected map[string]bool
 	scroll   ui.ScrollState
 }
@@ -57,6 +60,7 @@ func (a *desktop) refreshContent(i launcher.Instance) {
 		a.post(func() {
 			if request == a.contentRequest {
 				a.content.reading, a.content.files = false, files
+				a.content.sortFiles()
 				if err != nil {
 					a.content.err = err.Error()
 				}
@@ -135,13 +139,32 @@ func (v *contentView) visibleFiles() []launcher.ContentFile {
 	query := strings.ToLower(strings.TrimSpace(v.query))
 	var files []launcher.ContentFile
 	for _, file := range v.files {
-		if !strings.Contains(strings.ToLower(file.Name), query) ||
+		if query != "" && !strings.Contains(strings.ToLower(file.Name), query) ||
 			v.filter == 1 && !file.Enabled || v.filter == 2 && file.Enabled {
 			continue
 		}
 		files = append(files, file)
 	}
 	return files
+}
+
+func (v *contentView) sortFiles() {
+	slices.SortFunc(v.files, func(a, b launcher.ContentFile) int {
+		switch v.order {
+		case "modified":
+			if n := b.Modified.Compare(a.Modified); n != 0 {
+				return n
+			}
+		case "size":
+			if n := cmp.Compare(b.Size, a.Size); n != 0 {
+				return n
+			}
+		}
+		if n := strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)); n != 0 {
+			return n
+		}
+		return strings.Compare(contentKey(a), contentKey(b))
+	})
 }
 
 func (v *contentView) selection(files []launcher.ContentFile) []launcher.ContentFile {
@@ -178,6 +201,17 @@ func (a *desktop) contentList(c *ui.Context, i launcher.Instance, disabled bool)
 			}
 		}
 		muted(c, fmt.Sprintf("%d / %d 项", len(files), len(v.files))).FontSize(12).Grow(1)
+		order := v.order
+		ui.Column(c).Width(124).Shrink(0).Children(func() {
+			field.Select(c, &v.order, field.SelectProps{Options: []field.SelectOption{
+				{Value: "", Label: "按名称"}, {Value: "modified", Label: "最近修改"}, {Value: "size", Label: "文件较大"},
+			}}).Label("本地资源排序")
+		})
+		if order != v.order {
+			v.scroll.Y = 0
+			v.sortFiles()
+			files = v.visibleFiles()
+		}
 		var list strings.Builder
 		for _, file := range files {
 			status := "启用"
@@ -216,7 +250,11 @@ func (a *desktop) contentList(c *ui.Context, i launcher.Instance, disabled bool)
 					}
 					leadIcon(c, downloadTabs[downloadTab(v.kind())].Icon, 26)
 					display.Text(c, file.Name, display.TextProps{Strong: true, Rows: 1}).Grow(1).MinWidth(0).Ellipsis("…")
-					muted(c, fmt.Sprintf("%.1f MiB", float64(file.Size)/(1<<20))).FontSize(12)
+					detail := fmt.Sprintf("%.1f MiB", float64(file.Size)/(1<<20))
+					if v.order == "modified" && !file.Modified.IsZero() {
+						detail = file.Modified.Local().Format("01-02 15:04") + " · " + detail
+					}
+					muted(c, detail).FontSize(12)
 					label := "停用"
 					if !file.Enabled {
 						label = "恢复"
