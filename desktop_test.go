@@ -227,6 +227,14 @@ func TestDesktopTasksReachableDuringDownload(t *testing.T) {
 	if _, ok := tt.Find("导出预览…"); !ok {
 		t.Fatal("failed export hid the retry action")
 	}
+	if err := tt.Click("全部日志"); err != nil || a.logExportErr != "" {
+		t.Fatalf("a changed preview retained the previous export error: %v", err)
+	}
+	a.logText = "[new/INFO] reloaded Client.java\n"
+	tt.Frame()
+	if err := tt.Click("复制当前日志"); err != nil || tt.Clipboard() != a.logText {
+		t.Fatalf("copy used the previous filtered preview after refresh: %v", err)
+	}
 	tt.Key(0, ui.KeyEscape)
 	if a.logOpen {
 		t.Fatal("Escape did not close the log viewer")

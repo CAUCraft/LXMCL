@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/CAUCraft/LXMCL/internal/launcher"
-	launcherlog "github.com/CAUCraft/LXMCL/internal/log"
 	"github.com/egoist/mygo/ui"
 	"github.com/lobehub/lobe-mygo/pkg/action"
 	"github.com/lobehub/lobe-mygo/pkg/display"
@@ -317,7 +316,9 @@ func (a *desktop) logDialog(c *ui.Context) {
 		title = "日志与崩溃报告"
 	}
 	feedback.Modal(c, &a.logOpen, feedback.ModalProps{Title: title, NoFooter: true, Width: 760}, func() {
-		ui.Column(c).Gap(10).Children(func() {
+		body := ui.Column(c).Gap(10)
+		preview := ui.Local(body, "log-preview", func() logPreview { return logPreview{} })
+		body.Children(func() {
 			if a.logLibrary != nil {
 				a.logFilePicker(c)
 			}
@@ -330,7 +331,7 @@ func (a *desktop) logDialog(c *ui.Context) {
 				action.Segmented(c, &a.logFilter, []string{"全部日志", "警告 / 错误"}, action.SegmentedProps{Size: theme.Small}).Label("日志筛选")
 				if query != a.logQuery || filter != a.logFilter {
 					a.logScroll.Y = 0
-					a.logExported = false
+					a.logExported, a.logExportErr = false, ""
 				}
 				if icon(c, lucide.RefreshCw(), "刷新游戏日志", a.logReading) {
 					a.reloadLog()
@@ -340,16 +341,16 @@ func (a *desktop) logDialog(c *ui.Context) {
 			if detail != "" {
 				feedback.Alert(c, problem, feedback.AlertProps{Type: feedback.Error, Description: detail})
 			}
-			filtered := launcherlog.Filter(a.logText, a.logQuery, a.logFilter == 1)
-			preview := filtered
-			if preview == "" {
-				preview = "没有匹配的日志，请调整筛选或刷新。"
+			preview.update(a.logText, a.logQuery, a.logFilter == 1)
+			content := preview.text
+			if content == "" {
+				content = "没有匹配的日志，请调整筛选或刷新。"
 				if a.logReading {
-					preview = "正在读取游戏日志…"
+					content = "正在读取游戏日志…"
 				} else if a.logLibrary != nil && a.logPath == "" {
-					preview = "暂无日志或崩溃报告，运行游戏后可刷新列表。"
+					content = "暂无日志或崩溃报告，运行游戏后可刷新列表。"
 					if a.logLibrary.reading {
-						preview = "正在查找实例日志…"
+						content = "正在查找实例日志…"
 					}
 				}
 			}
@@ -362,7 +363,7 @@ func (a *desktop) logDialog(c *ui.Context) {
 				reserved += 90
 			}
 			layout.ScrollArea(c.Key(a.logPath), layout.ScrollAreaProps{State: &a.logScroll}, func() {
-				display.Text(c, preview, display.TextProps{Code: true, FontSize: 12}).Padding(12).Selectable()
+				display.Text(c, content, display.TextProps{Code: true, FontSize: 12}).Padding(12).Selectable()
 			}).Height(max(80, min(340, height-reserved))).Radius(8).Background(theme.TokensOf(c).FillTertiary)
 			hint := "最近 64 KiB · 按日志条目筛选，保留堆栈"
 			if a.logLibrary != nil {
@@ -373,11 +374,7 @@ func (a *desktop) logDialog(c *ui.Context) {
 			}
 			muted(c, hint).FontSize(12)
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Justify(ui.End).Children(func() {
-				lines := 0
-				if filtered != "" {
-					lines = strings.Count(strings.TrimSuffix(filtered, "\n"), "\n") + 1
-				}
-				caption := fmt.Sprintf("显示 %d 行", lines)
+				caption := fmt.Sprintf("显示 %d 行", preview.lines)
 				if a.logReading {
 					caption = "正在刷新…"
 				} else if a.logExporting {
@@ -386,9 +383,9 @@ func (a *desktop) logDialog(c *ui.Context) {
 					caption = "已导出预览"
 				}
 				muted(c, caption).FontSize(12).Grow(1)
-				action.CopyButton(c, filtered, action.CopyButtonProps{}).Label("复制当前日志").Disabled(filtered == "" || a.logReading)
-				if button(c, "导出预览…", action.Default, filtered == "" || a.logReading || a.logExporting || a.pickerBusy) {
-					a.exportLog()
+				action.CopyButton(c, preview.text, action.CopyButtonProps{}).Label("复制当前日志").Disabled(preview.text == "" || a.logReading)
+				if button(c, "导出预览…", action.Default, preview.text == "" || a.logReading || a.logExporting || a.pickerBusy) {
+					a.exportLog(preview.text)
 				}
 				if button(c, "打开文件", action.Default, a.logPath == "") {
 					a.openLog(a.logPath)

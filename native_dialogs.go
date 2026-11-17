@@ -9,15 +9,12 @@ import (
 	"github.com/egoist/mygo"
 )
 
-func (a *desktop) exportLog() {
-	if a.ctx == nil || a.pickerBusy || a.logReading || a.logExporting {
+func (a *desktop) exportLog(preview string) {
+	if a.ctx == nil || a.pickerBusy || a.logReading || a.logExporting || preview == "" {
 		return
 	}
-	preview := launcherlog.Filter(a.logText, a.logQuery, a.logFilter == 1)
-	if preview == "" {
-		return
-	}
-	source := a.logPath
+	source, request := a.logPath, a.logRequest
+	query, filter := a.logQuery, a.logFilter
 	a.pickerBusy, a.logExporting, a.logExported, a.logExportErr = true, true, false, ""
 	options := mygo.SaveDialogOptions{
 		Parent: a.window, Title: "导出当前日志预览", ButtonLabel: "导出",
@@ -31,7 +28,7 @@ func (a *desktop) exportLog() {
 		}
 		a.post(func() {
 			a.pickerBusy, a.logExporting = false, false
-			if a.logPath != source {
+			if !a.logOpen || a.logRequest != request || a.logQuery != query || a.logFilter != filter {
 				return
 			}
 			if err != nil {
