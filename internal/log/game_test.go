@@ -1,6 +1,8 @@
 package log
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"errors"
 	"fmt"
@@ -34,25 +36,44 @@ func TestRecentDiagnosticsAreBoundedAndKeepInstanceFiles(t *testing.T) {
 	latest := write("logs/latest.log", "latest game output", now)
 	crash := write("crash-reports/crash-demo-client.txt", "java.lang.RuntimeException: crash", now.Add(time.Second))
 	write("logs/credentials.txt", "must not list", now.Add(time.Minute))
-	write("logs/2026-11-18-1.log.gz", "compressed", now.Add(time.Minute))
+	var compressed bytes.Buffer
+	z := gzip.NewWriter(&compressed)
+	end := "[main/ERROR] archived failure\n"
+	if _, err := z.Write([]byte(strings.Repeat("prior entry\n", tailLimit) + end)); err != nil {
+		t.Fatal(err)
+	}
+	if err := z.Close(); err != nil {
+		t.Fatal(err)
+	}
+	archive := write("logs/2026-11-18-1.log.gz", compressed.String(), now.Add(time.Minute))
+	write("logs/unrelated.log.gz", "unrelated", now.Add(time.Hour))
+	debug := write("logs/debug.log", "debug", now.Add(-time.Second))
+	if got, err := ReadPreview(t.Context(), archive); err != nil || !strings.HasSuffix(got, end) || len(got) > tailLimit+128 {
+		t.Fatalf("archive tail: %d bytes, %v", len(got), err)
+	}
+	// A bad gzip footer must not present partial text as a successful preview.
+	broken := write("logs/debug-1.log.gz", compressed.String()[:compressed.Len()-1], now.Add(-time.Hour))
+	if got, err := ReadPreview(t.Context(), broken); err == nil || got != "" {
+		t.Fatal("incomplete archive returned a preview")
+	}
 	entries, err := Recent(t.Context(), dir)
-	if err != nil || len(entries) != RecentLimit || entries[0].Path != crash || entries[1].Path != latest {
+	if err != nil || len(entries) != RecentLimit || entries[0].Path != archive || entries[1].Path != crash || entries[2].Path != latest || entries[3].Path != debug {
 		t.Fatalf("unexpected recent logs: %v, %v", entries, err)
 	}
-	if got, err := ReadPreview(crash); err != nil || got != "java.lang.RuntimeException: crash" {
+	if got, err := ReadPreview(t.Context(), crash); err != nil || got != "java.lang.RuntimeException: crash" {
 		t.Fatalf("crash preview: %q, %v", got, err)
 	}
 	large := "java.lang.RuntimeException: crash\n" + strings.Repeat("environment details\n", tailLimit) + "omitted tail"
 	if err := os.WriteFile(crash, []byte(large), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := ReadPreview(crash); err != nil || !strings.HasPrefix(got, "java.lang.RuntimeException: crash") || strings.Contains(got, "omitted tail") || len(got) > tailLimit+128 {
+	if got, err := ReadPreview(t.Context(), crash); err != nil || !strings.HasPrefix(got, "java.lang.RuntimeException: crash") || strings.Contains(got, "omitted tail") || len(got) > tailLimit+128 {
 		t.Fatalf("large crash report lost its cause or exceeded the bound: %d bytes, %v", len(got), err)
 	}
 	if _, err := ReadGame(crash); err == nil {
 		t.Fatal("legacy game-log validation accepted a crash report")
 	}
-	if _, err := ReadPreview(filepath.Join(dir, "logs", "credentials.txt")); err == nil {
+	if _, err := ReadPreview(t.Context(), filepath.Join(dir, "logs", "credentials.txt")); err == nil {
 		t.Fatal("preview accepted a non-diagnostic file")
 	}
 	if err := ExportPreview(latest, crash, "replace"); err == nil {

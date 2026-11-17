@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -20,13 +21,16 @@ type Entry struct {
 	Modified time.Time
 }
 
-// IsPreview recognizes uncompressed launcher logs, latest.log and crash reports.
+// Minecraft rotates dated logs; mod loaders also rotate numbered debug logs.
+var archivedLogName = regexp.MustCompile(`^(?:[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]+|debug-[0-9]+)\.log\.gz$`)
+
+// IsPreview recognizes launcher, game and crash diagnostics in their own directories.
 func IsPreview(path string) bool {
 	if !filepath.IsAbs(path) {
 		return false
 	}
 	name, dir := filepath.Base(path), filepath.Base(filepath.Dir(path))
-	return IsGame(path) || dir == "logs" && name == "latest.log" ||
+	return IsGame(path) || dir == "logs" && (name == "latest.log" || name == "debug.log" || archivedLogName.MatchString(name)) ||
 		dir == "crash-reports" && strings.HasPrefix(name, "crash-") && strings.HasSuffix(name, ".txt")
 }
 

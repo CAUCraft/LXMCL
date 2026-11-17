@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+
 	launcherlog "github.com/CAUCraft/LXMCL/internal/log"
 	"github.com/CAUCraft/LXMCL/internal/tasks"
 )
@@ -60,8 +62,6 @@ func (a *desktop) selectLog(path string) {
 	if !launcherlog.IsPreview(path) {
 		return
 	}
-	a.logRequest++
-	a.logReading = false
 	if a.logPath != path || !a.logOpen {
 		a.logQuery, a.logFilter, a.logScroll.Y, a.logText = "", 0, 0, ""
 		a.logExported, a.logExportErr = false, ""
@@ -70,22 +70,34 @@ func (a *desktop) selectLog(path string) {
 	a.reloadLog()
 }
 
+func (a *desktop) stopLogRead() {
+	if a.logCancel != nil {
+		a.logCancel()
+		a.logCancel = nil
+	}
+	a.logRequest++
+	a.logReading = false
+}
+
 func (a *desktop) reloadLog() {
+	a.stopLogRead()
 	if a.ctx == nil || !launcherlog.IsPreview(a.logPath) {
 		return
 	}
-	a.logRequest++
+	ctx, cancel := context.WithCancel(a.ctx)
+	a.logCancel = cancel
 	request := a.logRequest
 	path := a.logPath
 	a.logReading, a.logError = true, ""
 	a.logExported = false
 	go func() {
-		log, err := launcherlog.ReadPreview(path)
+		defer cancel()
+		log, err := launcherlog.ReadPreview(ctx, path)
 		a.post(func() {
 			if a.logRequest != request {
 				return
 			}
-			a.logReading = false
+			a.logReading, a.logCancel = false, nil
 			if err != nil {
 				a.logText, a.logError = "", err.Error()
 			} else {

@@ -399,6 +399,9 @@ func (a *desktop) logDialog(c *ui.Context) {
 			})
 		})
 	})
+	if !a.logOpen && a.logCancel != nil {
+		a.stopLogRead()
+	}
 }
 
 func (a *desktop) logProblem() (string, string) {

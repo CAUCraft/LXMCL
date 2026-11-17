@@ -3,6 +3,7 @@ package main
 import (
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/CAUCraft/LXMCL/internal/launcher"
 	launcherlog "github.com/CAUCraft/LXMCL/internal/log"
@@ -20,8 +21,8 @@ type instanceLogView struct {
 
 func (a *desktop) showInstanceLogs(i launcher.Instance) {
 	a.logLibrary = &instanceLogView{instance: i}
-	a.logRequest++
-	a.logOpen, a.logReading = true, false
+	a.stopLogRead()
+	a.logOpen = true
 	a.logPath, a.logText, a.logError, a.logExportErr = "", "", "", ""
 	a.logQuery, a.logFilter, a.logScroll.Y, a.logExported = "", 0, 0, false
 	a.refreshLogFiles()
@@ -54,8 +55,8 @@ func (a *desktop) refreshLogFiles() {
 				}
 			}
 			if path == "" {
-				a.logRequest++
-				a.logPath, a.logText, a.logError, a.logReading = "", "", "", false
+				a.stopLogRead()
+				a.logPath, a.logText, a.logError = "", "", ""
 			} else {
 				a.selectLog(path)
 			}
@@ -71,6 +72,9 @@ func (a *desktop) logFilePicker(c *ui.Context) {
 		switch filepath.Base(filepath.Dir(entry.Path)) {
 		case "logs":
 			kind = "游戏日志"
+			if strings.HasSuffix(entry.Path, ".log.gz") {
+				kind = "归档日志"
+			}
 		case "crash-reports":
 			kind = "崩溃报告"
 		}
