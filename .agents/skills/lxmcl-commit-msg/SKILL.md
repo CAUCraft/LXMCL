@@ -62,9 +62,9 @@ git log --oneline -10
 
 ### scope
 
-- 跨 Rust / Slint 的业务改动采用功能域，如 `instance`、`settings`、`account`、`launch`。
-- 仅涉及某层时使用结构域，如 `runtime`、`frontend`、`backend`、`ci`、`script`。
-- 文档可用 `readme`、`plugins` 等范围；依赖维护可用实际依赖名。
+- 跨桌面和业务模块的改动采用功能域，如 `instance`、`settings`、`account`、`launch`。
+- 仅涉及某层时使用结构域，如 `desktop`、`minecraft`、`ci`、`script`。
+- 文档可用 `readme`、`architecture` 等范围；依赖维护可用实际依赖名。
 - 多个无关范围难以概括时，省略 scope；不套用其他项目的 Tauri / Next.js 等术语。
 
 示例：
@@ -72,14 +72,14 @@ git log --oneline -10
 ```text
 feat(instance): persist instance creation and renaming
 fix(settings): flush pending saves before shutdown
-refactor(runtime): centralize plugin cleanup
-docs(plugins): clarify service registration rules
+refactor(minecraft): centralize runtime selection
+docs(readme): clarify Windows package downloads
 ```
 
 ## 验证与完成
 
 - 按改动影响执行必要验证；复用已有检查，不为提交补大量测试或新增示例。
-- 纯规范、文档修改检查格式和链接即可，不要求 Rust 全量构建。
+- 纯文档改动检查格式、链接和命令是否与仓库一致。
 - 提交前确认 diff 与标题一致，提交后检查提交结果和工作区状态；不默认 amend 既有提交。
 - 权限、工具或 Git hook 阻止提交时，如实说明；不绕过 hook，不宣称提交成功。
 - 仅生成 message 的任务：最终只输出一行标题，不加引号、代码块或解释；暂存区为空等无法生成的情况除外。
