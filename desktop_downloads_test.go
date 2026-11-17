@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -192,6 +193,16 @@ func TestResourceDownloadsKeepInstallTargetSeparate(t *testing.T) {
 	p.result = launcher.PackSearch{Hits: []launcher.PackProject{
 		project, {ID: "lithium", Title: "Lithium", Author: "CaffeineMC"}, {ID: "balm", Title: "Balm", Author: "BlayTheNinth"},
 	}, Total: 48}
+	p.err = "GET https://api.modrinth.com/v2/search?facets=" + strings.Repeat("%2Cversions%3A1.21.1", 30) + ": context deadline exceeded"
+	tt.Frame()
+	if b, ok := tt.Find("重试搜索"); !ok || b.W == 0 || b.H == 0 || b.Y+b.H > 530 {
+		t.Fatal("long diagnostics hid the catalog retry action")
+	}
+	if err := tt.Click("复制搜索错误"); err != nil || tt.Clipboard() != p.err {
+		t.Fatal("full catalog diagnostic unavailable")
+	}
+	capture(t, tt, "catalog-search-recovery")
+	p.err = ""
 	p.versions = []launcher.PackVersion{
 		{ID: "build1", ProjectID: project.ID, Number: "0.6.13", Type: "release", Files: []launcher.PackFile{{Filename: "sodium-0.6.13.jar", Size: 1200000}}},
 		{ID: "build2", ProjectID: project.ID, Number: "0.6.14-beta", Type: "beta", Files: []launcher.PackFile{{Filename: "sodium-0.6.14-beta.jar", Size: 1250000}}},

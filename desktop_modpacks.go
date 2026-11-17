@@ -303,8 +303,7 @@ func (a *desktop) modpackResults(c *ui.Context, p *modpackView) {
 		flightLoading(c, "正在搜索…")
 		return
 	case p.searchErr != "":
-		feedback.Alert(c, p.searchErr, feedback.AlertProps{Type: feedback.Error})
-		if button(c, "重试搜索", action.Default, false) {
+		if catalogRetry(c, "搜索失败", p.searchErr, "重试搜索", "复制搜索错误") {
 			a.searchModpackProjects(p.page)
 		}
 		return
@@ -359,8 +358,7 @@ func (a *desktop) modpackVersions(c *ui.Context, p *modpackView) {
 		return
 	}
 	if p.releaseErr != "" {
-		feedback.Alert(c, p.releaseErr, feedback.AlertProps{Type: feedback.Error})
-		if button(c, "重试读取版本", action.Default, false) {
+		if catalogRetry(c, "读取版本失败", p.releaseErr, "重试读取版本", "复制版本错误") {
 			a.listModpackReleases(p.project, p.releasePage)
 		}
 		return

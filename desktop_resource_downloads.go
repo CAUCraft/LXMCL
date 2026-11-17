@@ -291,13 +291,23 @@ func (a *desktop) packSearchBar(c *ui.Context, p *packBrowser, label string) {
 	})
 }
 
+func catalogRetry(c *ui.Context, title, detail, retryLabel, copyLabel string) bool {
+	feedback.Alert(c, title, feedback.AlertProps{Type: feedback.Error})
+	muted(c, detail).FontSize(12).MaxLines(2).Ellipsis("…")
+	retry := false
+	ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
+		retry = button(c, retryLabel, action.Default, false)
+		action.CopyButton(c, detail, action.CopyButtonProps{}).Label(copyLabel)
+	})
+	return retry
+}
+
 func (a *desktop) packResults(c *ui.Context, p *packBrowser) {
 	switch {
 	case p.searchBusy:
 		flightLoading(c, "正在搜索…")
 	case p.err != "":
-		feedback.Alert(c, p.err, feedback.AlertProps{Type: feedback.Error})
-		if button(c, "重试搜索", action.Default, false) {
+		if catalogRetry(c, "搜索失败", p.err, "重试搜索", "复制搜索错误") {
 			a.searchPacks(p, p.page)
 		}
 	case len(p.result.Hits) == 0:
@@ -371,8 +381,7 @@ func (a *desktop) packDetails(c *ui.Context, p *packBrowser) {
 	case p.versionBusy:
 		flightLoading(c, "读取可下载版本…")
 	case p.versionErr != "":
-		feedback.Alert(c, p.versionErr, feedback.AlertProps{Type: feedback.Error})
-		if button(c, "重试读取版本", action.Default, false) {
+		if catalogRetry(c, "读取版本失败", p.versionErr, "重试读取版本", "复制版本错误") {
 			if p.dependency != nil {
 				a.loadPackDependency(p)
 			} else {
