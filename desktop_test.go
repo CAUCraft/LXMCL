@@ -561,6 +561,11 @@ func TestResourceAndServerEntrypoints(t *testing.T) {
 	tt.SetDark(true)
 	tt.Advance(500 * time.Millisecond)
 	tt.Frame()
+	for _, want := range []int{1, 0} {
+		if err := tt.Click("选择资源 old.jar"); err != nil || len(a.content.selection(a.content.files)) != want {
+			t.Fatalf("toggle disabled resource selection: want %d, error %v", want, err)
+		}
+	}
 	if err := tt.Click("全选当前列表"); err != nil {
 		t.Fatal(err)
 	}

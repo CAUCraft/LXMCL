@@ -32,8 +32,38 @@ type contentView struct {
 	query    string
 	filter   int
 	order    string
-	selected map[string]bool
-	scroll   ui.ScrollState
+	selected map[string]bool // physical filename → enabled state
+	scroll   ui.ListState
+	listing  *resourceListing
+}
+
+type resourceListing struct {
+	query     string
+	filter    int
+	files     []launcher.ContentFile
+	clipboard string
+}
+
+// Build the clipboard text and filtered view when the listing changes, including
+// a new disk scan or sort. Scrolling and hover frames reuse the same snapshot.
+func (v *contentView) currentListing() *resourceListing {
+	if v.listing != nil && v.listing.query == v.query && v.listing.filter == v.filter {
+		return v.listing
+	}
+	list := &resourceListing{query: v.query, filter: v.filter, files: v.visibleFiles()}
+	var text strings.Builder
+	for _, file := range list.files {
+		if file.Enabled {
+			text.WriteString("[启用] ")
+		} else {
+			text.WriteString("[停用] ")
+		}
+		text.WriteString(file.Name)
+		text.WriteByte('\n')
+	}
+	list.clipboard = text.String()
+	v.listing = list
+	return list
 }
 
 func (v contentView) kind() launcher.ContentKind {
@@ -48,7 +78,7 @@ func (v contentView) kind() launcher.ContentKind {
 }
 
 func (a *desktop) refreshContent(i launcher.Instance) {
-	a.content.selected = nil
+	a.content.selected, a.content.listing = nil, nil
 	if a.ctx == nil {
 		return
 	}
@@ -85,7 +115,7 @@ func (a *desktop) instanceContent(c *ui.Context, i launcher.Instance) {
 			}
 			action.Segmented(c, &v.tab, options, action.SegmentedProps{Size: theme.Small}).Label("资源类型")
 			if old != v.tab {
-				v.query, v.filter, v.scroll.Y = "", 0, 0
+				v.query, v.filter, v.scroll = "", 0, ui.ListState{}
 				a.refreshContent(i)
 			}
 		} else {
@@ -132,11 +162,17 @@ func (a *desktop) instanceContent(c *ui.Context, i launcher.Instance) {
 }
 
 func contentKey(file launcher.ContentFile) string {
-	return file.Name + fmt.Sprint(file.Enabled)
+	if file.Enabled {
+		return file.Name
+	}
+	return file.Name + ".disabled"
 }
 
 func (v *contentView) visibleFiles() []launcher.ContentFile {
 	query := strings.ToLower(strings.TrimSpace(v.query))
+	if query == "" && v.filter == 0 {
+		return v.files
+	}
 	var files []launcher.ContentFile
 	for _, file := range v.files {
 		if query != "" && !strings.Contains(strings.ToLower(file.Name), query) ||
@@ -149,6 +185,7 @@ func (v *contentView) visibleFiles() []launcher.ContentFile {
 }
 
 func (v *contentView) sortFiles() {
+	v.listing = nil
 	slices.SortFunc(v.files, func(a, b launcher.ContentFile) int {
 		switch v.order {
 		case "modified":
@@ -163,14 +200,23 @@ func (v *contentView) sortFiles() {
 		if n := strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)); n != 0 {
 			return n
 		}
-		return strings.Compare(contentKey(a), contentKey(b))
+		if a.Name == b.Name && a.Enabled != b.Enabled {
+			if a.Enabled {
+				return 1
+			}
+			return -1
+		}
+		return strings.Compare(a.Name, b.Name)
 	})
 }
 
 func (v *contentView) selection(files []launcher.ContentFile) []launcher.ContentFile {
+	if len(v.selected) == 0 {
+		return nil
+	}
 	var selected []launcher.ContentFile
 	for _, file := range files {
-		if v.selected[contentKey(file)] {
+		if _, ok := v.selected[contentKey(file)]; ok {
 			selected = append(selected, file)
 		}
 	}
@@ -184,19 +230,20 @@ func (a *desktop) contentList(c *ui.Context, i launcher.Instance, disabled bool)
 		field.SearchBar(c, &v.query, field.SearchBarProps{Placeholder: "搜索本地文件"}).Label("搜索本地资源").Grow(1).MinWidth(0)
 		action.Segmented(c, &v.filter, []string{"全部资源", "已启用", "已停用"}, action.SegmentedProps{Size: theme.Small}).Label("本地资源筛选")
 		if oldQuery != v.query || oldFilter != v.filter {
-			v.selected, v.scroll.Y = nil, 0
+			v.selected, v.scroll = nil, ui.ListState{}
 		}
 	})
-	files := v.visibleFiles()
+	listing := v.currentListing()
+	files := listing.files
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-		n := len(v.selection(files))
+		n := len(v.selected)
 		all := n > 0 && n == len(files)
 		if choice.Checkbox(c, &all, "全选当前列表", choice.CheckboxProps{Indeterminate: n > 0 && n < len(files)}).
 			Disabled(disabled || len(files) == 0).Changed() {
 			v.selected = make(map[string]bool, len(files))
 			if all {
 				for _, file := range files {
-					v.selected[contentKey(file)] = true
+					v.selected[contentKey(file)] = file.Enabled
 				}
 			}
 		}
@@ -208,19 +255,12 @@ func (a *desktop) contentList(c *ui.Context, i launcher.Instance, disabled bool)
 			}}).Label("本地资源排序")
 		})
 		if order != v.order {
-			v.scroll.Y = 0
+			v.scroll = ui.ListState{}
 			v.sortFiles()
-			files = v.visibleFiles()
+			listing = v.currentListing()
+			files = listing.files
 		}
-		var list strings.Builder
-		for _, file := range files {
-			status := "启用"
-			if !file.Enabled {
-				status = "停用"
-			}
-			fmt.Fprintf(&list, "[%s] %s\n", status, file.Name)
-		}
-		action.CopyButton(c, list.String(), action.CopyButtonProps{}).Label("复制资源列表").Disabled(len(files) == 0)
+		action.CopyButton(c, listing.clipboard, action.CopyButtonProps{}).Label("复制资源列表").Disabled(len(files) == 0)
 	})
 	if len(files) == 0 {
 		ui.Column(c).Grow(1).Center().Children(func() {
@@ -232,63 +272,65 @@ func (a *desktop) contentList(c *ui.Context, i launcher.Instance, disabled bool)
 		})
 		return
 	}
-	layout.ScrollArea(c, layout.ScrollAreaProps{State: &v.scroll}, func() {
-		sectionPane(c).Padding(5, 12).Gap(4).Children(func() {
-			for idx, file := range files {
-				if idx > 0 {
-					layout.Divider(c, layout.DividerProps{})
+	ui.List(c, &v.scroll, len(files)).ItemKey(func(row int) any {
+		return contentKey(files[row])
+	}).Grow(1).MinHeight(0).Rows(func(row ui.ListRow) {
+		c, file := row.Context, files[row.Index]
+		if row.Index > 0 {
+			layout.Divider(c, layout.DividerProps{})
+		}
+		key := contentKey(file)
+		ui.Row(c).MinHeight(46).Padding(0, 12).Gap(8).AlignItems(ui.Center).Children(func() {
+			_, checked := v.selected[key]
+			if choice.Checkbox(c, &checked, "", choice.CheckboxProps{}).Label("选择资源 " + file.Name).
+				Disabled(disabled).Changed() {
+				if v.selected == nil {
+					v.selected = make(map[string]bool)
 				}
-				key := contentKey(file)
-				ui.Row(c.Key(key)).MinHeight(42).Gap(8).AlignItems(ui.Center).Children(func() {
-					checked := v.selected[key]
-					if choice.Checkbox(c, &checked, "", choice.CheckboxProps{}).Label("选择资源 " + file.Name).
-						Disabled(disabled).Changed() {
-						if v.selected == nil {
-							v.selected = make(map[string]bool)
-						}
-						v.selected[key] = checked
-					}
-					leadIcon(c, downloadTabs[downloadTab(v.kind())].Icon, 26)
-					display.Text(c, file.Name, display.TextProps{Strong: true, Rows: 1}).Grow(1).MinWidth(0).Ellipsis("…")
-					detail := fmt.Sprintf("%.1f MiB", float64(file.Size)/(1<<20))
-					if v.order == "modified" && !file.Modified.IsZero() {
-						detail = file.Modified.Local().Format("01-02 15:04") + " · " + detail
-					}
-					muted(c, detail).FontSize(12)
-					label := "停用"
-					if !file.Enabled {
-						label = "恢复"
-						display.Tag(c, "已停用", display.TagProps{Color: display.TagGray, Size: theme.Small})
-					}
-					if button(c, label, action.Default, disabled) {
-						kind := v.kind()
-						a.runInstanceTask(i, label+"资源", func(context.Context) error {
-							return launcher.SetContentEnabled(i, kind, file.Name, !file.Enabled)
-						})
-					}
+				if checked {
+					v.selected[key] = file.Enabled
+				} else {
+					delete(v.selected, key)
+				}
+			}
+			leadIcon(c, downloadTabs[downloadTab(v.kind())].Icon, 26)
+			display.Text(c, file.Name, display.TextProps{Strong: true, Rows: 1}).Grow(1).MinWidth(0).Ellipsis("…")
+			detail := fmt.Sprintf("%.1f MiB", float64(file.Size)/(1<<20))
+			if v.order == "modified" && !file.Modified.IsZero() {
+				detail = file.Modified.Local().Format("01-02 15:04") + " · " + detail
+			}
+			muted(c, detail).FontSize(12)
+			label := "停用"
+			if !file.Enabled {
+				label = "恢复"
+				display.Tag(c, "已停用", display.TagProps{Color: display.TagGray, Size: theme.Small})
+			}
+			if button(c, label, action.Default, disabled) {
+				kind := v.kind()
+				a.runInstanceTask(i, label+"资源", func(context.Context) error {
+					return launcher.SetContentEnabled(i, kind, file.Name, !file.Enabled)
 				})
 			}
 		})
-	}).Grow(1).MinHeight(0)
-	selected := v.selection(files)
-	if len(selected) > 0 {
+	})
+	if count := len(v.selected); count > 0 {
 		enabled := 0
-		for _, file := range selected {
-			if file.Enabled {
+		for _, active := range v.selected {
+			if active {
 				enabled++
 			}
 		}
 		layout.Divider(c, layout.DividerProps{})
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-			muted(c, fmt.Sprintf("已选 %d 项", len(selected))).FontSize(12).Grow(1)
+			muted(c, fmt.Sprintf("已选 %d 项", count)).FontSize(12).Grow(1)
 			if button(c, "取消选择", action.Text, false) {
 				v.selected = nil
 			}
-			if button(c, "启用所选", action.Default, disabled || enabled == len(selected)) {
-				a.setSelectedContent(i, v.kind(), selected, true)
+			if button(c, "启用所选", action.Default, disabled || enabled == count) {
+				a.setSelectedContent(i, v.kind(), v.selection(files), true)
 			}
 			if button(c, "停用所选", action.Default, disabled || enabled == 0) {
-				a.setSelectedContent(i, v.kind(), selected, false)
+				a.setSelectedContent(i, v.kind(), v.selection(files), false)
 			}
 		})
 	}
