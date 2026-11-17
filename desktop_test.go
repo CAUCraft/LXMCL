@@ -892,6 +892,20 @@ func TestServerDialogsKeepTemporaryAndSavedTargetsSeparate(t *testing.T) {
 		t.Fatal("global navigation escaped the direct connection dialog")
 	}
 	click("选择联机实例")
+	click("生存世界 · 1.21.1 · 原版")
+	a.state.Selected = 2
+	tt.Frame()
+	if target, ok := a.serverInstance(); !ok || target.ID != 1 {
+		t.Fatal("explicitly choosing the home instance did not pin it")
+	}
+	click("选择联机实例")
+	click("跟随主页 · 建筑测试 · 1.21.4 · 原版")
+	a.state.Selected = 1
+	tt.Frame()
+	if target, ok := a.serverInstance(); !ok || target.ID != 1 || a.serverInstanceID != 0 {
+		t.Fatal("server selection did not resume following home")
+	}
+	click("选择联机实例")
 	click("建筑测试 · 1.21.4 · 原版")
 	if a.serverInstanceID != 2 || a.state.Selected != 1 {
 		t.Fatal("temporary connection changed the home launch target")

@@ -173,16 +173,24 @@ func (a *desktop) serverInstancePicker(c *ui.Context) (launcher.Instance, bool) 
 		}
 		return launcher.Instance{}, false
 	}
-	i, _ := a.serverInstance()
-	value := strconv.Itoa(i.ID)
-	options := make([]field.SelectOption, 0, len(a.state.Instances))
+	value := "0"
+	options := make([]field.SelectOption, 1, len(a.state.Instances)+1)
+	options[0] = field.SelectOption{Value: "0", Label: "跟随主页", Disabled: true}
 	for _, entry := range a.state.Instances {
-		options = append(options, field.SelectOption{Value: strconv.Itoa(entry.ID), Label: entry.Name + " · " + entry.Version + " · " + loaderName(entry)})
+		id := strconv.Itoa(entry.ID)
+		label := entry.Name + " · " + entry.Version + " · " + loaderName(entry)
+		options = append(options, field.SelectOption{Value: id, Label: label})
+		if entry.ID == a.state.Selected {
+			options[0] = field.SelectOption{Value: "0", Label: "跟随主页 · " + label}
+		}
+		if entry.ID == a.serverInstanceID {
+			value = id
+		}
 	}
 	settingsRow(c, "加入时使用", func() {
 		catalogPicker(c, &value, options, "选择联机实例", "", a.busy || a.running != nil).Grow(1).MinWidth(0)
 	})
-	if value != strconv.Itoa(i.ID) {
+	if value != strconv.Itoa(a.serverInstanceID) {
 		a.serverInstanceID, _ = strconv.Atoi(value)
 	}
 	return a.serverInstance()
