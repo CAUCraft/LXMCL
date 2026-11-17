@@ -159,8 +159,8 @@ func (a *desktop) network(c *ui.Context) {
 }
 
 func (a *desktop) serverInstance() (launcher.Instance, bool) {
-	if i, ok := a.state.Find(a.serverInstanceID); ok {
-		return i, true
+	if a.serverInstanceID != 0 {
+		return a.state.Find(a.serverInstanceID)
 	}
 	return a.state.Find(a.state.Selected)
 }
@@ -173,7 +173,7 @@ func (a *desktop) serverInstancePicker(c *ui.Context) (launcher.Instance, bool) 
 		}
 		return launcher.Instance{}, false
 	}
-	value := "0"
+	value := strconv.Itoa(a.serverInstanceID)
 	options := make([]field.SelectOption, 1, len(a.state.Instances)+1)
 	options[0] = field.SelectOption{Value: "0", Label: "跟随主页", Disabled: true}
 	for _, entry := range a.state.Instances {
@@ -183,12 +183,13 @@ func (a *desktop) serverInstancePicker(c *ui.Context) (launcher.Instance, bool) 
 		if entry.ID == a.state.Selected {
 			options[0] = field.SelectOption{Value: "0", Label: "跟随主页 · " + label}
 		}
-		if entry.ID == a.serverInstanceID {
-			value = id
-		}
+	}
+	placeholder := ""
+	if _, ok := a.serverInstance(); !ok && a.serverInstanceID != 0 {
+		placeholder = "原实例已移除，请重新选择"
 	}
 	settingsRow(c, "加入时使用", func() {
-		catalogPicker(c, &value, options, "选择联机实例", "", a.busy || a.running != nil).Grow(1).MinWidth(0)
+		catalogPicker(c, &value, options, "选择联机实例", placeholder, a.busy || a.running != nil).Grow(1).MinWidth(0)
 	})
 	if value != strconv.Itoa(a.serverInstanceID) {
 		a.serverInstanceID, _ = strconv.Atoi(value)
