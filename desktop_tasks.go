@@ -304,6 +304,7 @@ func (a *desktop) logDialog(c *ui.Context) {
 				action.Segmented(c, &a.logFilter, []string{"全部日志", "警告 / 错误"}, action.SegmentedProps{Size: theme.Small}).Label("日志筛选")
 				if query != a.logQuery || filter != a.logFilter {
 					a.logScroll.Y = 0
+					a.logExported = false
 				}
 				if icon(c, lucide.RefreshCw(), "刷新游戏日志", a.logReading) {
 					a.reloadLog()
@@ -311,6 +312,9 @@ func (a *desktop) logDialog(c *ui.Context) {
 			})
 			if a.logError != "" {
 				feedback.Alert(c, "无法读取日志", feedback.AlertProps{Type: feedback.Error, Description: a.logError})
+			}
+			if a.logExportErr != "" {
+				feedback.Alert(c, "无法导出日志", feedback.AlertProps{Type: feedback.Error, Description: a.logExportErr})
 			}
 			filtered := launcherlog.Filter(a.logText, a.logQuery, a.logFilter == 1)
 			preview := filtered
@@ -321,9 +325,16 @@ func (a *desktop) logDialog(c *ui.Context) {
 				}
 			}
 			_, height := c.Size()
+			reserved := float32(340)
+			if a.logError != "" {
+				reserved += 90
+			}
+			if a.logExportErr != "" {
+				reserved += 90
+			}
 			layout.ScrollArea(c.Key(a.logPath), layout.ScrollAreaProps{State: &a.logScroll}, func() {
 				display.Text(c, preview, display.TextProps{Code: true, FontSize: 12}).Padding(12).Selectable()
-			}).Height(max(120, min(340, height-340))).Radius(8).Background(theme.TokensOf(c).FillTertiary)
+			}).Height(max(80, min(340, height-reserved))).Radius(8).Background(theme.TokensOf(c).FillTertiary)
 			muted(c, "最近 64 KiB · 按日志条目筛选，保留堆栈").FontSize(12)
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Justify(ui.End).Children(func() {
 				lines := 0
@@ -333,9 +344,16 @@ func (a *desktop) logDialog(c *ui.Context) {
 				caption := fmt.Sprintf("显示 %d 行", lines)
 				if a.logReading {
 					caption = "正在刷新…"
+				} else if a.logExporting {
+					caption = "正在导出…"
+				} else if a.logExported {
+					caption = "已导出预览"
 				}
 				muted(c, caption).FontSize(12).Grow(1)
 				action.CopyButton(c, filtered, action.CopyButtonProps{}).Label("复制当前日志").Disabled(filtered == "" || a.logReading)
+				if button(c, "导出预览…", action.Default, filtered == "" || a.logReading || a.logExporting || a.pickerBusy) {
+					a.exportLog()
+				}
 				if button(c, "打开文件", action.Default, a.logPath == "") {
 					a.openLog(a.logPath)
 				}

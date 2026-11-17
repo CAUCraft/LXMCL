@@ -209,6 +209,12 @@ func TestDesktopTasksReachableDuringDownload(t *testing.T) {
 	if err := tt.Click("复制当前日志"); err != nil || tt.Clipboard() != failure {
 		t.Fatalf("log search lost the event context: %v", err)
 	}
+	a.logExportErr = "无法写入所选文件：文件被其他程序占用，请关闭占用程序或选择其他保存位置。"
+	tt.Frame()
+	capture(t, tt, "log-export-error-compact")
+	if _, ok := tt.Find("导出预览…"); !ok {
+		t.Fatal("failed export hid the retry action")
+	}
 	tt.Key(0, ui.KeyEscape)
 	if a.logOpen {
 		t.Fatal("Escape did not close the log viewer")

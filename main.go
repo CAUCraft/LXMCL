@@ -171,6 +171,9 @@ type desktop struct {
 	logPath       string
 	logRequest    uint64
 	logReading    bool
+	logExporting  bool
+	logExported   bool
+	logExportErr  string
 	logError      string
 	logQuery      string
 	logFilter     int

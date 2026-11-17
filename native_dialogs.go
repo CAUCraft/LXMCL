@@ -1,11 +1,47 @@
 package main
 
 import (
+	"path/filepath"
 	"runtime"
 	"strings"
 
+	launcherlog "github.com/CAUCraft/LXMCL/internal/log"
 	"github.com/egoist/mygo"
 )
+
+func (a *desktop) exportLog() {
+	if a.ctx == nil || a.pickerBusy || a.logReading || a.logExporting {
+		return
+	}
+	preview := launcherlog.Filter(a.logText, a.logQuery, a.logFilter == 1)
+	if preview == "" {
+		return
+	}
+	source := a.logPath
+	a.pickerBusy, a.logExporting, a.logExported, a.logExportErr = true, true, false, ""
+	options := mygo.SaveDialogOptions{
+		Parent: a.window, Title: "导出当前日志预览", ButtonLabel: "导出",
+		DefaultPath: strings.TrimSuffix(filepath.Base(source), filepath.Ext(source)) + "-preview.txt",
+		Filters:     []mygo.FileFilter{{Name: "文本文件", Extensions: []string{"txt"}}},
+	}
+	go func() {
+		path, err := mygo.Dialog.Save(options)
+		if err == nil && path != "" {
+			err = launcherlog.ExportPreview(source, path, preview)
+		}
+		a.post(func() {
+			a.pickerBusy, a.logExporting = false, false
+			if a.logPath != source {
+				return
+			}
+			if err != nil {
+				a.logExportErr = err.Error()
+			} else {
+				a.logExported = path != ""
+			}
+		})
+	}()
+}
 
 func (a *desktop) pickPath(options mygo.OpenDialogOptions, accept func(string)) {
 	a.pickPaths(options, func(paths []string) { accept(paths[0]) })
