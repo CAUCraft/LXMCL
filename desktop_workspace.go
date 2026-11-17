@@ -80,7 +80,7 @@ func (a *desktop) instanceOverview(c *ui.Context, i launcher.Instance) {
 					button(c, "更换版本", action.Default, a.busy || a.runningID == i.ID) {
 					a.changeVersion(i)
 				}
-				if (i.Vanilla() || i.Fabric()) && button(c, "加载器", action.Default, a.busy || a.runningID == i.ID) {
+				if button(c, "加载器", action.Default, a.busy || a.runningID == i.ID) {
 					a.configureLoader(i)
 				}
 			})

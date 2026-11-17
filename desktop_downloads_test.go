@@ -136,6 +136,26 @@ func TestDownloadPageSelectsVersionAndLoader(t *testing.T) {
 	if _, ok := tt.Find("NeoForge 版本"); !ok {
 		t.Fatal("missing NeoForge catalog control")
 	}
+	a.state.Instances[1].Loader, a.state.Instances[1].LoaderVersion = launcher.LoaderForge, "54.0.1"
+	a.inspect(a.state.Instances[1])
+	tt.Frame()
+	if err := tt.Click("加载器"); err != nil {
+		t.Fatal(err)
+	}
+	edit := a.form.loaders
+	if edit == nil || edit.kind() != launcher.LoaderForge {
+		t.Fatal("did not open the existing loader family")
+	}
+	edit.loaderGame, edit.loaderKind, edit.loaderVersion = edit.version, edit.kind(), "54.0.2"
+	edit.loaderVersions = []launcher.LoaderRelease{{Version: edit.loaderVersion}}
+	tt.Frame()
+	tt.Advance(300 * time.Millisecond)
+	tt.Frame()
+	capture(t, tt, "edit-loader-compact")
+	if err := tt.Click("取消"); err != nil || a.form.open || a.state.Instances[1].LoaderVersion != "54.0.1" ||
+		a.state.Selected != 1 || p.loaderVersion != "21.4.120" {
+		t.Fatalf("cancel changed the instance or independent install draft: %v", err)
+	}
 }
 
 func TestResourceDownloadsKeepInstallTargetSeparate(t *testing.T) {
