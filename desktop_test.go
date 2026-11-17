@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/CAUCraft/LXMCL/internal/launcher"
+	launcherlog "github.com/CAUCraft/LXMCL/internal/log"
 	"github.com/egoist/mygo/ui"
 	"github.com/lobehub/lobe-mygo/pkg/display"
 )
@@ -547,6 +548,56 @@ func TestResourceAndServerEntrypoints(t *testing.T) {
 	a.state.Remove(2)
 	if target, ok := a.serverInstance(); !ok || target.ID != 1 {
 		t.Fatal("removed server instance did not fall back to the home target")
+	}
+}
+
+func TestInstanceLogSelectionKeepsTargetAndResetsPreview(t *testing.T) {
+	a, tt := testDesktop(t)
+	i := a.state.Instances[1]
+	a.inspect(i)
+	a.detailPage = detailFiles
+	tt.SetSize(820, 530)
+	tt.Frame()
+	capture(t, tt, "instance-files-compact")
+	if err := tt.Click("日志与崩溃报告…"); err != nil {
+		t.Fatal(err)
+	}
+	if a.logLibrary == nil || a.logLibrary.instance.ID != i.ID || a.state.Selected != 1 {
+		t.Fatal("log browser did not capture the viewed instance")
+	}
+	capture(t, tt, "instance-logs-empty")
+	modified := time.Date(2026, 11, 18, 10, 30, 0, 0, time.Local)
+	latest := filepath.Join(i.GameDir, "logs", "latest.log")
+	crash := filepath.Join(i.GameDir, "crash-reports", "crash-test-client.txt")
+	a.logLibrary.entries = []launcherlog.Entry{{Path: latest, Modified: modified}, {Path: crash, Modified: modified}}
+	a.selectLog(latest)
+	a.logText, a.logQuery, a.logFilter = "old preview", "old", 1
+	tt.Frame()
+	if err := tt.Click("选择实例日志"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Advance(250 * time.Millisecond)
+	tt.Frame()
+	capture(t, tt, "instance-log-picker")
+	if err := tt.Click("11-18 10:30 · 崩溃报告 · crash-test-client.txt"); err != nil {
+		t.Fatal(err)
+	}
+	if a.logPath != crash || a.logText != "" || a.logQuery != "" || a.logFilter != 0 || a.state.Selected != 1 {
+		t.Fatal("switching reports retained a stale preview or changed launch target")
+	}
+	a.logText = "---- Minecraft Crash Report ----\nDescription: Initializing game\n\njava.lang.RuntimeException: failed to load mod\n\tat demo.Client.start(Client.java:42)\n"
+	tt.SetDark(true)
+	tt.Frame()
+	tt.Advance(500 * time.Millisecond)
+	tt.Frame()
+	capture(t, tt, "instance-crash-compact")
+	tt.Key(0, ui.KeyEscape)
+	if a.logOpen {
+		t.Fatal("Escape did not close instance logs")
+	}
+	a.showLog(filepath.Join(i.GameDir, "launcher-logs", "game-test.log"))
+	if a.logLibrary != nil {
+		t.Fatal("task log retained an unrelated instance catalog")
 	}
 }
 
