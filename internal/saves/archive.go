@@ -63,34 +63,34 @@ func writeBackupFile(ctx context.Context, root *os.Root, z *zip.Writer, file bac
 	return nil
 }
 
-func extractArchive(ctx context.Context, root *os.Root, entries []*zip.File) error {
+func extractArchive(ctx context.Context, root *os.Root, entries []restoreEntry) error {
 	for _, entry := range entries {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if entry.FileInfo().IsDir() {
-			if err := root.MkdirAll(entry.Name, 0755); err != nil {
+		if entry.file.FileInfo().IsDir() {
+			if err := root.MkdirAll(entry.name, 0755); err != nil {
 				return err
 			}
 			continue
 		}
-		if err := root.MkdirAll(path.Dir(entry.Name), 0755); err != nil {
+		if err := root.MkdirAll(path.Dir(entry.name), 0755); err != nil {
 			return err
 		}
-		if err := extractSaveFile(ctx, root, entry); err != nil {
+		if err := extractSaveFile(ctx, root, entry.file, entry.name); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func extractSaveFile(ctx context.Context, root *os.Root, entry *zip.File) error {
+func extractSaveFile(ctx context.Context, root *os.Root, entry *zip.File, name string) error {
 	src, err := entry.Open()
 	if err != nil {
 		return err
 	}
 	defer src.Close()
-	dst, err := root.OpenFile(entry.Name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
+	dst, err := root.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
 	if err != nil {
 		return err
 	}

@@ -16,7 +16,7 @@ import (
 	"github.com/CAUCraft/LXMCL/internal/i18n"
 )
 
-// Restore imports ZIPs whose top-level folders contain level.dat.
+// Restore imports ZIPs with level.dat at the root or inside top-level world folders.
 // Imported worlds receive a new suffix if their name is already taken. Callers
 // must serialize changes to the same instance. On publication failure, the count
 // reports worlds already restored.
@@ -57,7 +57,7 @@ func openRestorePlan(ctx context.Context, source string) (*zip.ReadCloser, resto
 	if err != nil {
 		return nil, restorePlan{}, err
 	}
-	plan, err := planRestore(ctx, z.File)
+	plan, err := planRestore(ctx, source, z.File)
 	if err != nil {
 		z.Close()
 		return nil, restorePlan{}, err
@@ -79,8 +79,8 @@ func restore(ctx context.Context, gameDir, source string, preview *Preview, worl
 			return 0, i18n.Error("saves.world_missing", world)
 		}
 		plan.worlds = []string{world}
-		plan.entries = slices.DeleteFunc(plan.entries, func(f *zip.File) bool {
-			top, _, _ := strings.Cut(f.Name, "/")
+		plan.entries = slices.DeleteFunc(plan.entries, func(f restoreEntry) bool {
+			top, _, _ := strings.Cut(f.name, "/")
 			return top != world
 		})
 	}

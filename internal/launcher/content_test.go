@@ -192,6 +192,37 @@ func TestShaderPackRequiresShadersDirectoryAndModdedInstance(t *testing.T) {
 	}
 }
 
+func TestRestoreWorldFromArchiveRoot(t *testing.T) {
+	archive := filepath.Join(t.TempDir(), "Workshop.zip")
+	files := map[string]string{"level.dat": "world", "region/r.0.0.mca": "chunk", "session.lock": "lock"}
+	if err := os.WriteFile(archive, testZIP(t, files), 0600); err != nil {
+		t.Fatal(err)
+	}
+	preview, err := InspectSaveArchive(t.Context(), archive)
+	if err != nil || strings.Join(preview.Worlds(), ",") != "Workshop" {
+		t.Fatalf("world preview: %v %v", preview.Worlds(), err)
+	}
+	dir := t.TempDir()
+	if n, err := preview.Restore(t.Context(), dir, "Workshop"); err != nil || n != 1 {
+		t.Fatalf("restore: %d %v", n, err)
+	}
+	world := filepath.Join(dir, "saves", "Workshop")
+	chunk, err := os.ReadFile(filepath.Join(world, "region", "r.0.0.mca"))
+	if err != nil || string(chunk) != "chunk" {
+		t.Fatalf("world contents: %q %v", chunk, err)
+	}
+	if _, err := os.Stat(filepath.Join(world, "session.lock")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("restored a session lock: %v", err)
+	}
+	files["Other/level.dat"] = "another world"
+	if err := os.WriteFile(archive, testZIP(t, files), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := InspectSaveArchive(t.Context(), archive); err == nil {
+		t.Fatal("accepted ambiguous world roots")
+	}
+}
+
 func TestImportFabricModDoesNotReplaceExistingFile(t *testing.T) {
 	content := testZIP(t, map[string]string{"fabric.mod.json": "{}"})
 	source := filepath.Join(t.TempDir(), "example.jar")
