@@ -49,6 +49,35 @@ func TestLogFilterKeepsExceptionContext(t *testing.T) {
 	}
 }
 
+func TestExportPreviewPreservesSourceAndWritesOnlyCapturedText(t *testing.T) {
+	dir := t.TempDir()
+	source := filepath.Join(dir, "game.log")
+	if err := os.WriteFile(source, []byte("original game log"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := ExportPreview(source, source, "filtered"); err == nil {
+		t.Fatal("export replaced its source")
+	}
+	alias := filepath.Join(dir, "alias.txt")
+	if err := os.Link(source, alias); err != nil {
+		t.Fatal(err)
+	}
+	if err := ExportPreview(source, alias, "filtered"); err == nil {
+		t.Fatal("export replaced a source alias")
+	}
+	destination := filepath.Join(dir, "preview.txt")
+	const preview = "[main/ERROR] 测试失败\n\tat demo.Client.start(Client.java:42)\n"
+	if err := ExportPreview(source, destination, preview); err != nil {
+		t.Fatal(err)
+	}
+	if b, err := os.ReadFile(destination); err != nil || string(b) != preview {
+		t.Fatalf("export changed the captured preview: %q, %v", b, err)
+	}
+	if b, err := os.ReadFile(source); err != nil || string(b) != "original game log" {
+		t.Fatalf("export changed the source: %q, %v", b, err)
+	}
+}
+
 func TestInstallerLogPreservesLocationAndOutput(t *testing.T) {
 	root := t.TempDir()
 	f, err := CreateInstaller(root, "NeoForge")

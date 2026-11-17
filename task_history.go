@@ -54,6 +54,7 @@ func (a *desktop) showLog(path string) {
 	}
 	if a.logPath != path || !a.logOpen {
 		a.logQuery, a.logFilter, a.logScroll.Y, a.logText = "", 0, 0, ""
+		a.logExported, a.logExportErr = false, ""
 	}
 	a.logPath, a.logOpen = path, true
 	a.reloadLog()
@@ -67,6 +68,7 @@ func (a *desktop) reloadLog() {
 	request := a.logRequest
 	path := a.logPath
 	a.logReading, a.logError = true, ""
+	a.logExported = false
 	go func() {
 		log, err := launcherlog.ReadGame(path)
 		a.post(func() {
