@@ -188,12 +188,27 @@ func TestDesktopTasksReachableDuringDownload(t *testing.T) {
 		t.Fatalf("cancel could be submitted again or cleared the active operation: %v", err)
 	}
 	capture(t, tt, "tasks-canceling-compact")
-	a.logOpen, a.logPath, a.logText = true, "launcher.log", "Minecraft is starting."
+	const failure = "[12:00:01] [main/ERROR] Failed to load mod\njava.lang.RuntimeException: demo\n\tat demo.Client.start(Client.java:42)\n"
+	a.logOpen, a.logPath, a.logText = true, "launcher.log", "[12:00:00] [main/INFO] Minecraft is starting.\n"+failure
 	tt.Frame()
 	if _, ok := tt.Find("游戏日志"); !ok {
 		t.Fatal("the log viewer did not open")
 	}
 	capture(t, tt, "log-dark-compact")
+	if err := tt.Click("警告 / 错误"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.Click("复制当前日志"); err != nil || tt.Clipboard() != failure {
+		t.Fatalf("log filter lost the stack trace: %v", err)
+	}
+	if err := tt.Click("搜索游戏日志"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Type("Client.java")
+	capture(t, tt, "log-filtered-compact")
+	if err := tt.Click("复制当前日志"); err != nil || tt.Clipboard() != failure {
+		t.Fatalf("log search lost the event context: %v", err)
+	}
 	tt.Key(0, ui.KeyEscape)
 	if a.logOpen {
 		t.Fatal("Escape did not close the log viewer")

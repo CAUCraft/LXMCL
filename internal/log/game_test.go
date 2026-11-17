@@ -30,6 +30,25 @@ func TestGameLogPreviewReadsBoundedTail(t *testing.T) {
 	}
 }
 
+func TestLogFilterKeepsExceptionContext(t *testing.T) {
+	const ordinary = "[12:00:00] [main/INFO] Starting game\n"
+	const failure = "[12:00:01] [main/ERROR] Startup failed\njava.lang.OutOfMemoryError: heap space\n\tat demo.Client.start(Client.java:42)\nCaused by: java.lang.RuntimeException\n"
+	const warning = "[12:00:02] [main/WARN] Optional pack missing\n"
+	text := ordinary + failure + warning
+	if got := Filter(text, "", true); got != failure+warning {
+		t.Fatalf("severity filter lost context: %q", got)
+	}
+	if got := Filter(text, "client.java", true); got != failure {
+		t.Fatalf("stack search lost its event: %q", got)
+	}
+	if got := Filter(text, "no match", false); got != "" {
+		t.Fatalf("unmatched query returned %q", got)
+	}
+	if got := Filter(text, "", false); got != text {
+		t.Fatal("unfiltered preview changed")
+	}
+}
+
 func TestInstallerLogPreservesLocationAndOutput(t *testing.T) {
 	root := t.TempDir()
 	f, err := CreateInstaller(root, "NeoForge")

@@ -170,6 +170,11 @@ type desktop struct {
 	logText       string
 	logPath       string
 	logRequest    uint64
+	logReading    bool
+	logError      string
+	logQuery      string
+	logFilter     int
+	logScroll     ui.ScrollState
 	licensesOpen  bool
 	licenseFile   string
 	pickerBusy    bool

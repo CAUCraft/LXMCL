@@ -2,8 +2,10 @@ package main
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/CAUCraft/LXMCL/internal/launcher"
+	launcherlog "github.com/CAUCraft/LXMCL/internal/log"
 	"github.com/egoist/mygo/ui"
 	"github.com/lobehub/lobe-mygo/pkg/action"
 	"github.com/lobehub/lobe-mygo/pkg/display"
@@ -292,18 +294,48 @@ func (a *desktop) progress(c *ui.Context) {
 
 func (a *desktop) logDialog(c *ui.Context) {
 	feedback.Modal(c, &a.logOpen, feedback.ModalProps{Title: "游戏日志", NoFooter: true, Width: 760}, func() {
-		ui.Column(c).Gap(12).Children(func() {
-			muted(c, a.logPath).FontSize(12).Selectable()
-			log := a.logText
-			if log == "" {
-				log = "没有可显示的日志内容。"
+		ui.Column(c).Gap(10).Children(func() {
+			muted(c, a.logPath).FontSize(12).SingleLine().Ellipsis("…").Selectable()
+			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+				query, filter := a.logQuery, a.logFilter
+				ui.Column(c).Grow(1).MinWidth(0).Children(func() {
+					field.SearchBar(c, &a.logQuery, field.SearchBarProps{Placeholder: "搜索日志与堆栈"}).Label("搜索游戏日志")
+				})
+				action.Segmented(c, &a.logFilter, []string{"全部日志", "警告 / 错误"}, action.SegmentedProps{Size: theme.Small}).Label("日志筛选")
+				if query != a.logQuery || filter != a.logFilter {
+					a.logScroll.Y = 0
+				}
+				if icon(c, lucide.RefreshCw(), "刷新游戏日志", a.logReading) {
+					a.reloadLog()
+				}
+			})
+			if a.logError != "" {
+				feedback.Alert(c, "无法读取日志", feedback.AlertProps{Type: feedback.Error, Description: a.logError})
+			}
+			filtered := launcherlog.Filter(a.logText, a.logQuery, a.logFilter == 1)
+			preview := filtered
+			if preview == "" {
+				preview = "没有匹配的日志，请调整筛选或刷新。"
+				if a.logReading {
+					preview = "正在读取游戏日志…"
+				}
 			}
 			_, height := c.Size()
-			layout.ScrollArea(c.Key(a.logPath), layout.ScrollAreaProps{}, func() {
-				display.Text(c, log, display.TextProps{Code: true, FontSize: 12}).Padding(12).Selectable()
-			}).Height(max(160, min(340, height-240))).Radius(8).Background(theme.TokensOf(c).FillTertiary)
+			layout.ScrollArea(c.Key(a.logPath), layout.ScrollAreaProps{State: &a.logScroll}, func() {
+				display.Text(c, preview, display.TextProps{Code: true, FontSize: 12}).Padding(12).Selectable()
+			}).Height(max(120, min(340, height-340))).Radius(8).Background(theme.TokensOf(c).FillTertiary)
+			muted(c, "最近 64 KiB · 按日志条目筛选，保留堆栈").FontSize(12)
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Justify(ui.End).Children(func() {
-				action.CopyButton(c, a.logText, action.CopyButtonProps{}).Disabled(a.logText == "")
+				lines := 0
+				if filtered != "" {
+					lines = strings.Count(strings.TrimSuffix(filtered, "\n"), "\n") + 1
+				}
+				caption := fmt.Sprintf("显示 %d 行", lines)
+				if a.logReading {
+					caption = "正在刷新…"
+				}
+				muted(c, caption).FontSize(12).Grow(1)
+				action.CopyButton(c, filtered, action.CopyButtonProps{}).Label("复制当前日志").Disabled(filtered == "" || a.logReading)
 				if button(c, "打开文件", action.Default, a.logPath == "") {
 					a.openLog(a.logPath)
 				}
