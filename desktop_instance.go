@@ -291,12 +291,8 @@ func (a *desktop) instanceFiles(c *ui.Context, i launcher.Instance) {
 		if button(c, "恢复存档…", action.Default, disabled) {
 			a.pickSaveArchive(i)
 		}
-		if button(c, "备份存档", action.Primary, disabled) {
-			root := a.store.Root
-			a.runInstanceTask(i, "备份存档", "", func(ctx context.Context) error {
-				_, err := launcher.BackupSaves(ctx, i, root)
-				return err
-			})
+		if button(c, taskBackup, action.Primary, disabled) {
+			a.backupSaves(i)
 		}
 	})
 	layout.ScrollArea(c, layout.ScrollAreaProps{}, func() {

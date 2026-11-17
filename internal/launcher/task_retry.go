@@ -4,7 +4,7 @@ import "github.com/CAUCraft/LXMCL/internal/tasks"
 
 func RetryTarget(r tasks.Record, s State) (Instance, bool) {
 	if r.InstanceID == 0 || (r.Status != tasks.Failed && r.Status != tasks.Canceled) ||
-		(r.Action != tasks.Launch && r.Action != tasks.Verify && r.Resource == nil) {
+		(r.Action != tasks.Launch && r.Action != tasks.Verify && r.Action != tasks.Backup && r.Resource == nil) {
 		return Instance{}, false
 	}
 	if r.Action == tasks.Launch && (r.Account != "" && r.Account != s.AccountKey() ||

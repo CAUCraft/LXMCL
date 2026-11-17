@@ -213,6 +213,8 @@ func (a *desktop) taskRow(c *ui.Context, row taskRecord) {
 					} else {
 						reason = "当前实例配置已不支持该资源类型，请检查实例的加载器。"
 					}
+				} else if row.Action == taskBackup {
+					reason = "原实例配置已变化，请从游戏文件页重新备份。"
 				} else if row.Action == taskLaunch || row.Action == taskVerify || row.Resource != nil {
 					reason = "实例配置、登录账号或资源信息已变化，请检查后重新发起。"
 				}
@@ -223,6 +225,8 @@ func (a *desktop) taskRow(c *ui.Context, row taskRecord) {
 			if (retry || folderRetry) && button(c, "重试", action.Primary, a.busy || a.running != nil) {
 				if folderRetry {
 					a.saveResourceFile(row.Folder, *row.Resource, launcher.PackVersion{})
+				} else if row.Action == taskBackup {
+					a.backupSaves(target)
 				} else if row.Resource != nil {
 					a.downloadResource(target, *row.Resource, launcher.PackVersion{})
 				} else {
@@ -233,7 +237,7 @@ func (a *desktop) taskRow(c *ui.Context, row taskRecord) {
 				a.query, a.instanceFilter = "", 0
 				a.inspect(i)
 				switch {
-				case row.Action == "备份存档" || row.Action == "恢复存档" || strings.HasPrefix(row.Action, "恢复存档 · "):
+				case row.Action == taskBackup || row.Action == "恢复存档" || strings.HasPrefix(row.Action, "恢复存档 · "):
 					a.detailPage = detailFiles
 				case row.Resource != nil:
 					if kind := launcher.ContentKind(row.Resource.Kind); kind.Supports(i) {
@@ -248,7 +252,7 @@ func (a *desktop) taskRow(c *ui.Context, row taskRecord) {
 			if row.Log != "" && button(c, "查看日志", action.Default, false) {
 				a.showLog(row.Log)
 			}
-			if row.Action == "备份存档" && row.Status == taskCompleted && row.InstanceID > 0 && button(c, "打开备份目录", action.Default, false) {
+			if row.Action == taskBackup && row.Status == taskCompleted && row.InstanceID > 0 && button(c, "打开备份目录", action.Default, false) {
 				a.openPath(launcher.BackupsDir(a.store.Root, row.InstanceID), false)
 			}
 			if row.Folder != "" && button(c, "打开文件夹", action.Default, false) {

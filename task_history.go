@@ -19,6 +19,7 @@ const (
 	taskCanceled  = tasks.Canceled
 	taskLaunch    = tasks.Launch
 	taskVerify    = tasks.Verify
+	taskBackup    = tasks.Backup
 )
 
 var (

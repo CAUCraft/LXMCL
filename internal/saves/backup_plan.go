@@ -2,6 +2,7 @@ package saves
 
 import (
 	"context"
+	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -30,9 +31,23 @@ func planBackup(ctx context.Context, root *os.Root) ([]backupFile, error) {
 		if !world.IsDir() {
 			continue
 		}
-		level, err := root.Lstat(filepath.Join(world.Name(), "level.dat"))
-		if err != nil || !level.Mode().IsRegular() {
-			continue
+		levelPath := filepath.Join(world.Name(), "level.dat")
+		level, err := root.Lstat(levelPath)
+		if errors.Is(err, fs.ErrNotExist) {
+			_, oldErr := root.Lstat(levelPath + "_old")
+			if errors.Is(oldErr, fs.ErrNotExist) {
+				continue
+			}
+			if oldErr != nil {
+				return nil, oldErr
+			}
+			return nil, i18n.Error("saves.backup_world_needs_repair", world.Name())
+		}
+		if err != nil {
+			return nil, err
+		}
+		if !level.Mode().IsRegular() {
+			return nil, i18n.Error("saves.backup_file_unsupported", levelPath)
 		}
 		levelFound := false
 		if err := fs.WalkDir(root.FS(), world.Name(), func(name string, entry fs.DirEntry, err error) error {

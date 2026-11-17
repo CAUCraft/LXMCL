@@ -413,7 +413,7 @@ func (a *desktop) runContentTask(i launcher.Instance, label string, resource *re
 	}
 	row := taskRecord{InstanceID: i.ID, Revision: i.Revision, Name: i.Name, Version: i.Version, Action: label, At: time.Now(), Resource: resource}
 	a.runFileTask(row, work, func() {
-		if label == "备份存档" && a.backups != nil && a.backups.instanceID == i.ID {
+		if label == taskBackup && a.backups != nil && a.backups.instanceID == i.ID {
 			a.refreshBackups(i.ID)
 		}
 		if a.content.id == i.ID && a.content.revision == i.Revision {

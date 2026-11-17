@@ -28,6 +28,14 @@ type restoreView struct {
 	cancel   context.CancelFunc
 }
 
+func (a *desktop) backupSaves(i launcher.Instance) {
+	root := a.store.Root
+	a.runInstanceTask(i, taskBackup, "", func(ctx context.Context) error {
+		_, err := launcher.BackupSaves(ctx, i, root)
+		return err
+	})
+}
+
 func (a *desktop) pickSaveArchive(i launcher.Instance) {
 	previous := a.restore
 	a.pickPath(mygo.OpenDialogOptions{Title: "选择存档 ZIP", DefaultPath: launcher.BackupsDir(a.store.Root, i.ID),

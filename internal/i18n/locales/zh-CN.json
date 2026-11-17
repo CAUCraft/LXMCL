@@ -295,6 +295,7 @@
   "saves.backup_file_unsupported": "存档包含不支持的文件：%s",
   "saves.backup_too_large": "存档备份超过 32 GiB",
   "saves.backup_too_many_files": "存档备份超过 50000 个文件",
+  "saves.backup_world_needs_repair": "世界「%s」缺少 level.dat，仍有 level.dat_old。请先复制世界目录，修复后再备份。",
   "saves.no_worlds_to_back_up": "此实例还没有可备份的存档",
   "saves.path_conflict": "存档归档路径冲突：%s",
   "saves.path_invalid": "存档归档路径无法跨平台使用：%s",

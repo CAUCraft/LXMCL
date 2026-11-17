@@ -295,6 +295,7 @@
   "saves.backup_file_unsupported": "The world contains an unsupported file: %s",
   "saves.backup_too_large": "The world backup exceeds 32 GiB",
   "saves.backup_too_many_files": "The world backup exceeds 50,000 files",
+  "saves.backup_world_needs_repair": "World %s has level.dat_old but is missing level.dat. Copy the world folder before repairing it, then retry the backup.",
   "saves.no_worlds_to_back_up": "This instance has no worlds to back up",
   "saves.path_conflict": "Conflicting world archive path: %s",
   "saves.path_invalid": "World archive path is not portable: %s",
