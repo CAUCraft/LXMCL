@@ -645,7 +645,19 @@ func TestResourceAndServerEntrypoints(t *testing.T) {
 		t.Fatalf("server address copy failed: %v", err)
 	}
 	capture(t, tt, "saved-servers")
-	a.serverStatus = map[string]*serverCheck{"localhost:25565": {err: "连接超时，请检查服务器地址或稍后重试。"}}
+	status := &serverCheck{updated: time.Date(2026, 11, 18, 8, 0, 0, 0, time.Local), description: "欢迎来到社团生存服\n本周六开放建筑展览。", summary: "Paper 1.21.4 · 12/80 人 · 36 ms"}
+	a.serverStatus = map[string]*serverCheck{"localhost:25565": status}
+	tt.Frame()
+	capture(t, tt, "server-status-success")
+	tt.SetSize(1140, 720)
+	tt.SetDark(false)
+	tt.Advance(300 * time.Millisecond)
+	tt.Frame()
+	capture(t, tt, "server-status-light")
+	tt.SetSize(820, 530)
+	tt.SetDark(true)
+	tt.Advance(300 * time.Millisecond)
+	status.err = "连接超时，请检查服务器地址或稍后重试。"
 	tt.Frame()
 	capture(t, tt, "server-query-failed")
 	a.state.Remove(2)

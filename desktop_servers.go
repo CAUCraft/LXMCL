@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/CAUCraft/LXMCL/internal/launcher"
 	"github.com/egoist/mygo/ui"
@@ -15,18 +16,25 @@ import (
 )
 
 type serverCheck struct {
-	pending bool
-	message string
-	err     string
-	icon    ui.ImageSource
+	pending                   bool
+	updated                   time.Time
+	summary, description, err string
+	icon                      ui.ImageSource
 }
 
 func (a *desktop) checkServer(server launcher.Server) {
 	if a.serverStatus == nil {
 		a.serverStatus = make(map[string]*serverCheck)
 	}
-	status := &serverCheck{pending: true, message: "正在查询…"}
-	a.serverStatus[server.Address] = status
+	status := a.serverStatus[server.Address]
+	if status == nil {
+		status = &serverCheck{}
+		a.serverStatus[server.Address] = status
+	}
+	if status.pending {
+		return
+	}
+	status.pending, status.err = true, ""
 	go func() {
 		reply, err := launcher.PingServer(a.ctx, server.Address)
 		var picture ui.ImageSource
@@ -39,7 +47,15 @@ func (a *desktop) checkServer(server launcher.Server) {
 				status.err = err.Error()
 			} else {
 				status.icon = picture
-				status.message = fmt.Sprintf("%s · %d/%d 人 · %d ms", reply.Version, reply.Online, reply.Max, reply.Latency.Milliseconds())
+				status.updated, status.description = time.Now(), reply.Description
+				players := "未公开人数"
+				if reply.PlayersReported {
+					players = fmt.Sprintf("%d/%d 人", reply.Online, reply.Max)
+				}
+				status.summary = fmt.Sprintf("%s · %d ms", players, reply.Latency.Milliseconds())
+				if reply.Version != "" {
+					status.summary = reply.Version + " · " + status.summary
+				}
 			}
 		})
 	}()
@@ -108,7 +124,7 @@ func (a *desktop) network(c *ui.Context) {
 				}
 			}).Grow(1).MinHeight(0)
 		}, func() {
-			detailPane(c.Key(server.Address), func() {
+			layout.ScrollArea(c.Key(server.Address), layout.ScrollAreaProps{}, func() {
 				sectionPane(c).Padding(14).Gap(10).Children(func() {
 					ui.Row(c).Gap(9).AlignItems(ui.Center).Children(func() {
 						a.serverBadge(c, server.Address, 36)
@@ -119,15 +135,7 @@ func (a *desktop) network(c *ui.Context) {
 						action.CopyButton(c, server.Address, action.CopyButtonProps{}).Label("复制服务器地址")
 					})
 					check := a.serverStatus[server.Address]
-					if check != nil && check.pending {
-						flightLoading(c, check.message)
-					} else if check != nil && check.err != "" {
-						feedback.Alert(c, "无法查询服务器状态", feedback.AlertProps{Type: feedback.Warning, Description: check.err})
-					} else if check != nil {
-						muted(c, check.message).FontSize(13)
-					} else {
-						muted(c, "尚未查询服务器状态").FontSize(12)
-					}
+					serverStatusDetails(c, check)
 					i, selected := a.serverInstancePicker(c)
 					ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 						if button(c, "启动并加入", action.Primary, !selected || a.busy || a.running != nil) {
@@ -145,7 +153,7 @@ func (a *desktop) network(c *ui.Context) {
 						}
 					})
 				})
-			})
+			}).Grow(1).MinHeight(0)
 		})
 	})
 }
@@ -178,4 +186,24 @@ func (a *desktop) serverInstancePicker(c *ui.Context) (launcher.Instance, bool) 
 		a.serverInstanceID, _ = strconv.Atoi(value)
 	}
 	return a.serverInstance()
+}
+
+func serverStatusDetails(c *ui.Context, status *serverCheck) {
+	if status == nil {
+		muted(c, "尚未查询服务器状态").FontSize(12)
+		return
+	}
+	if status.pending {
+		flightLoading(c, "正在查询服务器…")
+	} else if status.err != "" {
+		feedback.Alert(c, "无法查询服务器状态", feedback.AlertProps{Type: feedback.Warning, Description: status.err})
+	}
+	if status.updated.IsZero() {
+		return
+	}
+	if status.description != "" {
+		display.Text(c, status.description, display.TextProps{FontSize: 14, Rows: 3}).Ellipsis("…").Selectable()
+	}
+	display.Text(c, status.summary, display.TextProps{FontSize: 13, Rows: 1}).Ellipsis("…")
+	muted(c, "上次成功查询 · "+status.updated.Local().Format("01-02 15:04:05")).FontSize(12)
 }

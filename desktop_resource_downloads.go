@@ -364,7 +364,7 @@ func (a *desktop) packDetails(c *ui.Context, p *packBrowser) {
 		muted(c, byline).FontSize(12)
 	}
 	if p.project.Description != "" {
-		display.Text(c, p.project.Description, display.TextProps{Type: display.TextSecondary, FontSize: 13, Rows: 2}).Ellipsis("…")
+		muted(c, p.project.Description).FontSize(13).MaxLines(2).Ellipsis("…")
 	}
 	layout.Divider(c, layout.DividerProps{})
 	switch {

@@ -11,10 +11,11 @@ import (
 )
 
 type Status struct {
-	Version     string
-	Online, Max int
-	Latency     time.Duration
-	Icon        image.Image
+	Version, Description string
+	PlayersReported      bool
+	Online, Max          int
+	Latency              time.Duration
+	Icon                 image.Image
 }
 
 // Client queries Java server status. Nil functions use the system resolver and

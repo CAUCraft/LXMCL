@@ -39,7 +39,7 @@ CurseForge 在线功能需要 [API Key](https://console.curseforge.com/)。复�
 
 职责划分和数据约束见[架构](architecture.md)。UI 使用 Lobe 组件，遵循[界面约定](../.agents/skills/lxmcl-ui/SKILL.md)，保留原 Logo、河谷首页和孪枭角色。文件、网络、子进程操作放在后台；界面结果必须对应提交时的实例和账号。
 
-优先扩展现有用例，只为实际缺陷和关键行为补充回归。按改动范围运行测试；合并前的 CI 执行完整测试、静态检查和 Windows 打包。
+优先扩展现有用例，只为实际缺陷和关键行为补充回归。按改动范围运行测试；PR 的 CI 执行完整测试、静态检查和 Windows 打包。运行页的 `lxmcl-ui-screenshots` 提供 MyGo 测试窗口截图，保留 7 天。
 
 ```powershell
 go test ./...

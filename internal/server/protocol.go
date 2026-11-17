@@ -45,15 +45,19 @@ func queryStatus(conn io.ReadWriter, host string, port uint16) (Status, error) {
 		return Status{}, i18n.Error("server.status_incomplete")
 	}
 	var status struct {
-		Version struct{ Name string }
-		Players struct{ Online, Max int }
-		Favicon string
+		Version     struct{ Name string }
+		Players     struct{ Online, Max *int }
+		Description any
+		Favicon     string
 	}
 	if err := json.NewDecoder(b).Decode(&status); err != nil {
 		return Status{}, err
 	}
-	return Status{Version: status.Version.Name, Online: status.Players.Online, Max: status.Players.Max,
-		Icon: serverIcon(status.Favicon)}, nil
+	result := Status{Version: plainStatusText(status.Version.Name, 80), Description: descriptionText(status.Description), Icon: serverIcon(status.Favicon)}
+	if online, max := status.Players.Online, status.Players.Max; online != nil && max != nil && *online >= 0 && *max >= 0 {
+		result.Online, result.Max, result.PlayersReported = *online, *max, true
+	}
+	return result, nil
 }
 
 func serverIcon(raw string) image.Image {
