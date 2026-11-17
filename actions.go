@@ -346,26 +346,32 @@ func (a *desktop) forgetOfflinePlayer(name string) {
 }
 
 func (a *desktop) detectJava() {
-	if a.busy {
+	if a.ctx == nil || a.busy || a.javaChecking {
 		return
 	}
 	path := a.draft.JavaPath
-	a.busy, a.javaInfo = true, "正在运行 Java 检测…"
-	go func() {
-		j, err := launcher.FindJava(a.ctx, path, 21)
+	a.javaChecking, a.javaInfo, a.javaError = true, "", false
+	a.writes.Go(func() {
+		ctx, cancel := context.WithTimeout(a.ctx, 20*time.Second)
+		defer cancel()
+		// The oldest supported game (1.20.1) uses Java 17. Per-instance
+		// checks and launches apply the actual version metadata.
+		j, err := launcher.FindJava(ctx, path, 17)
 		a.post(func() {
-			a.busy = false
-			if err != nil {
-				a.javaInfo = ""
-				a.message("Java 检测失败", err)
-			} else {
-				if strings.TrimSpace(path) != "" {
-					a.draft.JavaPath = j.Path
-				}
-				a.javaInfo = fmt.Sprintf("Java %d · %s", j.Major, j.Path)
+			a.javaChecking = false
+			if a.draft.JavaPath != path {
+				return
 			}
+			if err != nil {
+				a.javaInfo, a.javaError = err.Error(), true
+				return
+			}
+			if strings.TrimSpace(path) != "" {
+				a.draft.JavaPath = j.Path
+			}
+			a.javaInfo = fmt.Sprintf("Java %d · %s", j.Major, j.Path)
 		})
-	}()
+	})
 }
 
 func (a *desktop) openPath(path string, create bool) {

@@ -274,6 +274,19 @@ func TestCompactSettingsAndLicenses(t *testing.T) {
 	if _, ok := tt.Find("应用设置"); ok {
 		t.Fatal("save actions should only appear when there are pending changes")
 	}
+	if err := tt.Click("Java"); err != nil {
+		t.Fatal(err)
+	}
+	tt.SetSize(820, 530)
+	a.draft.JavaPath, a.javaError, a.javaInfo = "missing-java", true, "找不到 Java，请重新选择路径。"
+	tt.Frame()
+	capture(t, tt, "global-java-recovery")
+	if err := tt.Click("自动"); err != nil || a.draft.JavaPath != "" || tt.HasText("Java 检测失败") {
+		t.Fatalf("automatic selection kept the failed Java path: %v", err)
+	}
+	if err := tt.Click("游戏"); err != nil {
+		t.Fatal(err)
+	}
 	a.memory = "6144"
 	tt.Frame()
 	if err := tt.Click("还原更改"); err != nil {
