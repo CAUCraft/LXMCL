@@ -1,7 +1,6 @@
 package main
 
 import (
-	"slices"
 	"strconv"
 	"strings"
 
@@ -566,7 +565,7 @@ func (a *desktop) editor(c *ui.Context) {
 	}
 	submit := false
 	if feedback.Modal(c, &a.form.open, feedback.ModalProps{
-		Title: title, OkText: okText, CancelText: "取消", Width: 480,
+		Title: title, OkText: okText, CancelText: "取消", Width: 480, NoFooter: a.form.mode == "loader",
 	}, func() {
 		ui.Column(c).Gap(12).Children(func() {
 			if a.form.mode == "loader" {
@@ -643,31 +642,36 @@ func (a *desktop) editor(c *ui.Context) {
 			a.submitEditor()
 		}
 	}
+	if p := a.form.loaders; !a.form.open && p != nil && p.loaderCancel != nil {
+		p.cancelLoaders()
+	}
 }
 
 func (a *desktop) loaderForm(c *ui.Context) {
 	f := &a.form
-	panelHeading(c, lucide.Layers(), f.target.Name, "Minecraft "+f.target.Version)
-	options := []field.SelectOption{{Value: "", Label: "原版"}}
-	if f.target.LoaderVersion != "" && !slices.Contains(f.loaderVersions, f.target.LoaderVersion) {
-		options = append(options, field.SelectOption{Value: f.target.LoaderVersion, Label: "Fabric " + f.target.LoaderVersion})
+	p := f.loaders
+	panelHeading(c, lucide.Layers(), f.target.Name, "Minecraft "+f.target.Version+" · "+loaderName(f.target))
+	if a.loaderFields(c, p, f.target, a.busy || !f.open) {
+		f.err = ""
 	}
-	for _, version := range f.loaderVersions {
-		options = append(options, field.SelectOption{Value: version, Label: "Fabric " + version})
+	currentKind := f.target.Loader
+	if f.target.Vanilla() {
+		currentKind = launcher.LoaderVanilla
 	}
-	catalogPicker(c, &f.version, options, "加载器", "", a.busy)
-	switch {
-	case f.loaderLoading:
-		flightLoading(c, "正在读取 Fabric 版本…")
-	case f.loaderError != "":
-		feedback.Alert(c, f.loaderError, feedback.AlertProps{Type: feedback.Warning})
-		if button(c, "重试读取版本", action.Text, a.busy) {
-			a.fetchFabricVersions(f.target)
-		}
-	case len(f.loaderVersions) == 0 && len(options) == 1:
-		muted(c, "此版本没有可用的 Fabric 稳定版")
+	changed := !strings.EqualFold(p.kind(), currentKind) || p.loaderVersion != f.target.LoaderVersion
+	canSave := changed && p.validLoader()
+	if canSave {
+		muted(c, "原模组文件会保留，请检查与所选加载器的兼容性。").FontSize(12)
 	}
 	if f.err != "" {
 		feedback.Alert(c, f.err, feedback.AlertProps{Type: feedback.Error})
 	}
+	ui.Row(c).Gap(8).Justify(ui.End).Children(func() {
+		if button(c, "取消", action.Default, false) {
+			f.open = false
+		}
+		if button(c, "保存加载器", action.Primary, a.busy || !canSave) {
+			a.submitEditor()
+		}
+	})
 }
