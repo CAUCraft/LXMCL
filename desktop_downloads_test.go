@@ -203,6 +203,13 @@ func TestResourceDownloadsKeepInstallTargetSeparate(t *testing.T) {
 	}
 	capture(t, tt, "catalog-search-recovery")
 	p.err = ""
+	saved := p.result
+	p.page, p.result = 1, launcher.PackSearch{Total: 19}
+	tt.Frame()
+	if err := tt.Click("上一页"); err != nil {
+		t.Fatalf("an empty later page hid the return action: %v", err)
+	}
+	p.page, p.result = 0, saved
 	p.versions = []launcher.PackVersion{
 		{ID: "build1", ProjectID: project.ID, Number: "0.6.13", Type: "release", Files: []launcher.PackFile{{Filename: "sodium-0.6.13.jar", Size: 1200000}}},
 		{ID: "build2", ProjectID: project.ID, Number: "0.6.14-beta", Type: "beta", Files: []launcher.PackFile{{Filename: "sodium-0.6.14-beta.jar", Size: 1250000}}},
