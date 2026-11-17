@@ -288,6 +288,7 @@
   "saves.archive_entry_count_invalid": "Unsupported number of entries in the world archive",
   "saves.archive_expanded_too_large": "The expanded worlds exceed 32 GiB",
   "saves.archive_level_dat_missing": "World folder %s is missing level.dat",
+  "saves.archive_mixed_worlds": "Both the ZIP root and a subfolder contain level.dat. Package the worlds separately.",
   "saves.archive_path_or_type_invalid": "Unsafe path or file type in the world archive: %s",
   "saves.archive_size_mismatch": "The world archive size did not match",
   "saves.archive_world_directory_required": "The ZIP must contain world folders with a level.dat file",

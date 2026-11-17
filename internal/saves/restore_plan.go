@@ -6,23 +6,39 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"path"
+	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
 	"github.com/CAUCraft/LXMCL/internal/i18n"
+	"github.com/CAUCraft/LXMCL/internal/storage"
 )
 
+type restoreEntry struct {
+	file *zip.File
+	name string
+}
+
 type restorePlan struct {
-	entries   []*zip.File
+	entries   []restoreEntry
 	worlds    []string
 	signature [sha256.Size]byte
 }
 
 // planRestore checks the whole ZIP before opening or creating the game directory.
-func planRestore(ctx context.Context, entries []*zip.File) (restorePlan, error) {
+func planRestore(ctx context.Context, source string, entries []*zip.File) (restorePlan, error) {
 	var plan restorePlan
 	if len(entries) == 0 || len(entries) > maxSaveEntries {
 		return plan, i18n.Error("saves.archive_entry_count_invalid")
+	}
+	prefix := ""
+	if slices.ContainsFunc(entries, func(f *zip.File) bool { return f.Name == "level.dat" && f.Mode().IsRegular() }) {
+		base := filepath.Base(source)
+		prefix = strings.TrimSuffix(base, filepath.Ext(base))
+		if !storage.ValidPortablePath(prefix) {
+			prefix = "World"
+		}
 	}
 	paths := make(archivePaths)
 	worlds := make(map[string]bool)
@@ -37,12 +53,18 @@ func planRestore(ctx context.Context, entries []*zip.File) (restorePlan, error) 
 		if !entry.Mode().IsRegular() && !directory {
 			return plan, i18n.Error("saves.archive_path_or_type_invalid", entry.Name)
 		}
-		if err := paths.add(name, directory); err != nil {
-			return plan, err
-		}
 		// The validated names, types, sizes and CRCs describe the preview without
 		// reading gigabytes of world data just to populate a selection dialog.
 		fmt.Fprintf(index, "%q %t %d %08x\n", name, directory, entry.UncompressedSize64, entry.CRC32)
+		if prefix != "" {
+			if path.Base(name) == "level.dat" && strings.Count(name, "/") == 1 && !directory {
+				return plan, i18n.Error("saves.archive_mixed_worlds")
+			}
+			name = prefix + "/" + name
+		}
+		if err := paths.add(name, directory); err != nil {
+			return plan, err
+		}
 		world, rest, nested := strings.Cut(name, "/")
 		if !nested && !directory {
 			return plan, i18n.Error("saves.archive_world_directory_required")
@@ -53,7 +75,7 @@ func planRestore(ctx context.Context, entries []*zip.File) (restorePlan, error) 
 		}
 		size += entry.UncompressedSize64
 		if directory || path.Base(name) != "session.lock" {
-			plan.entries = append(plan.entries, entry)
+			plan.entries = append(plan.entries, restoreEntry{file: entry, name: name})
 		}
 	}
 	for name, valid := range worlds {

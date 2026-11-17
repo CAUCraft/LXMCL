@@ -288,6 +288,7 @@
   "saves.archive_entry_count_invalid": "存档归档条目数量不受支持",
   "saves.archive_expanded_too_large": "解压后存档超过 32 GiB",
   "saves.archive_level_dat_missing": "存档目录 %s 缺少 level.dat",
+  "saves.archive_mixed_worlds": "ZIP 根目录和子目录都包含 level.dat，请将各世界分别打包。",
   "saves.archive_path_or_type_invalid": "存档归档路径或文件类型不安全：%s",
   "saves.archive_size_mismatch": "存档归档大小不符",
   "saves.archive_world_directory_required": "ZIP 中应包含带 level.dat 的世界文件夹",
