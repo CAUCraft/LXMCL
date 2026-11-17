@@ -446,7 +446,9 @@ func TestResourceAndServerEntrypoints(t *testing.T) {
 	a, tt := testDesktop(t)
 	a.state.Instances[1].Loader, a.state.Instances[1].LoaderVersion = "Fabric", "0.16.14"
 	i := a.state.Instances[1]
-	a.content = contentView{id: i.ID, revision: i.Revision, tab: 1, files: []launcher.ContentFile{{Name: "demo.jar", Enabled: true}}}
+	a.content = contentView{id: i.ID, revision: i.Revision, tab: 1, files: []launcher.ContentFile{
+		{Name: "demo.jar", Enabled: true, Size: 2 << 20}, {Name: "sodium.jar", Enabled: true, Size: 1 << 20}, {Name: "old.jar", Enabled: false},
+	}}
 	a.inspect(i)
 	tt.Frame()
 	if _, ok := tt.Find("加载器"); !ok {
@@ -456,6 +458,38 @@ func TestResourceAndServerEntrypoints(t *testing.T) {
 		t.Fatal(err)
 	}
 	capture(t, tt, "fabric-mods")
+	tt.SetSize(820, 530)
+	tt.SetDark(true)
+	tt.Advance(500 * time.Millisecond)
+	tt.Frame()
+	if err := tt.Click("全选当前列表"); err != nil {
+		t.Fatal(err)
+	}
+	if len(a.content.selection(a.content.files)) != 3 {
+		t.Fatal("select all missed local resources")
+	}
+	tt.Advance(250 * time.Millisecond)
+	tt.Frame()
+	capture(t, tt, "resources-selected-compact")
+	if err := tt.Click("搜索本地资源"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Type("SODIUM")
+	if len(a.content.visibleFiles()) != 1 || len(a.content.selection(a.content.files)) != 0 {
+		t.Fatal("filter did not narrow files and clear hidden selections")
+	}
+	if err := tt.Click("复制资源列表"); err != nil || tt.Clipboard() != "[启用] sodium.jar\n" {
+		t.Fatalf("filtered list copy: %v", err)
+	}
+	a.content.query = ""
+	tt.Frame()
+	if err := tt.Click("已停用"); err != nil {
+		t.Fatal(err)
+	}
+	if files := a.content.visibleFiles(); len(files) != 1 || files[0].Name != "old.jar" || a.state.Selected != 1 {
+		t.Fatal("disabled filter or launch target changed")
+	}
+	capture(t, tt, "resources-disabled-compact")
 	if err := tt.Click("添加模组…"); err != nil {
 		t.Fatal(err)
 	}

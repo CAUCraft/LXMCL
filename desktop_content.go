@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/CAUCraft/LXMCL/internal/launcher"
@@ -11,8 +12,10 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"github.com/lobehub/lobe-mygo/pkg/action"
+	"github.com/lobehub/lobe-mygo/pkg/choice"
 	"github.com/lobehub/lobe-mygo/pkg/display"
 	"github.com/lobehub/lobe-mygo/pkg/feedback"
+	"github.com/lobehub/lobe-mygo/pkg/field"
 	"github.com/lobehub/lobe-mygo/pkg/layout"
 	"github.com/lobehub/lobe-mygo/pkg/lucide"
 	"github.com/lobehub/lobe-mygo/pkg/theme"
@@ -24,6 +27,10 @@ type contentView struct {
 	files    []launcher.ContentFile
 	reading  bool
 	err      string
+	query    string
+	filter   int
+	selected map[string]bool
+	scroll   ui.ScrollState
 }
 
 func (v contentView) kind() launcher.ContentKind {
@@ -38,6 +45,7 @@ func (v contentView) kind() launcher.ContentKind {
 }
 
 func (a *desktop) refreshContent(i launcher.Instance) {
+	a.content.selected = nil
 	if a.ctx == nil {
 		return
 	}
@@ -73,6 +81,7 @@ func (a *desktop) instanceContent(c *ui.Context, i launcher.Instance) {
 			}
 			action.Segmented(c, &v.tab, options, action.SegmentedProps{Size: theme.Small}).Label("资源类型")
 			if old != v.tab {
+				v.query, v.filter, v.scroll.Y = "", 0, 0
 				a.refreshContent(i)
 			}
 		} else {
@@ -109,32 +118,151 @@ func (a *desktop) instanceContent(c *ui.Context, i launcher.Instance) {
 	case len(v.files) == 0:
 		emptyPanel(c, lucide.PackageOpen(), "暂无本地资源")
 	default:
-		layout.ScrollArea(c, layout.ScrollAreaProps{}, func() {
-			sectionPane(c).Padding(5, 12).Gap(4).Children(func() {
-				for idx, file := range v.files {
-					if idx > 0 {
-						layout.Divider(c, layout.DividerProps{})
-					}
-					ui.Row(c.Key(file.Name + fmt.Sprint(file.Enabled))).MinHeight(42).Gap(8).AlignItems(ui.Center).Children(func() {
-						leadIcon(c, downloadTabs[downloadTab(v.kind())].Icon, 26)
-						display.Text(c, file.Name, display.TextProps{Strong: true, Rows: 1}).Grow(1).MinWidth(0).Ellipsis("…")
-						muted(c, fmt.Sprintf("%.1f MiB", float64(file.Size)/(1<<20))).FontSize(12)
-						label := "停用"
-						if !file.Enabled {
-							label = "恢复"
-							display.Tag(c, "已停用", display.TagProps{Color: display.TagGray, Size: theme.Small})
-						}
-						if button(c, label, action.Default, disabled) {
-							kind := v.kind()
-							a.runInstanceTask(i, label+"资源", func(context.Context) error {
-								return launcher.SetContentEnabled(i, kind, file.Name, !file.Enabled)
-							})
-						}
-					})
-				}
-			})
-		}).Grow(1).MinHeight(0)
+		a.contentList(c, i, disabled)
 	}
+}
+
+func contentKey(file launcher.ContentFile) string {
+	return file.Name + fmt.Sprint(file.Enabled)
+}
+
+func (v *contentView) visibleFiles() []launcher.ContentFile {
+	query := strings.ToLower(strings.TrimSpace(v.query))
+	var files []launcher.ContentFile
+	for _, file := range v.files {
+		if !strings.Contains(strings.ToLower(file.Name), query) ||
+			v.filter == 1 && !file.Enabled || v.filter == 2 && file.Enabled {
+			continue
+		}
+		files = append(files, file)
+	}
+	return files
+}
+
+func (v *contentView) selection(files []launcher.ContentFile) []launcher.ContentFile {
+	var selected []launcher.ContentFile
+	for _, file := range files {
+		if v.selected[contentKey(file)] {
+			selected = append(selected, file)
+		}
+	}
+	return selected
+}
+
+func (a *desktop) contentList(c *ui.Context, i launcher.Instance, disabled bool) {
+	v := &a.content
+	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+		oldQuery, oldFilter := v.query, v.filter
+		field.SearchBar(c, &v.query, field.SearchBarProps{Placeholder: "搜索本地文件"}).Label("搜索本地资源").Grow(1).MinWidth(0)
+		action.Segmented(c, &v.filter, []string{"全部资源", "已启用", "已停用"}, action.SegmentedProps{Size: theme.Small}).Label("本地资源筛选")
+		if oldQuery != v.query || oldFilter != v.filter {
+			v.selected, v.scroll.Y = nil, 0
+		}
+	})
+	files := v.visibleFiles()
+	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+		n := len(v.selection(files))
+		all := n > 0 && n == len(files)
+		if choice.Checkbox(c, &all, "全选当前列表", choice.CheckboxProps{Indeterminate: n > 0 && n < len(files)}).
+			Disabled(disabled || len(files) == 0).Changed() {
+			v.selected = make(map[string]bool, len(files))
+			if all {
+				for _, file := range files {
+					v.selected[contentKey(file)] = true
+				}
+			}
+		}
+		muted(c, fmt.Sprintf("%d / %d 项", len(files), len(v.files))).FontSize(12).Grow(1)
+		var list strings.Builder
+		for _, file := range files {
+			status := "启用"
+			if !file.Enabled {
+				status = "停用"
+			}
+			fmt.Fprintf(&list, "[%s] %s\n", status, file.Name)
+		}
+		action.CopyButton(c, list.String(), action.CopyButtonProps{}).Label("复制资源列表").Disabled(len(files) == 0)
+	})
+	if len(files) == 0 {
+		ui.Column(c).Grow(1).Center().Children(func() {
+			display.Empty(c, display.EmptyProps{Icon: lucide.Search(), Title: "没有匹配的资源", Action: func() {
+				if button(c, "清除资源筛选", action.Default, false) {
+					v.query, v.filter = "", 0
+				}
+			}})
+		})
+		return
+	}
+	layout.ScrollArea(c, layout.ScrollAreaProps{State: &v.scroll}, func() {
+		sectionPane(c).Padding(5, 12).Gap(4).Children(func() {
+			for idx, file := range files {
+				if idx > 0 {
+					layout.Divider(c, layout.DividerProps{})
+				}
+				key := contentKey(file)
+				ui.Row(c.Key(key)).MinHeight(42).Gap(8).AlignItems(ui.Center).Children(func() {
+					checked := v.selected[key]
+					if choice.Checkbox(c, &checked, "", choice.CheckboxProps{}).Label("选择资源 " + file.Name).
+						Disabled(disabled).Changed() {
+						if v.selected == nil {
+							v.selected = make(map[string]bool)
+						}
+						v.selected[key] = checked
+					}
+					leadIcon(c, downloadTabs[downloadTab(v.kind())].Icon, 26)
+					display.Text(c, file.Name, display.TextProps{Strong: true, Rows: 1}).Grow(1).MinWidth(0).Ellipsis("…")
+					muted(c, fmt.Sprintf("%.1f MiB", float64(file.Size)/(1<<20))).FontSize(12)
+					label := "停用"
+					if !file.Enabled {
+						label = "恢复"
+						display.Tag(c, "已停用", display.TagProps{Color: display.TagGray, Size: theme.Small})
+					}
+					if button(c, label, action.Default, disabled) {
+						kind := v.kind()
+						a.runInstanceTask(i, label+"资源", func(context.Context) error {
+							return launcher.SetContentEnabled(i, kind, file.Name, !file.Enabled)
+						})
+					}
+				})
+			}
+		})
+	}).Grow(1).MinHeight(0)
+	selected := v.selection(files)
+	if len(selected) > 0 {
+		enabled := 0
+		for _, file := range selected {
+			if file.Enabled {
+				enabled++
+			}
+		}
+		layout.Divider(c, layout.DividerProps{})
+		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+			muted(c, fmt.Sprintf("已选 %d 项", len(selected))).FontSize(12).Grow(1)
+			if button(c, "取消选择", action.Text, false) {
+				v.selected = nil
+			}
+			if button(c, "启用所选", action.Default, disabled || enabled == len(selected)) {
+				a.setSelectedContent(i, v.kind(), selected, true)
+			}
+			if button(c, "停用所选", action.Default, disabled || enabled == 0) {
+				a.setSelectedContent(i, v.kind(), selected, false)
+			}
+		})
+	}
+}
+
+func (a *desktop) setSelectedContent(i launcher.Instance, kind launcher.ContentKind, files []launcher.ContentFile, enabled bool) {
+	label := "批量停用资源"
+	if enabled {
+		label = "批量启用资源"
+	}
+	a.runInstanceTask(i, label, func(ctx context.Context) error {
+		changed, err := launcher.SetContentEnabledBatch(ctx, i, kind, files, enabled)
+		if err != nil {
+			return fmt.Errorf("已更改 %d 项，其余资源请刷新后检查：%w", changed, err)
+		}
+		return nil
+	})
 }
 
 func (a *desktop) runInstanceTask(i launcher.Instance, label string, work func(context.Context) error) {
