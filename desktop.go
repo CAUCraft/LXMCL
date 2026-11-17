@@ -44,7 +44,7 @@ func icon(c *ui.Context, svg *ui.SVG, label string, disabled bool) bool {
 }
 
 func muted(c *ui.Context, label string) ui.Element {
-	return display.Text(c, label, display.TextProps{Type: display.TextSecondary})
+	return ui.Text(c, label).TextColor(c.Theme().TextMuted)
 }
 
 func brand(c *ui.Context) (ink, wash ui.Color) {

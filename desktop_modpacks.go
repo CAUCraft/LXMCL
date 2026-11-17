@@ -351,7 +351,7 @@ func (a *desktop) modpackVersions(c *ui.Context, p *modpackView) {
 		}
 	})
 	if p.project.Summary != "" {
-		display.Text(c, p.project.Summary, display.TextProps{Type: display.TextSecondary, FontSize: 13, Rows: 2}).Ellipsis("…")
+		muted(c, p.project.Summary).FontSize(13).MaxLines(2).Ellipsis("…")
 	}
 	if p.listing {
 		flightLoading(c, "正在读取整合包版本…")
