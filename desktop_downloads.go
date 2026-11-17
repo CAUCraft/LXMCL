@@ -120,20 +120,29 @@ func (a *desktop) installPage(c *ui.Context) {
 	if len(a.releases) == 0 && a.catalogErr == "" {
 		a.refreshCatalog()
 	}
-	if p.version == "" && len(a.releases) != 0 {
-		p.version = a.releases[0].ID
-	}
+	hasMatches := false
 	w, _ := c.Size()
 	splitWorkspace(c, catalogListWidth(w), func() {
+		previousQuery := p.query
 		ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
 			field.SearchBar(c, &p.query, field.SearchBarProps{Placeholder: "搜索游戏版本"}).Label("搜索游戏版本").Grow(1).MinWidth(0)
 			if icon(c, lucide.RefreshCw(), "刷新游戏版本", a.catalogBusy) {
 				a.refreshCatalog()
 			}
 		})
-		a.installVersions(c, p)
+		hasMatches = a.installVersions(c, p, p.query != previousQuery)
 	}, func() {
-		if p.version == "" {
+		if !hasMatches && len(a.releases) > 0 {
+			ui.Column(c).Grow(1).Center().Gap(10).Children(func() {
+				display.Empty(c, display.EmptyProps{Icon: lucide.Search(), Title: "没有匹配的游戏版本", Description: "支持 Minecraft 1.20.1 及之后的正式版。"})
+				if button(c, "清除搜索", action.Default, false) {
+					p.query, p.scroll.Y = "", 0
+					c.Invalidate()
+				}
+			})
+			return
+		}
+		if len(a.releases) == 0 {
 			if a.catalogErr != "" {
 				feedback.Alert(c, a.catalogErr, feedback.AlertProps{Type: feedback.Error})
 				ui.Row(c).Children(func() {
@@ -150,12 +159,23 @@ func (a *desktop) installPage(c *ui.Context) {
 	})
 }
 
-func (a *desktop) installVersions(c *ui.Context, p *installView) {
+func (a *desktop) installVersions(c *ui.Context, p *installView, queryChanged bool) bool {
 	q := strings.ToLower(strings.TrimSpace(p.query))
+	if queryChanged {
+		p.scroll.Y = 0
+	}
 	items := make([]display.ListItem, 0, len(a.releases))
+	selectedVisible := false
+	exact := ""
 	for idx, v := range a.releases {
 		if q != "" && !strings.Contains(strings.ToLower(v.ID), q) {
 			continue
+		}
+		if v.ID == p.version {
+			selectedVisible = true
+		}
+		if strings.EqualFold(v.ID, q) {
+			exact = v.ID
 		}
 		item := display.ListItem{Key: v.ID, Label: v.ID, Icon: lucide.Package()}
 		if idx == 0 {
@@ -163,9 +183,14 @@ func (a *desktop) installVersions(c *ui.Context, p *installView) {
 		}
 		items = append(items, item)
 	}
-	if len(items) == 0 && !a.catalogBusy && a.catalogErr == "" && len(a.releases) > 0 {
-		muted(c, "没有匹配的版本").Padding(5)
-		return
+	if len(items) == 0 {
+		return false
+	}
+	if !selectedVisible || queryChanged && exact != "" {
+		p.version, p.err = items[0].Key, ""
+		if exact != "" {
+			p.version = exact
+		}
 	}
 	layout.ScrollArea(c, layout.ScrollAreaProps{State: &p.scroll}, func() {
 		if key := display.List(c, display.ListProps{Items: items, Active: p.version, Compact: true}); key != "" && key != p.version {
@@ -173,6 +198,7 @@ func (a *desktop) installVersions(c *ui.Context, p *installView) {
 			c.Invalidate()
 		}
 	}).Grow(1).MinHeight(0)
+	return true
 }
 
 func (a *desktop) installDetails(c *ui.Context, p *installView) {
@@ -231,7 +257,8 @@ func (a *desktop) submitInstall(p *installView, defaultName string) {
 	if a.busy || a.running != nil || a.ctx == nil {
 		return
 	}
-	if !slices.ContainsFunc(a.releases, func(v launcher.Version) bool { return v.ID == p.version }) {
+	if !strings.Contains(strings.ToLower(p.version), strings.ToLower(strings.TrimSpace(p.query))) ||
+		!slices.ContainsFunc(a.releases, func(v launcher.Version) bool { return v.ID == p.version }) {
 		p.err = "请从官方版本列表选择要安装的版本"
 		return
 	}

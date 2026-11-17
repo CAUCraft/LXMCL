@@ -350,6 +350,7 @@
   "version.catalog_empty": "官方版本目录为空",
   "version.modern_required": "需要 Minecraft 1.20.1 或之后的正式版",
   "version.release_not_found": "官方正式版本目录中没有 %s",
+  "version.no_supported_releases": "版本列表中没有受支持的 Minecraft 正式版。",
   "version.select_supported": "请选择受支持的 Minecraft 正式版本",
   "xbox.authorization_denied": "Xbox 未授权（%d），请检查 Xbox 档案、地区或家庭设置",
   "xbox.minecraft_token_missing": "Xbox 未返回 Minecraft 所需的凭据",

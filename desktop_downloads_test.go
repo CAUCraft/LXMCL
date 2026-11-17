@@ -136,6 +136,17 @@ func TestDownloadPageSelectsVersionAndLoader(t *testing.T) {
 	if _, ok := tt.Find("NeoForge 版本"); !ok {
 		t.Fatal("missing NeoForge catalog control")
 	}
+	if err := tt.Click("搜索游戏版本"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Type("1.7.10")
+	if _, ok := tt.Find("安装实例"); ok {
+		t.Fatal("a hidden version can still be installed")
+	}
+	capture(t, tt, "install-search-empty")
+	if err := tt.Click("清除搜索"); err != nil || p.version != "1.21.4" {
+		t.Fatalf("clearing search lost the visible selection: %v", err)
+	}
 	a.state.Instances[1].Loader, a.state.Instances[1].LoaderVersion = launcher.LoaderForge, "54.0.1"
 	a.inspect(a.state.Instances[1])
 	tt.Frame()

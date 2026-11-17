@@ -41,7 +41,11 @@ func (d *downloads) releases(ctx context.Context) ([]Version, error) {
 	if err != nil {
 		return nil, err
 	}
-	return slices.DeleteFunc(all, func(v Version) bool {
+	releases := slices.DeleteFunc(all, func(v Version) bool {
 		return v.Type != "release" || !instance.SupportedRelease(v.ID)
-	}), nil
+	})
+	if len(releases) == 0 {
+		return nil, i18n.Error("version.no_supported_releases")
+	}
+	return releases, nil
 }
