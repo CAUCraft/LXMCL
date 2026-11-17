@@ -44,7 +44,12 @@ func (a *desktop) details(c *ui.Context, i launcher.Instance) {
 			d := a.launchDrafts[i.ID]
 			if d != nil && d.revision == i.Revision && d.fields != launchFields(i.Launch) &&
 				a.running == nil && a.task.Stage == "" {
-				if launchButton(c, "应用并启动", lucide.Play(), a.busy || a.pickerBusy) {
+				_, err := d.fields.options()
+				if err != nil && a.detailPage != detailLaunch {
+					if launchButton(c, "检查启动设置", lucide.Settings2(), false) {
+						a.detailPage = detailLaunch
+					}
+				} else if launchButton(c, "应用并启动", lucide.Play(), a.busy || a.pickerBusy || err != nil) {
 					a.detailPage = detailLaunch
 					a.saveInstanceLaunch(i, d, true)
 				}

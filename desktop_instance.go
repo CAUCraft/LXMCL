@@ -106,11 +106,14 @@ func (a *desktop) instanceLaunchSettings(c *ui.Context, i launcher.Instance) {
 	if before != d.fields {
 		d.err = ""
 	}
-	if d.err != "" {
-		feedback.Alert(c, d.err, feedback.AlertProps{Type: feedback.Error})
-	}
 	if d.fields != launchFields(i.Launch) {
-		settingsActions(c, disabled, false, func() {
+		_, invalid := d.fields.options()
+		if invalid != nil {
+			feedback.Alert(c, invalid.Error(), feedback.AlertProps{Type: feedback.Error})
+		} else if d.err != "" {
+			feedback.Alert(c, d.err, feedback.AlertProps{Type: feedback.Error})
+		}
+		settingsActions(c, disabled, invalid != nil, func() {
 			d.fields, d.err, d.javaResult = launchFields(i.Launch), "", ""
 		}, func() { a.saveInstanceLaunch(i, d, false) })
 	}

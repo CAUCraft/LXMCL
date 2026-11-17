@@ -418,6 +418,23 @@ func TestInstanceSettingsKeepDraftAndLaunchTargetSeparate(t *testing.T) {
 	if a.launchDrafts[2].fields.memory != "8192" {
 		t.Fatal("switching tabs lost the instance draft")
 	}
+	a.launchDrafts[2].fields.memory = "8g"
+	tt.Frame()
+	if _, ok := tt.Find("最大内存须为 1024–65536 MiB，留空则跟随全局"); !ok {
+		t.Fatal("invalid instance memory has no explanation before applying")
+	}
+	if err := tt.Click("应用并启动"); err != nil || a.busy || a.launchDrafts[2].err != "" {
+		t.Fatalf("invalid draft reached submit: %v", err)
+	}
+	tt.Advance(250 * time.Millisecond)
+	tt.Frame()
+	capture(t, tt, "instance-draft-invalid")
+	if err := tt.Click("游戏文件"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.Click("检查启动设置"); err != nil || a.detailPage != detailLaunch || a.state.Selected != 1 {
+		t.Fatalf("cannot correct the draft from another tab: %v", err)
+	}
 	if err := tt.Click("还原更改"); err != nil {
 		t.Fatal(err)
 	}
