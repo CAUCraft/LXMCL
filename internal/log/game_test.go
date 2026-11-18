@@ -47,7 +47,10 @@ func TestRecentDiagnosticsAreBoundedAndKeepInstanceFiles(t *testing.T) {
 	}
 	archive := write("logs/2026-11-18-1.log.gz", compressed.String(), now.Add(time.Minute))
 	write("logs/unrelated.log.gz", "unrelated", now.Add(time.Hour))
-	debug := write("logs/debug.log", "debug", now.Add(-time.Second))
+	debug := write("logs/debug.log", "", now.Add(-time.Second))
+	if got, err := ReadPreview(t.Context(), debug); err != nil || got != "" {
+		t.Fatalf("empty log preview: %q, %v", got, err)
+	}
 	if got, err := ReadPreview(t.Context(), archive); err != nil || !strings.HasSuffix(got, end) || len(got) > tailLimit+128 {
 		t.Fatalf("archive tail: %d bytes, %v", len(got), err)
 	}
