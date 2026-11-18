@@ -3,11 +3,16 @@ package modpack_test
 import (
 	"archive/zip"
 	"context"
+	"crypto/sha256"
 	"crypto/sha512"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 
 	"github.com/CAUCraft/LXMCL/internal/distribution"
@@ -290,5 +295,60 @@ func TestUpdatePreservesPlayerFilesAndRollsBackFailedCommit(t *testing.T) {
 	check("saves/world/level.dat", "played")
 	if _, err := os.Stat(filepath.Join(o.Target.GameDir, "mods/obsolete.jar")); !os.IsNotExist(err) {
 		t.Fatalf("obsolete mod: %v", err)
+	}
+}
+
+func TestServerFeedVerifiesAndReusesPublishedPack(t *testing.T) {
+	ctx := t.Context()
+	i := options(t).Target
+	i.GameDir = t.TempDir()
+	file, err := modpack.Export(ctx, i, t.TempDir(), "2.0", modpack.Selection{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest := fmt.Sprintf("%x", sha256.Sum256(body))
+	var downloads atomic.Int32
+	var corrupt atomic.Bool
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/pack.json":
+			json.NewEncoder(w).Encode(map[string]any{"file": "client.mrpack", "size": len(body), "sha256": digest})
+		case "/client.mrpack":
+			downloads.Add(1)
+			if corrupt.Load() {
+				w.Write([]byte("incomplete"))
+				return
+			}
+			w.Write(body)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	feed := server.URL + "/pack.json"
+	cache := t.TempDir()
+	read := func(root, previous string) (modpack.Prepared, bool, error) {
+		return modpack.PrepareFeed(ctx, feed, root, previous, server.Client().Transport)
+	}
+	p, same, err := read(cache, "")
+	if err != nil || same || p.Info().Version != "2.0" {
+		t.Fatalf("initial subscription: %v %v", p.Info(), err)
+	}
+	if u, sum := p.Feed(); u != feed || sum != digest {
+		t.Fatalf("source mismatch %s %s", u, sum)
+	}
+	if _, same, err := read(cache, digest); err != nil || !same || downloads.Load() != 1 {
+		t.Fatalf("unchanged release: %v %v", same, err)
+	}
+	if _, _, err := read(cache, ""); err != nil || downloads.Load() != 1 {
+		t.Fatalf("verified cache: %v", err)
+	}
+	corrupt.Store(true)
+	if _, _, err := read(t.TempDir(), ""); err == nil {
+		t.Fatal("accepted truncated server archive")
 	}
 }

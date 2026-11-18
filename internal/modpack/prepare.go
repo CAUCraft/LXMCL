@@ -35,6 +35,7 @@ type Info struct {
 type Prepared struct {
 	info     Info
 	filename string
+	feed     string
 	sum      [sha256.Size]byte
 }
 

@@ -26,6 +26,16 @@ CurseForge 查询和依赖下载需要 [API Key](https://console.curseforge.com/
 
 后端默认为简体中文。设置 `$env:LXMCL_LOCALE = 'en'` 可检查英文消息。新增文案时同步维护[语言文件](../internal/i18n/locales)的键和格式占位符。桌面界面使用中文。
 
+## 服主整合包订阅
+
+将导出的 `.mrpack` 和 `pack.json` 放到同一 HTTPS 站点，把清单地址发给玩家。更新时先上传新版整合包，再替换清单。以下 PowerShell 命令使用实际文件的大小和 SHA-256 生成清单。
+
+```powershell
+$pack = Get-Item .\instance-1-2.0.mrpack
+@{ file = $pack.Name; size = $pack.Length; sha256 = (Get-FileHash $pack.FullName -Algorithm SHA256).Hash } |
+    ConvertTo-Json | Set-Content -Encoding utf8NoBOM pack.json
+```
+
 ## 验证
 
 ```powershell

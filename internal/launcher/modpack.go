@@ -30,6 +30,10 @@ func PrepareLocalModpack(ctx context.Context, filename string) (PreparedModpack,
 	return modpack.PrepareLocal(ctx, filename)
 }
 
+func (g Game) PreparePackFeed(ctx context.Context, url, installed string) (PreparedModpack, bool, error) {
+	return modpack.PrepareFeed(ctx, url, g.Cache, installed, g.Transport)
+}
+
 type PortableFiles = modpack.Selection
 
 func ExportInstance(ctx context.Context, i Instance, folder, version string, selection PortableFiles) (string, error) {

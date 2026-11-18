@@ -43,6 +43,7 @@ func (g Game) ApplyPackUpdate(ctx context.Context, store Store, state State, i I
 		}
 		info := pack.Info()
 		revised := old
+		revised.PackFeed, revised.PackDigest = pack.Feed()
 		revised.Version, revised.Loader, revised.LoaderVersion = info.Minecraft, info.Loader, info.LoaderVersion
 		revised.Revision++
 		if err := revised.Validate(); err != nil {
