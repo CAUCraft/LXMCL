@@ -11,15 +11,16 @@ import (
 // Persisted values retain the original tasks.json format. Do not translate these
 // discriminators; presentation labels belong to the caller.
 const (
-	Limit     = 24
-	Completed = "已完成"
-	Started   = "已启动"
-	Exited    = "已退出"
-	Failed    = "已失败"
-	Canceled  = "已取消"
-	Launch    = "启动游戏"
-	Verify    = "下载 / 校验"
-	Backup    = "备份存档"
+	Limit         = 24
+	Completed     = "已完成"
+	Started       = "已启动"
+	Exited        = "已退出"
+	Failed        = "已失败"
+	Canceled      = "已取消"
+	WaitingForKey = "等待 API Key"
+	Launch        = "启动游戏"
+	Verify        = "下载 / 校验"
+	Backup        = "备份存档"
 )
 
 type Resource struct {

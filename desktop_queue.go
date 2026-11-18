@@ -28,6 +28,7 @@ type resourceQueue struct {
 	pending              []queuedResource
 	running              bool
 	activeID             string
+	keyRejected          bool
 	lastWrite            chan struct{}
 	loading              bool
 	loadError, saveError error
@@ -53,6 +54,10 @@ func (a *desktop) enqueueResource(item queuedResource) {
 	a.saveDownloadQueue()
 	a.message("已加入下载队列 · "+item.resource.Title, nil)
 }
+func (a *desktop) needsResourceKey(r resourceTask) bool {
+	return r.Source == launcher.CurseForgeMods && (a.modpacks.key == "" || a.queue.keyRejected)
+}
+
 func (a *desktop) queuePanel(c *ui.Context) {
 	q := &a.queue
 	if q.loadError != nil {
@@ -86,6 +91,10 @@ func (a *desktop) queuePanel(c *ui.Context) {
 			if q.running {
 				if button(c, "完成当前项后暂停", action.Default, false) {
 					q.running = false
+				}
+			} else if a.needsResourceKey(pending[0].resource) {
+				if button(c, "设置 CurseForge API Key…", action.Primary, false) {
+					a.modpacks.keyOpen = true
 				}
 			} else if button(c, "开始队列", action.Primary, a.busy || a.running != nil || a.ctx == nil || q.saveError != nil || q.lastWrite != nil) {
 				q.running = true
@@ -169,9 +178,17 @@ func (a *desktop) nextResource() {
 		return
 	}
 	item := q.pending[0]
+	if a.needsResourceKey(item.resource) {
+		q.running = false
+		return
+	}
 	q.activeID = item.id
 	a.runResource(item, func(err error) {
 		q.activeID = ""
+		if errors.Is(err, launcher.ErrCurseForgeAccessDenied) {
+			q.running = false
+			return
+		}
 		if errors.Is(err, context.Canceled) {
 			q.running = false
 		}
@@ -224,6 +241,9 @@ func (a *desktop) runResource(item queuedResource, done func(error)) {
 		}
 		return game.DownloadResourceFile(ctx, kind, v, item.folder, report)
 	}, func(err error) {
+		if r.Source == launcher.CurseForgeMods && errors.Is(err, launcher.ErrCurseForgeAccessDenied) && a.modpacks.key == key {
+			a.queue.keyRejected = true
+		}
 		if i.ID != 0 && a.content.id == i.ID && a.content.revision == i.Revision {
 			a.refreshContent(i)
 		}

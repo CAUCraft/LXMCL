@@ -455,6 +455,7 @@ func (a *desktop) runFolderDownload(folder, action, name string, resource *resou
 }
 
 func (a *desktop) runFileTask(row taskRecord, work func(context.Context, func(launcher.Progress)) error, refresh func(error)) {
+	queuedCurseMod := row.ID != "" && row.Resource != nil && row.Resource.Source == launcher.CurseForgeMods
 	row = row.Submitted()
 	ctx, cancel := context.WithCancel(a.ctx)
 	a.busy, a.taskName, a.cancelTask = true, row.Name, cancel
@@ -464,6 +465,9 @@ func (a *desktop) runFileTask(row taskRecord, work func(context.Context, func(la
 		defer cancel()
 		err := tasks.Run(ctx, work, func(p launcher.Progress) { a.post(func() { a.task = p }) })
 		row.Status = tasks.Outcome(err)
+		if queuedCurseMod && errors.Is(err, launcher.ErrCurseForgeAccessDenied) {
+			row.Status = tasks.WaitingForKey
+		}
 		if err != nil {
 			row.Detail = err.Error()
 			if row.Pack.Archive != "" {

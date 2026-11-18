@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/CAUCraft/LXMCL/internal/launcher"
+	"github.com/CAUCraft/LXMCL/internal/tasks"
 	"os"
 	"path/filepath"
 	"testing"
@@ -21,7 +22,7 @@ func TestQueueRestartRetainsTargetsAndPrunesFinishedWork(t *testing.T) {
 	if err := writeDownloadQueue(root, queueEntries(entries)); err != nil {
 		t.Fatal(err)
 	}
-	history := []taskRecord{{ID: "done", Status: taskCompleted}, {ID: "interrupted", Status: taskCanceled}}
+	history := []taskRecord{{ID: "done", Status: taskCompleted}, {ID: "interrupted", Status: tasks.WaitingForKey}, {ID: "waiting", Status: taskCanceled}}
 	for range 2 {
 		items, err := readDownloadQueue(root, history)
 		if err != nil {
@@ -60,5 +61,30 @@ func TestQueueRestartRetainsTargetsAndPrunesFinishedWork(t *testing.T) {
 	}
 	if saved, err := readDownloadQueue(root, nil); err != nil || len(saved) != 2 {
 		t.Fatalf("reloaded repaired queue: %v %v", saved, err)
+	}
+}
+
+func TestQueueWaitsForCurseForgeKey(t *testing.T) {
+	a, tt := testDesktop(t)
+	item := queuedResource{id: "waiting", resource: resourceTask{Source: launcher.CurseForgeMods, Kind: string(launcher.Mods), Title: "AppleSkin", Project: "248787", Version: "5864741"}, folder: t.TempDir()}
+	a.queue.pending = []queuedResource{item}
+	a.queue.running = true
+	a.ctx = t.Context()
+	a.nextResource()
+	a.ctx = nil
+	if a.queue.running || a.queue.activeID != "" || len(a.queue.pending) != 1 || a.busy {
+		t.Fatal("missing key consumed or started the waiting download")
+	}
+	a.openTasks()
+	tt.Frame()
+	if err := tt.Click("设置 CurseForge API Key…"); err != nil {
+		t.Fatal(err)
+	}
+	a.modpacks.keyDraft = "fixture"
+	if err := tt.Click("应用"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := tt.Find("开始队列"); !ok || a.needsResourceKey(item.resource) || a.queue.pending[0].id != item.id {
+		t.Fatal("applying a key lost the waiting download")
 	}
 }

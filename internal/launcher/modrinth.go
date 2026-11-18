@@ -13,6 +13,8 @@ type ModDependency = catalog.ModDependency
 type PackFile = catalog.PackFile
 type PackSearch = catalog.PackSearch
 
+var ErrCurseForgeAccessDenied = catalog.ErrCurseForgeAccessDenied
+
 const CurseForgeMods = "curseforge"
 
 func (g Game) CurseMods(key string) catalog.CurseMods {

@@ -542,6 +542,7 @@ func (a *desktop) curseKeyDialog(c *ui.Context) {
 				key := strings.TrimSpace(p.keyDraft)
 				if (button(c, "应用", action.Primary, key == "") || submit) && key != "" {
 					p.key, p.keyOpen, p.keyDraft = key, false, ""
+					a.queue.keyRejected = false
 					if mods := a.packs[launcher.Mods]; mods != nil && mods.source == launcher.CurseForgeMods {
 						mods.resetCatalog()
 					}

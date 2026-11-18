@@ -269,7 +269,11 @@ func (a *desktop) taskRow(c *ui.Context, row taskRecord) {
 					muted(c, "原实例已变更，请重新选择更新目标。").FontSize(12)
 				}
 			}
-			if (retry || folderRetry) && button(c, "重试", action.Primary, a.busy || a.running != nil) {
+			needsKey := row.Resource != nil && a.needsResourceKey(*row.Resource)
+			if (retry || folderRetry) && needsKey && button(c, "设置 API Key…", action.Primary, false) {
+				a.modpacks.keyOpen = true
+			}
+			if (retry || folderRetry) && !needsKey && button(c, "重试", action.Primary, a.busy || a.running != nil) {
 				if folderRetry {
 					a.saveResourceFile(row.Folder, *row.Resource, launcher.PackVersion{})
 				} else if row.Action == taskBackup {
