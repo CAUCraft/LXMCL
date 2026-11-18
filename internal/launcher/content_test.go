@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha512"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func testZIP(t *testing.T, entries map[string]string) []byte {
@@ -235,5 +237,65 @@ func TestCanceledSaveOperationsDoNotCreateDirectories(t *testing.T) {
 	}
 	if entries, err := os.ReadDir(root); err != nil || len(entries) != 0 {
 		t.Fatalf("canceled operations created files: %v, %v", entries, err)
+	}
+}
+
+func TestUpdateRenamedDisabledMod(t *testing.T) {
+	i := Instance{Version: "1.21.1", Loader: LoaderFabric, LoaderVersion: "0.16.14", GameDir: t.TempDir()}
+	dir := filepath.Join(i.GameDir, "mods")
+	if err := os.Mkdir(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "local.jar.disabled")
+	old := testZIP(t, map[string]string{"fabric.mod.json": "old"})
+	newBody := testZIP(t, map[string]string{"fabric.mod.json": "updated"})
+	if err := os.WriteFile(path, old, 0644); err != nil {
+		t.Fatal(err)
+	}
+	v := func(id string, body []byte, when int64) PackVersion {
+		f := PackFile{Filename: "upstream.jar", URL: "https://cdn.modrinth.com/upstream.jar", Size: int64(len(body)), Primary: true}
+		f.Hashes.SHA512 = fmt.Sprintf("%x", sha512.Sum512(body))
+		return PackVersion{ID: id, ProjectID: "project", Number: id, GameVersions: []string{i.Version}, Loaders: []string{"fabric"}, Published: time.Unix(when, 0), Files: []PackFile{f}}
+	}
+	original, next := v("v1", old, 1), v("v2", newBody, 2)
+	digest := original.Files[0].Hashes.SHA512
+	g := Game{Transport: transportFunc(func(r *http.Request) (*http.Response, error) {
+		var data any
+		switch r.URL.Path {
+		case "/v2/version_files":
+			data = map[string]PackVersion{digest: original}
+		case "/v2/version_files/update":
+			data = map[string]PackVersion{digest: next}
+		case "/v2/projects":
+			data = []map[string]string{{"id": "project", "title": "Example", "project_type": "mod"}}
+		case "/upstream.jar":
+			return fixtureResponse(200, newBody), nil
+		default:
+			t.Fatalf("unexpected %s", r.URL)
+		}
+		b, err := json.Marshal(data)
+		return fixtureResponse(200, b), err
+	})}
+	mods, err := g.CheckMods(t.Context(), i)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := mods["local.jar.disabled"]
+	if m.Title != "Example" || m.Update.ID != "v2" {
+		t.Fatalf("unexpected match: %+v", m)
+	}
+	if err := g.UpdateMod(t.Context(), i, m); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.UpdateMod(t.Context(), i, m); err == nil {
+		t.Fatal("stale update accepted")
+	}
+	b, err := os.ReadFile(path)
+	if err != nil || !bytes.Equal(newBody, b) {
+		t.Fatalf("updated file: %v", err)
+	}
+	files, err := ListContent(i, Mods)
+	if err != nil || len(files) != 1 || files[0].Enabled {
+		t.Fatalf("file state: %v %v", files, err)
 	}
 }

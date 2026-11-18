@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"github.com/lobehub/lobe-mygo/pkg/action"
+	"github.com/lobehub/lobe-mygo/pkg/choice"
 	"github.com/lobehub/lobe-mygo/pkg/display"
 	"github.com/lobehub/lobe-mygo/pkg/feedback"
 	"github.com/lobehub/lobe-mygo/pkg/field"
@@ -21,14 +23,18 @@ import (
 )
 
 type contentView struct {
-	id, tab  int
-	revision uint64
-	files    []launcher.ContentFile
-	reading  bool
-	err      string
-	query    string
-	filter   int
-	scroll   ui.ScrollState
+	id, tab    int
+	revision   uint64
+	files      []launcher.ContentFile
+	mods       map[string]launcher.InstalledMod
+	selected   map[string]bool
+	checking   bool
+	checkError string
+	reading    bool
+	err        string
+	query      string
+	filter     int
+	scroll     ui.ScrollState
 }
 
 func (v contentView) kind() launcher.ContentKind {
@@ -47,6 +53,7 @@ func (a *desktop) refreshContent(i launcher.Instance) {
 		return
 	}
 	a.contentRequest++
+	a.content.mods, a.content.selected, a.content.checking, a.content.checkError = nil, nil, false, ""
 	request, kind := a.contentRequest, a.content.kind()
 	a.content.reading, a.content.err, a.content.files = true, "", nil
 	go func() {
@@ -122,6 +129,9 @@ func (a *desktop) instanceContent(c *ui.Context, i launcher.Instance) {
 func (a *desktop) contentList(c *ui.Context, i launcher.Instance, disabled bool) {
 	v := &a.content
 	query, filter := v.query, v.filter
+	if v.kind() == launcher.Mods {
+		a.modControls(c, i, disabled)
+	}
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 		field.SearchBar(c, &v.query, field.SearchBarProps{Placeholder: "搜索文件名"}).Label("搜索本地资源").Grow(1).MinWidth(0).MaxWidth(340)
 		ui.Spacer(c).Grow(1)
@@ -137,7 +147,7 @@ func (a *desktop) contentList(c *ui.Context, i launcher.Instance, disabled bool)
 			if v.filter == 1 && !file.Enabled || v.filter == 2 && file.Enabled {
 				continue
 			}
-			if strings.Contains(strings.ToLower(file.Name), term) {
+			if strings.Contains(strings.ToLower(file.Name+" "+v.mods[modFileKey(file)].Title), term) {
 				files = append(files, file)
 			}
 		}
@@ -159,7 +169,7 @@ func (a *desktop) contentList(c *ui.Context, i launcher.Instance, disabled bool)
 				}
 				ui.Row(c.Key(file.Name + fmt.Sprint(file.Enabled))).MinHeight(42).Gap(8).AlignItems(ui.Center).Children(func() {
 					leadIcon(c, downloadTabs[downloadTab(v.kind())].Icon, 26)
-					display.Text(c, file.Name, display.TextProps{Strong: true, Rows: 1}).Grow(1).MinWidth(0).Ellipsis("…")
+					a.contentFileTitle(c, i, file, disabled)
 					muted(c, resourceSize(file.Size)).FontSize(12)
 					label := "停用"
 					if !file.Enabled {
@@ -234,4 +244,113 @@ func (a *desktop) runFileTask(row taskRecord, work func(context.Context, func(la
 			}
 		})
 	})
+}
+
+func modFileKey(f launcher.ContentFile) string {
+	if !f.Enabled {
+		return f.Name + ".disabled"
+	}
+	return f.Name
+}
+func (a *desktop) contentFileTitle(c *ui.Context, i launcher.Instance, f launcher.ContentFile, disabled bool) {
+	v := &a.content
+	key := modFileKey(f)
+	m, found := v.mods[key]
+	if !found || m.Current.ID == "" {
+		display.Text(c, f.Name, display.TextProps{Strong: true, Rows: 1}).Grow(1).MinWidth(0).Ellipsis("…")
+		return
+	}
+	title := m.Title
+	if title == "" {
+		title = f.Name
+	}
+	if m.Update.ID != "" && !disabled {
+		selected := v.selected[key]
+		choice.Checkbox(c.Key("select-"+key), &selected, "", choice.CheckboxProps{}).Label("选择更新 " + title)
+		v.selected[key] = selected
+	}
+	ui.Column(c).Grow(1).MinWidth(0).Children(func() {
+		version := m.Current.Number
+		if m.Update.ID != "" {
+			version += " → " + m.Update.Number
+		}
+		display.Text(c, title+" · "+version, display.TextProps{Strong: true, Rows: 1}).Ellipsis("…")
+		muted(c, "Modrinth · "+f.Name).FontSize(11).Ellipsis("…")
+	})
+	if len(m.Unconfirmed) > 0 && button(c, fmt.Sprintf("核对前置 (%d)", len(m.Unconfirmed)), action.Default, false) {
+		a.openResourceDownloads(i, launcher.Mods)
+		p := a.browserFor(launcher.Mods)
+		p.abort()
+		p.clearProject()
+		v := m.Current
+		if m.Update.ID != "" {
+			v = m.Update
+		}
+		p.packSelection = packSelection{project: launcher.PackProject{ID: v.ProjectID, Title: title}, versions: []launcher.PackVersion{v}, version: v.ID}
+	}
+}
+
+func (a *desktop) modControls(c *ui.Context, i launcher.Instance, disabled bool) {
+	v := &a.content
+	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+		if button(c, "检查更新", action.Default, disabled || v.checking) {
+			req, g, ctx := a.contentRequest, a.game, a.ctx
+			v.checking, v.checkError = true, ""
+			go func() {
+				mods, err := g.CheckMods(ctx, i)
+				a.post(func() {
+					if a.contentRequest != req {
+						return
+					}
+					v.checking = false
+					if err != nil {
+						v.checkError = err.Error()
+						return
+					}
+					v.mods = mods
+					v.selected = make(map[string]bool)
+				})
+			}()
+		}
+		switch {
+		case v.checking:
+			muted(c, "正在识别模组并检查兼容版本…")
+		case v.mods != nil:
+			var selected []launcher.InstalledMod
+			known, updates := 0, 0
+			for _, f := range v.files {
+				key := modFileKey(f)
+				m := v.mods[key]
+				if m.Current.ID != "" {
+					known++
+				}
+				if m.Update.ID != "" {
+					updates++
+					if v.selected[key] {
+						selected = append(selected, m)
+					}
+				}
+			}
+			muted(c, fmt.Sprintf("已识别 %d/%d · 可更新 %d", known, len(v.files), updates))
+			if updates > 0 && button(c, fmt.Sprintf("更新选中 (%d)", len(selected)), action.Primary, len(selected) == 0 || disabled) {
+				game := a.game
+				a.runContentTask(i, "更新模组", nil, func(ctx context.Context, report func(launcher.Progress)) error {
+					var failures []error
+					for n, m := range selected {
+						if err := ctx.Err(); err != nil {
+							return errors.Join(append(failures, err)...)
+						}
+						report(launcher.Progress{Stage: "更新 " + m.DiskName(), Done: n, Total: len(selected)})
+						if err := game.UpdateMod(ctx, i, m); err != nil {
+							failures = append(failures, fmt.Errorf("%s: %w", m.DiskName(), err))
+						}
+					}
+					return errors.Join(failures...)
+				})
+			}
+		}
+	})
+	if v.checkError != "" {
+		feedback.Alert(c, v.checkError, feedback.AlertProps{Type: feedback.Error})
+	}
 }
