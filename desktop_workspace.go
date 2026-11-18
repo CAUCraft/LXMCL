@@ -289,6 +289,8 @@ func settingsActions(c *ui.Context, disabled bool, reset, apply func()) {
 func (a *desktop) help(c *ui.Context) {
 	heading(c, "关于 LXMCL")
 	sectionPane(c).Padding(8, 14).Gap(5).Children(func() {
+		a.releaseControls(c)
+		layout.Divider(c, layout.DividerProps{})
 		settingsRow(c, "许可证", func() {
 			display.Tag(c, "GPLv3", display.TagProps{Color: display.TagGreen, Size: theme.Small})
 			if button(c, "查看许可证", action.Default, false) {

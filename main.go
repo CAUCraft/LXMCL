@@ -152,6 +152,7 @@ type desktop struct {
 	form                             editor
 	installed                        map[int]bool
 	releases                         []launcher.Version
+	release                          releaseView
 	catalogBusy                      bool
 	catalogErr                       string
 	javaInfo                         string

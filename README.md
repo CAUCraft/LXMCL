@@ -4,7 +4,7 @@ CAUCRAFT 的 Minecraft Java 版启动器，使用 Go、MyGo 和 Lobe MyGo 构建
 
 ## 下载
 
-Windows x64：从 [GitHub Actions](https://github.com/CAUCraft/LXMCL/actions/workflows/ci.yml?query=branch%3Amain) 的成功构建下载开发版。正式版发布后见 [GitHub Releases](https://github.com/CAUCraft/LXMCL/releases)。
+Windows x64：从 [GitHub Actions](https://github.com/CAUCraft/LXMCL/actions/workflows/ci.yml?query=branch%3Amain) 的成功构建下载开发版。可在「设置 → 关于」检查正式版和查看更新说明。正式版发布后见 [GitHub Releases](https://github.com/CAUCraft/LXMCL/releases)。
 
 面向 Minecraft Java 版 1.20.1 及之后的正式版本。Windows x64 可按游戏元数据自动安装所需 Java，也可在设置中指定已有 Java。
 
