@@ -252,6 +252,28 @@ func TestImportFabricModDoesNotReplaceExistingFile(t *testing.T) {
 	}
 }
 
+func TestRestoreAllReservesOriginalWorldNames(t *testing.T) {
+	i := Instance{ID: 1, GameDir: t.TempDir()}
+	dir := filepath.Join(i.GameDir, "saves")
+	if err := os.MkdirAll(filepath.Join(dir, "Survival"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	archive := filepath.Join(t.TempDir(), "backup.zip")
+	data := testZIP(t, map[string]string{"Survival/level.dat": "first", "Survival (2)/level.dat": "second"})
+	if err := os.WriteFile(archive, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := RestoreSaves(t.Context(), i, archive); err != nil || n != 2 {
+		t.Fatalf("restore returned %d, %v", n, err)
+	}
+	for name, want := range map[string]string{"Survival (2)": "second", "Survival (3)": "first"} {
+		got, err := os.ReadFile(filepath.Join(dir, name, "level.dat"))
+		if err != nil || string(got) != want {
+			t.Fatalf("restored %s: got %q, want %q, err %v", name, got, want, err)
+		}
+	}
+}
+
 func TestBackupAndRestoreKeepExistingWorld(t *testing.T) {
 	i := Instance{ID: 3, GameDir: t.TempDir()}
 	dir := filepath.Join(i.GameDir, "saves", "Survival")
