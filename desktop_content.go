@@ -133,7 +133,11 @@ func (a *desktop) contentList(c *ui.Context, i launcher.Instance, disabled bool)
 		a.modControls(c, i, disabled)
 	}
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-		field.SearchBar(c, &v.query, field.SearchBarProps{Placeholder: "搜索文件名"}).Label("搜索本地资源").Grow(1).MinWidth(0).MaxWidth(340)
+		placeholder := "搜索文件名"
+		if v.kind() == launcher.Mods && v.mods != nil {
+			placeholder = "搜索模组或文件名"
+		}
+		field.SearchBar(c, &v.query, field.SearchBarProps{Placeholder: placeholder}).Label("搜索本地资源").Grow(1).MinWidth(0).MaxWidth(340)
 		ui.Spacer(c).Grow(1)
 		action.Segmented(c, &v.filter, []string{"全部", "已启用", "已停用"}, action.SegmentedProps{Size: theme.Small}).Label("资源状态筛选")
 	})

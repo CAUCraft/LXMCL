@@ -453,7 +453,10 @@ func (a *desktop) modpackConfirmation(c *ui.Context, p *modpackView) {
 		options = append(options, field.SelectOption{Value: strconv.Itoa(i.ID), Label: i.Name})
 	}
 	before := p.target
-	catalogPicker(c.Key("pack-target"), &p.target, options, "整合包安装目标", "", a.busy).MaxWidth(300)
+	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+		display.Text(c, "安装到", display.TextProps{Strong: true})
+		catalogPicker(c.Key("pack-target"), &p.target, options, "整合包安装目标", "", a.busy).Grow(1).MinWidth(0).MaxWidth(300)
+	})
 	id, _ := strconv.Atoi(p.target)
 	target, exists := a.state.Find(id)
 	if before != p.target || p.update != nil && !p.update.Matches(p.prepared, target) {

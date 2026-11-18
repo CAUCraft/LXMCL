@@ -3,14 +3,16 @@ package main
 import (
 	"context"
 	"fmt"
+
 	"github.com/CAUCraft/LXMCL/internal/launcher"
 	"github.com/egoist/mygo/ui"
 	"github.com/lobehub/lobe-mygo/pkg/action"
 	"github.com/lobehub/lobe-mygo/pkg/display"
+	"github.com/lobehub/lobe-mygo/pkg/theme"
 )
 
 func (a *desktop) packChangeList(c *ui.Context, p *modpackView, i launcher.Instance) {
-	muted(c, fmt.Sprintf("更新 %s · 当前 Minecraft %s · %s", i.Name, i.Version, loaderName(i)))
+	display.Text(c, fmt.Sprintf("当前实例 · %s · %s", i.Version, loaderName(i)), display.TextProps{Strong: true})
 	muted(c, "仅更新包管理的模组、资源和配置。世界与本地修改会保留。").FontSize(12)
 	if p.update == nil {
 		return
@@ -26,10 +28,15 @@ func (a *desktop) packChangeList(c *ui.Context, p *modpackView, i launcher.Insta
 		return
 	}
 	labels := map[string]string{"keep": "保留本地", "replace": "替换", "add": "新增", "remove": "移除"}
+	colors := map[string]display.TagColor{"keep": display.TagGray, "replace": display.TagBlue, "add": display.TagGreen, "remove": display.TagGold}
+	display.Text(c, fmt.Sprintf("文件变更 (%d)", len(u.Changes)), display.TextProps{Strong: true})
 	const size = 12
 	start := p.changePage * size
 	for _, entry := range u.Changes[start:min(start+size, len(u.Changes))] {
-		display.Text(c, labels[entry.Action]+" · "+entry.Path, display.TextProps{FontSize: 12}).Selectable()
+		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+			display.Tag(c, labels[entry.Action], display.TagProps{Color: colors[entry.Action], Size: theme.Small})
+			display.Text(c, entry.Path, display.TextProps{FontSize: 13}).Grow(1).MinWidth(0).Selectable()
+		})
 	}
 	if len(u.Changes) > size {
 		ui.Row(c).Gap(8).Children(func() {

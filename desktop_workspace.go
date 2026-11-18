@@ -536,16 +536,20 @@ func (a *desktop) progress(c *ui.Context) {
 func (a *desktop) logDialog(c *ui.Context) {
 	feedback.Modal(c, &a.logOpen, feedback.ModalProps{Title: "游戏日志", NoFooter: true, Width: 760}, func() {
 		ui.Column(c).Gap(12).Children(func() {
-			muted(c, a.logPath).FontSize(12).Selectable()
+			muted(c, a.logPath).FontSize(12).SingleLine().Ellipsis("…").Selectable()
 			log := a.logText
 			if log == "" {
 				log = "没有可显示的日志内容。"
 			}
 			a.diagnosisPanel(c)
 			_, height := c.Size()
+			reserve := float32(240)
+			if a.logDiagnosis.Cause != "" {
+				reserve += 136
+			}
 			layout.ScrollArea(c.Key(a.logPath), layout.ScrollAreaProps{}, func() {
 				display.Text(c, log, display.TextProps{Code: true, FontSize: 12}).Padding(12).Selectable()
-			}).Height(max(160, min(340, height-240))).Radius(8).Background(theme.TokensOf(c).FillTertiary)
+			}).Height(max(84, min(340, height-reserve))).Radius(8).Background(theme.TokensOf(c).FillTertiary)
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Justify(ui.End).Children(func() {
 				action.CopyButton(c, a.logText, action.CopyButtonProps{}).Disabled(a.logText == "")
 				if button(c, "打开文件", action.Default, a.logPath == "") {
@@ -584,15 +588,17 @@ func (a *desktop) diagnosisPanel(c *ui.Context) {
 		if page == detailContent && !launcher.Mods.Supports(i) {
 			return
 		}
-		if button(c, label, action.Default, false) {
-			a.logOpen = false
-			a.inspect(i)
-			a.detailPage = page
-			if page == detailContent {
-				a.content = contentView{id: i.ID, revision: i.Revision, tab: 1}
-				a.refreshContent(i)
+		ui.Row(c).Children(func() {
+			if button(c, label, action.Default, false) {
+				a.logOpen = false
+				a.inspect(i)
+				a.detailPage = page
+				if page == detailContent {
+					a.content = contentView{id: i.ID, revision: i.Revision, tab: 1}
+					a.refreshContent(i)
+				}
 			}
-		}
+		})
 		return
 	}
 }
