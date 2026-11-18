@@ -59,6 +59,7 @@ func (a *desktop) showLog(path string) {
 	}
 	a.logRequest++
 	request := a.logRequest
+	a.logDiagnosis = launcherlog.Diagnosis{}
 	a.logPath, a.logText, a.logOpen = path, "正在读取游戏日志…", true
 	go func() {
 		log, err := launcherlog.ReadGame(path)
@@ -70,6 +71,7 @@ func (a *desktop) showLog(path string) {
 				a.logText = fmt.Sprintf("无法读取日志：%s", err)
 			} else {
 				a.logText = log
+				a.logDiagnosis = launcherlog.Diagnose(log)
 			}
 		})
 	}()

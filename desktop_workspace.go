@@ -535,6 +535,7 @@ func (a *desktop) logDialog(c *ui.Context) {
 			if log == "" {
 				log = "没有可显示的日志内容。"
 			}
+			a.diagnosisPanel(c)
 			_, height := c.Size()
 			layout.ScrollArea(c.Key(a.logPath), layout.ScrollAreaProps{}, func() {
 				display.Text(c, log, display.TextProps{Code: true, FontSize: 12}).Padding(12).Selectable()
@@ -550,4 +551,42 @@ func (a *desktop) logDialog(c *ui.Context) {
 			})
 		})
 	})
+}
+
+func (a *desktop) diagnosisPanel(c *ui.Context) {
+	d := a.logDiagnosis
+	var title, label string
+	page := detailLaunch
+	switch d.Cause {
+	case "java":
+		title, label = "当前 Java 无法读取这个版本的类文件。请核对实例使用的 Java 版本。", "查看 Java 设置"
+	case "heap":
+		title, label = "Java 堆内存已耗尽。请核对实例的内存上限和模组需求。", "查看内存设置"
+	case "dependency":
+		title, label, page = "加载器报告缺少必需的模组。下方原文列出了依赖要求。", "管理实例模组", detailContent
+	case "mod-version":
+		title, label, page = "加载器报告模组版本不兼容。请核对游戏、加载器和模组版本。", "管理实例模组", detailContent
+	default:
+		return
+	}
+	feedback.Alert(c, title, feedback.AlertProps{Type: feedback.Warning})
+	display.Text(c, d.Evidence, display.TextProps{Code: true, FontSize: 12, Rows: 2}).Selectable()
+	for _, i := range a.state.Instances {
+		if filepath.Join(i.GameDir, launcherlog.GameDirectory) != filepath.Dir(a.logPath) {
+			continue
+		}
+		if page == detailContent && !launcher.Mods.Supports(i) {
+			return
+		}
+		if button(c, label, action.Default, false) {
+			a.logOpen = false
+			a.inspect(i)
+			a.detailPage = page
+			if page == detailContent {
+				a.content = contentView{id: i.ID, revision: i.Revision, tab: 1}
+				a.refreshContent(i)
+			}
+		}
+		return
+	}
 }

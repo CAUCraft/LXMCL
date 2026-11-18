@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/CAUCraft/LXMCL/internal/launcher"
+	launcherlog "github.com/CAUCraft/LXMCL/internal/log"
 	"github.com/CAUCraft/LXMCL/internal/tasks"
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
@@ -164,6 +165,7 @@ type desktop struct {
 	lastLog      string
 	history      []taskRecord
 	logOpen      bool
+	logDiagnosis launcherlog.Diagnosis
 	logText      string
 	logPath      string
 	logRequest   uint64
