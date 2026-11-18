@@ -26,3 +26,39 @@ func (g Game) InstallModpack(ctx context.Context, store Store, next State, i Ins
 		}, progress)
 	}, report)
 }
+
+type PackUpdate = modpack.UpdatePreview
+
+func (g Game) PreviewPackUpdate(ctx context.Context, i Instance, pack PreparedModpack, key string) (PackUpdate, error) {
+	return modpack.PreviewUpdate(ctx, pack, modpack.InstallOptions{Target: i, Cache: g.downloads(), Resolver: (catalog.Client{Transport: g.Transport}).CurseForgeResolver(key)})
+}
+func (g Game) ApplyPackUpdate(ctx context.Context, store Store, state State, i Instance, pack PreparedModpack, key string, preview PackUpdate, report func(Progress)) (State, error) {
+	next := state.Clone()
+	for n, old := range next.Instances {
+		if old != i {
+			continue
+		}
+		if !preview.Matches(pack, i) {
+			return state, i18n.Error("modpack.instance_changed")
+		}
+		info := pack.Info()
+		revised := old
+		revised.Version, revised.Loader, revised.LoaderVersion = info.Minecraft, info.Loader, info.LoaderVersion
+		revised.Revision++
+		if err := revised.Validate(); err != nil {
+			return state, err
+		}
+		next.Instances[n] = revised
+		err := modpack.ApplyUpdate(ctx, preview, modpack.InstallOptions{Target: i, Cache: g.downloads(), Resolver: (catalog.Client{Transport: g.Transport}).CurseForgeResolver(key),
+			InstallGame: func(ctx context.Context, work Instance, report func(Progress)) error {
+				return g.InstallWithJava(ctx, work, next.Settings.JavaPath, report)
+			},
+			Commit: func() error { return store.Save(next) },
+		}, report)
+		if err != nil {
+			return state, err
+		}
+		return next, nil
+	}
+	return state, i18n.Error("modpack.instance_changed")
+}

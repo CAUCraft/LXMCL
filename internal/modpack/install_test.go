@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"context"
 	"crypto/sha512"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -206,5 +207,88 @@ func TestPortableSelectionRoundTrip(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(dir, "saves")); !os.IsNotExist(err) {
 			t.Fatalf("unexpected saves %v", err)
 		}
+	}
+}
+
+func TestUpdatePreservesPlayerFilesAndRollsBackFailedCommit(t *testing.T) {
+	ctx := t.Context()
+	o := options(t)
+	source := o.Target
+	source.GameDir = t.TempDir()
+	out := t.TempDir()
+	put := func(dir, name, value string) {
+		t.Helper()
+		f := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(f), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(f, []byte(value), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pack := func(version string) modpack.Prepared {
+		t.Helper()
+		f, err := modpack.Export(ctx, source, out, version, modpack.Selection{Mods: true, Config: true, Worlds: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		p, err := modpack.PrepareLocal(ctx, f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	for _, name := range []string{"mods/a.jar", "mods/obsolete.jar", "config/client", "saves/world/level.dat"} {
+		put(source.GameDir, name, "initial")
+	}
+	o.Commit = func() error { return nil }
+	o.InstallGame = func(context.Context, instance.Instance, func(tasks.Progress)) error { return nil }
+	if err := modpack.Install(ctx, pack("1"), o, nil); err != nil {
+		t.Fatal(err)
+	}
+	put(o.Target.GameDir, "config/client", "player")
+	put(o.Target.GameDir, "saves/world/level.dat", "played")
+	for _, name := range []string{"mods/a.jar", "mods/new.jar", "config/client", "saves/world/level.dat"} {
+		put(source.GameDir, name, "upstream")
+	}
+	if err := os.Remove(filepath.Join(source.GameDir, "mods/obsolete.jar")); err != nil {
+		t.Fatal(err)
+	}
+	latest := pack("2")
+	preview, err := modpack.PreviewUpdate(ctx, latest, o)
+	if err != nil || !preview.Tracked || len(preview.Changes) != 4 {
+		t.Fatalf("preview %+v: %v", preview, err)
+	}
+	o.Commit = func() error { return errors.New("disk full") }
+	check := func(name, want string) {
+		t.Helper()
+		b, err := os.ReadFile(filepath.Join(o.Target.GameDir, name))
+		if err != nil || string(b) != want {
+			t.Fatalf("%s: got %q, %v", name, b, err)
+		}
+	}
+	if err := modpack.ApplyUpdate(ctx, preview, o, nil); err == nil {
+		t.Fatal("accepted failed commit")
+	}
+	check("mods/a.jar", "initial")
+	check("mods/obsolete.jar", "initial")
+	if _, err := os.Stat(filepath.Join(o.Target.GameDir, "mods/new.jar")); !os.IsNotExist(err) {
+		t.Fatalf("new file after rollback: %v", err)
+	}
+	o.Commit = func() error { return nil }
+	put(o.Target.GameDir, "mods/a.jar", "changed after preview")
+	if err := modpack.ApplyUpdate(ctx, preview, o, nil); err == nil {
+		t.Fatal("accepted changed preview")
+	}
+	put(o.Target.GameDir, "mods/a.jar", "initial")
+	if err := modpack.ApplyUpdate(ctx, preview, o, nil); err != nil {
+		t.Fatal(err)
+	}
+	check("mods/a.jar", "upstream")
+	check("mods/new.jar", "upstream")
+	check("config/client", "player")
+	check("saves/world/level.dat", "played")
+	if _, err := os.Stat(filepath.Join(o.Target.GameDir, "mods/obsolete.jar")); !os.IsNotExist(err) {
+		t.Fatalf("obsolete mod: %v", err)
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -28,6 +29,9 @@ const (
 )
 
 type modpackView struct {
+	target                                string
+	update                                *launcher.PackUpdate
+	changePage                            int
 	mode                                  int
 	key, keyDraft                         string
 	keyOpen                               bool
@@ -73,6 +77,7 @@ func (p *modpackView) begin(parent context.Context, timeout time.Duration) (cont
 }
 
 func (p *modpackView) clearPreview() {
+	p.target, p.update, p.changePage = "", nil, 0
 	p.prepared = launcher.PreparedModpack{}
 	p.archive, p.name, p.prepareErr, p.installErr = "", "", "", ""
 }
@@ -443,6 +448,19 @@ func (a *desktop) modpackConfirmation(c *ui.Context, p *modpackView) {
 		subtitle += " · " + info.Version
 	}
 	muted(c, subtitle).FontSize(13).SingleLine().Ellipsis("…")
+	options := []field.SelectOption{{Value: "", Label: "创建新实例"}}
+	for _, i := range a.state.Instances {
+		options = append(options, field.SelectOption{Value: strconv.Itoa(i.ID), Label: i.Name})
+	}
+	before := p.target
+	catalogPicker(c.Key("pack-target"), &p.target, options, "整合包安装目标", "", a.busy).MaxWidth(300)
+	id, _ := strconv.Atoi(p.target)
+	target, exists := a.state.Find(id)
+	if before != p.target || p.update != nil && !p.update.Matches(p.prepared, target) {
+		p.update = nil
+		p.changePage = 0
+		p.installErr = ""
+	}
 	needsKey := info.Source == launcher.CurseForgeModpacks && info.Downloads > 0 && p.key == ""
 	layout.Divider(c, layout.DividerProps{})
 	layout.ScrollArea(c.Key("modpack-install-config"), layout.ScrollAreaProps{}, func() {
@@ -452,9 +470,13 @@ func (a *desktop) modpackConfirmation(c *ui.Context, p *modpackView) {
 			if info.Loader == launcher.LoaderForge || info.Loader == launcher.LoaderNeoForge {
 				muted(c, "首次安装加载器需要兼容的 Java。").FontSize(12)
 			}
-			muted(c, "实例名称").FontSize(12)
-			field.Input(c.Key("modpack-instance-name"), &p.name, field.InputProps{Placeholder: "输入新实例名称"}).
-				Label("整合包实例名称").Disabled(a.busy)
+			if p.target == "" {
+				muted(c, "实例名称").FontSize(12)
+				field.Input(c.Key("modpack-instance-name"), &p.name, field.InputProps{Placeholder: "输入新实例名称"}).
+					Label("整合包实例名称").Disabled(a.busy)
+			} else {
+				a.packChangeList(c, p, target)
+			}
 			if needsKey {
 				muted(c, "下载 CurseForge 依赖需要 API Key。").FontSize(12)
 				if button(c, "设置 API Key…", action.Default, false) {
@@ -468,6 +490,18 @@ func (a *desktop) modpackConfirmation(c *ui.Context, p *modpackView) {
 	}).Grow(1).MinHeight(0)
 	layout.Divider(c, layout.DividerProps{})
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+		if p.target != "" {
+			ui.Spacer(c).Grow(1)
+			locked := !exists || a.busy || a.running != nil || needsKey
+			if p.update == nil {
+				if button(c, "预览实例更新", action.Primary, locked) {
+					a.previewPackUpdate(p, target)
+				}
+			} else if button(c, "应用更新", action.Primary, locked) {
+				a.applyPackUpdate(p, target)
+			}
+			return
+		}
 		muted(c, "安装到新实例，使用独立游戏目录").FontSize(12).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 		if button(c, "安装整合包", action.Primary, a.busy || a.running != nil || needsKey || strings.TrimSpace(p.name) == "") {
 			a.installModpack()
