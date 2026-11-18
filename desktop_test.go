@@ -817,6 +817,13 @@ func TestInstanceLogSelectionKeepsTargetAndResetsPreview(t *testing.T) {
 		t.Fatal("log browser did not capture the viewed instance")
 	}
 	capture(t, tt, "instance-logs-empty")
+	a.logLibrary.err = "日志目录不可读"
+	tt.Frame()
+	if !tt.HasText(i.Name+" · "+i.GameDir) || !tt.HasText("检查实例目录和读取权限后，刷新日志列表重试。") {
+		t.Fatal("directory failure lost the instance location or retry guidance")
+	}
+	capture(t, tt, "instance-log-directory-error")
+	a.logLibrary.err = ""
 	modified := time.Date(2026, 11, 18, 10, 30, 0, 0, time.Local)
 	latest := filepath.Join(i.GameDir, "logs", "latest.log")
 	crash := filepath.Join(i.GameDir, "crash-reports", "crash-test-client.txt")

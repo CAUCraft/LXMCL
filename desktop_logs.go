@@ -8,8 +8,8 @@ import (
 	"github.com/CAUCraft/LXMCL/internal/launcher"
 	launcherlog "github.com/CAUCraft/LXMCL/internal/log"
 	"github.com/egoist/mygo/ui"
+	"github.com/lobehub/lobe-mygo/pkg/action"
 	"github.com/lobehub/lobe-mygo/pkg/field"
-	"github.com/lobehub/lobe-mygo/pkg/lucide"
 )
 
 // Keep filtering and line counting off the repeated scroll and hover frames.
@@ -106,6 +106,8 @@ func (a *desktop) logFilePicker(c *ui.Context) {
 		placeholder := "暂无日志，运行游戏后可刷新"
 		if p.reading {
 			placeholder = "正在读取日志列表…"
+		} else if p.err != "" {
+			placeholder = "未找到可读取的日志"
 		}
 		if len(options) > 0 {
 			placeholder = ""
@@ -114,7 +116,7 @@ func (a *desktop) logFilePicker(c *ui.Context) {
 		if path != a.logPath {
 			a.selectLog(path)
 		}
-		if icon(c, lucide.RefreshCw(), "刷新日志列表", p.reading) {
+		if button(c, "刷新日志列表", action.Default, p.reading) {
 			a.refreshLogFiles()
 		}
 	})

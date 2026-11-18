@@ -334,7 +334,14 @@ func (a *desktop) logDialog(c *ui.Context) {
 			if a.logLibrary != nil {
 				a.logFilePicker(c)
 			}
-			muted(c, a.logPath).FontSize(12).SingleLine().Ellipsis("…").Selectable()
+			location := a.logPath
+			if p := a.logLibrary; p != nil {
+				if location == "" {
+					location = p.instance.GameDir
+				}
+				location = p.instance.Name + " · " + location
+			}
+			muted(c, location).FontSize(12).SingleLine().Ellipsis("…").Selectable()
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 				query, filter := a.logQuery, a.logFilter
 				ui.Column(c).Grow(1).MinWidth(0).Children(func() {
@@ -345,7 +352,7 @@ func (a *desktop) logDialog(c *ui.Context) {
 					a.logScroll.Y = 0
 					a.logExported, a.logExportErr = false, ""
 				}
-				if icon(c, lucide.RefreshCw(), "刷新游戏日志", a.logReading) {
+				if icon(c, lucide.RefreshCw(), "刷新游戏日志", a.logReading || a.logPath == "") {
 					a.reloadLog()
 				}
 			})
@@ -363,6 +370,8 @@ func (a *desktop) logDialog(c *ui.Context) {
 					content = "暂无日志或崩溃报告，运行游戏后可刷新列表。"
 					if a.logLibrary.reading {
 						content = "正在查找实例日志…"
+					} else if a.logLibrary.err != "" {
+						content = "检查实例目录和读取权限后，刷新日志列表重试。"
 					}
 				} else if a.logError != "" {
 					content = "请刷新重试，或打开原文件查看。"
