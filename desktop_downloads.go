@@ -132,27 +132,31 @@ func (a *desktop) installPage(c *ui.Context) {
 		})
 		hasMatches = a.installVersions(c, p, p.query != previousQuery)
 	}, func() {
-		if !hasMatches && len(a.releases) > 0 {
-			ui.Column(c).Grow(1).Center().Gap(10).Children(func() {
-				display.Empty(c, display.EmptyProps{Icon: lucide.Search(), Title: "没有匹配的游戏版本", Description: "支持 Minecraft 1.20.1 及之后的正式版。"})
-				if button(c, "清除搜索", action.Default, false) {
-					p.query, p.scroll.Y = "", 0
-					c.Invalidate()
-				}
-			})
-			return
-		}
-		if len(a.releases) == 0 {
-			if a.catalogErr != "" {
-				feedback.Alert(c, a.catalogErr, feedback.AlertProps{Type: feedback.Error})
-				ui.Row(c).Children(func() {
-					if button(c, "重试读取版本", action.Default, a.catalogBusy) {
+		if !hasMatches {
+			ui.Column(c).Grow(1).MinWidth(0).Gap(10).Justify(ui.Center).Children(func() {
+				switch {
+				case a.catalogBusy:
+					flightLoading(c, "正在读取官方版本…")
+				case a.catalogErr != "":
+					title := "无法读取游戏版本列表"
+					if len(a.releases) > 0 {
+						title = "版本列表未更新，上次读取的列表中没有匹配项"
+					}
+					if catalogRetry(c, title, a.catalogErr, "重试读取版本", "复制版本列表错误") {
 						a.refreshCatalog()
 					}
-				})
-			} else if a.catalogBusy {
-				flightLoading(c, "正在读取官方版本…")
-			}
+				case len(a.releases) > 0:
+					display.Empty(c, display.EmptyProps{Icon: lucide.Search(), Title: "没有匹配的游戏版本", Description: "支持 Minecraft 1.20.1 及之后的正式版。"})
+				}
+				if len(a.releases) > 0 {
+					ui.Row(c).Justify(ui.Center).Children(func() {
+						if button(c, "清除搜索", action.Default, false) {
+							p.query, p.scroll.Y = "", 0
+							c.Invalidate()
+						}
+					})
+				}
+			})
 			return
 		}
 		a.installDetails(c, p)
