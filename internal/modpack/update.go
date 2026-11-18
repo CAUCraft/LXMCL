@@ -18,8 +18,9 @@ import (
 )
 
 type Change struct {
-	Path, Action string
-	before       string
+	Path, Action     string
+	before           string
+	source, opposite string
 }
 type UpdatePreview struct {
 	Previous string
@@ -77,48 +78,72 @@ func compareUpdate(ctx context.Context, target, stage *os.Root, pack Prepared, i
 		return preview, err
 	}
 	preview.Tracked, preview.Previous = old.Format == 1, old.Version
-	names := map[string]string{}
+	// Index toggled resources by their enabled name. Receipts keep the path
+	// supplied by the pack while changes record the actual path on disk.
+	type paths struct{ key, alternate, previous, next string }
+	files := make(map[string]paths)
 	var ordered []string
-	for _, files := range []map[string]string{old.Files, next.Files} {
-		for name := range files {
-			k := strings.ToLower(name)
-			if prior := names[k]; prior != "" {
-				if prior != name {
-					return preview, i18n.Error("modpack.plan_path_conflict", name)
-				}
-				continue
+	for pass, receiptFiles := range []map[string]string{old.Files, next.Files} {
+		for name := range receiptFiles {
+			key, other := resourcePaths(name)
+			if old.Files[name] != "" && old.Files[other] != "" || next.Files[name] != "" && next.Files[other] != "" {
+				key, other = name, ""
 			}
-			names[k] = name
-			ordered = append(ordered, name)
+			folded := strings.ToLower(key)
+			p, exists := files[folded]
+			if exists && p.key != key || pass == 0 && p.previous != "" || pass == 1 && p.next != "" {
+				return preview, i18n.Error("modpack.plan_path_conflict", name)
+			}
+			if !exists {
+				p.key = key
+				ordered = append(ordered, folded)
+			}
+			if pass == 0 {
+				p.previous, p.alternate = name, other
+			} else {
+				p.next, p.alternate = name, other
+			}
+			files[folded] = p
 		}
 	}
 	slices.Sort(ordered)
-	for _, name := range ordered {
+	for _, key := range ordered {
 		if err := ctx.Err(); err != nil {
 			return preview, err
 		}
-		current, err := fileDigest(ctx, target, name)
+		p := files[key]
+		dest := p.next
+		if dest == "" {
+			dest = p.previous
+		}
+		current, err := fileDigest(ctx, target, dest)
 		if err != nil {
 			return preview, err
 		}
-		before, after := old.Files[name], next.Files[name]
-		change := Change{Path: name, before: current}
-		switch {
-		case after == current:
-			continue
-		case current == "" && before == "":
-			if strings.HasSuffix(name, ".jar") {
-				disabled, err := fileDigest(ctx, target, name+".disabled")
-				if err != nil {
-					return preview, err
-				}
-				if disabled != "" {
-					change.Action = "keep"
-					break
-				}
+		change := Change{Path: dest, source: p.next, before: current}
+		if alternate := p.alternate; alternate != "" {
+			other, err := fileDigest(ctx, target, alternate)
+			if err != nil {
+				return preview, err
 			}
+			switch {
+			case current != "" && other != "":
+				change.Action = "keep"
+				preview.Changes = append(preview.Changes, change)
+				continue
+			case other != "":
+				change.Path, change.opposite, change.before = alternate, dest, other
+			default:
+				change.opposite = alternate
+			}
+		}
+		before, after := old.Files[p.previous], next.Files[p.next]
+		switch {
+		case change.before == after:
+			continue
+		case change.before == "" && before == "":
 			change.Action = "add"
-		case current == "" || current != before:
+		case change.before == "" || change.before != before:
 			change.Action = "keep"
 		case after == "":
 			change.Action = "remove"
@@ -129,6 +154,21 @@ func compareUpdate(ctx context.Context, target, stage *os.Root, pack Prepared, i
 	}
 	return preview, nil
 }
+
+func resourcePaths(name string) (key, alternate string) {
+	base, disabled := strings.CutSuffix(name, ".disabled")
+	folder, ext := path.Dir(base), strings.ToLower(path.Ext(base))
+	switch {
+	case folder == "mods" && ext == ".jar", (folder == "resourcepacks" || folder == "shaderpacks") && ext == ".zip":
+		if disabled {
+			return base, base
+		}
+		return base, base + ".disabled"
+	default:
+		return name, ""
+	}
+}
+
 func PreviewUpdate(ctx context.Context, pack Prepared, o InstallOptions) (UpdatePreview, error) {
 	var result UpdatePreview
 	o.InstallGame = nil
@@ -153,7 +193,7 @@ func ApplyUpdate(ctx context.Context, expected UpdatePreview, o InstallOptions, 
 			return i18n.Error("modpack.preview_changed")
 		}
 		changes := slices.Clone(latest.Changes)
-		changes = append(changes, Change{Path: receiptName, Action: "replace", before: latest.receipt})
+		changes = append(changes, Change{Path: receiptName, source: receiptName, Action: "replace", before: latest.receipt})
 		return publishUpdate(ctx, target, stage, changes, o.Commit)
 	})
 }
@@ -198,6 +238,14 @@ func publishUpdate(ctx context.Context, target, stage *os.Root, changes []Change
 		if err != nil {
 			return err
 		}
+		if step.opposite != "" {
+			if _, err := target.Lstat(step.opposite); !errors.Is(err, os.ErrNotExist) {
+				if err != nil {
+					return err
+				}
+				return i18n.Error("modpack.preview_changed")
+			}
+		}
 		if current != step.before {
 			return i18n.Error("modpack.preview_changed")
 		}
@@ -225,7 +273,7 @@ func publishUpdate(ctx context.Context, target, stage *os.Root, changes []Change
 			return err
 		}
 		err = storage.PublishNew(ctx, parent, path.Base(step.Path), 0644, func(f *os.File) error {
-			src, err := stage.Open(step.Path)
+			src, err := stage.Open(step.source)
 			if err != nil {
 				return err
 			}

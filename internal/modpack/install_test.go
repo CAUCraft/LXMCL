@@ -251,6 +251,9 @@ func TestUpdatePreservesPlayerFilesAndRollsBackFailedCommit(t *testing.T) {
 	if err := modpack.Install(ctx, pack("1"), o, nil); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.Rename(filepath.Join(o.Target.GameDir, "mods/a.jar"), filepath.Join(o.Target.GameDir, "mods/a.jar.disabled")); err != nil {
+		t.Fatal(err)
+	}
 	put(o.Target.GameDir, "config/client", "player")
 	put(o.Target.GameDir, "saves/world/level.dat", "played")
 	for _, name := range []string{"mods/a.jar", "mods/new.jar", "config/client", "saves/world/level.dat"} {
@@ -275,21 +278,24 @@ func TestUpdatePreservesPlayerFilesAndRollsBackFailedCommit(t *testing.T) {
 	if err := modpack.ApplyUpdate(ctx, preview, o, nil); err == nil {
 		t.Fatal("accepted failed commit")
 	}
-	check("mods/a.jar", "initial")
+	check("mods/a.jar.disabled", "initial")
 	check("mods/obsolete.jar", "initial")
 	if _, err := os.Stat(filepath.Join(o.Target.GameDir, "mods/new.jar")); !os.IsNotExist(err) {
 		t.Fatalf("new file after rollback: %v", err)
 	}
 	o.Commit = func() error { return nil }
-	put(o.Target.GameDir, "mods/a.jar", "changed after preview")
+	put(o.Target.GameDir, "mods/a.jar.disabled", "changed after preview")
 	if err := modpack.ApplyUpdate(ctx, preview, o, nil); err == nil {
 		t.Fatal("accepted changed preview")
 	}
-	put(o.Target.GameDir, "mods/a.jar", "initial")
+	put(o.Target.GameDir, "mods/a.jar.disabled", "initial")
 	if err := modpack.ApplyUpdate(ctx, preview, o, nil); err != nil {
 		t.Fatal(err)
 	}
-	check("mods/a.jar", "upstream")
+	check("mods/a.jar.disabled", "upstream")
+	if _, err := os.Stat(filepath.Join(o.Target.GameDir, "mods/a.jar")); !os.IsNotExist(err) {
+		t.Fatalf("update enabled a disabled mod: %v", err)
+	}
 	check("mods/new.jar", "upstream")
 	check("config/client", "player")
 	check("saves/world/level.dat", "played")
