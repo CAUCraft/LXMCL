@@ -14,6 +14,7 @@ import (
 	"github.com/lobehub/lobe-mygo/pkg/display"
 	"github.com/lobehub/lobe-mygo/pkg/feedback"
 	"github.com/lobehub/lobe-mygo/pkg/layout"
+	"github.com/lobehub/lobe-mygo/pkg/lucide"
 )
 
 type queuedResource struct {
@@ -86,29 +87,68 @@ func (a *desktop) queuePanel(c *ui.Context) {
 				a.nextResource()
 			}
 		})
-		remove := -1
+		var changedID string
+		var move int
+		height := float32(130)
+		if len(a.history) == 0 && a.task.Stage == "" && a.running == nil {
+			_, h := c.Size()
+			height = max(height, h-190)
+		}
 		layout.ScrollArea(c, layout.ScrollAreaProps{State: &q.scroll}, func() {
 			for n, item := range pending {
-				ui.Row(c.Key(item.id + item.resource.Version)).Gap(8).AlignItems(ui.Center).Children(func() {
-					dest := item.folder
-					if item.target.ID != 0 {
-						dest = item.target.Name
+				ui.Row(c.Key(item.id)).Gap(8).MinHeight(44).AlignItems(ui.Center).Children(func() {
+					ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
+						display.Text(c, item.resource.Title+" · "+item.version.Number, display.TextProps{Strong: true, Rows: 1}).Ellipsis("…")
+						folder := filepath.Clean(item.folder)
+						label := folder
+						if filepath.Dir(folder) != folder {
+							label = filepath.Base(folder)
+						}
+						dest := "保存到 " + label
+						if item.target.ID != 0 {
+							dest = "安装到 " + item.target.Name + " · " + item.target.Version
+						}
+						hint := item.folder
+						if item.target.ID != 0 {
+							hint = item.target.GameDir
+						}
+						muted(c, dest).FontSize(12).SingleLine().Ellipsis("…").Tooltip(hint).Selectable()
+					})
+					if icon(c, lucide.ChevronUp(), "上移 "+item.resource.Title, n == 0) {
+						changedID, move = item.id, -1
 					}
-					display.Text(c, item.resource.Title+" "+item.version.Number+" → "+dest, display.TextProps{Rows: 1}).Grow(1).MinWidth(0).Ellipsis("…")
-					if button(c, "移出", action.Text, false) {
-						remove = n
+					if icon(c, lucide.ChevronDown(), "下移 "+item.resource.Title, n == len(pending)-1) {
+						changedID, move = item.id, 1
+					}
+					if icon(c, lucide.X(), "移出 "+item.resource.Title, false) {
+						changedID, move = item.id, 0
 					}
 				})
 			}
-		}).Height(min(float32(100), float32(34*len(pending))))
-		if remove >= 0 {
-			id := pending[remove].id
-			if id != q.activeID {
-				q.pending = slices.DeleteFunc(q.pending, func(item queuedResource) bool { return item.id == id })
-				a.saveDownloadQueue()
-			}
+		}).Height(min(height, float32(44*len(pending))))
+		if changedID != "" {
+			a.changeQueued(changedID, move)
 		}
 	})
+}
+
+// A move of zero removes the pending item. The active download stays at the head.
+func (a *desktop) changeQueued(id string, move int) {
+	q := &a.queue
+	index := slices.IndexFunc(q.pending, func(item queuedResource) bool { return item.id == id })
+	if index < 0 || id == q.activeID {
+		return
+	}
+	if move == 0 {
+		q.pending = slices.Delete(q.pending, index, index+1)
+	} else {
+		next := index + move
+		if next < 0 || next >= len(q.pending) || q.pending[next].id == q.activeID {
+			return
+		}
+		q.pending[index], q.pending[next] = q.pending[next], q.pending[index]
+	}
+	a.saveDownloadQueue()
 }
 
 func (a *desktop) nextResource() {

@@ -382,7 +382,7 @@ func (a *desktop) tasks(c *ui.Context) {
 					a.showLog(a.lastLog)
 				}
 			})
-		} else if len(a.queue.pending) == 0 && a.task.Stage == "" && a.running == nil {
+		} else if a.queue.loadError == nil && a.queue.saveError == nil && len(a.queue.pending) == 0 && a.task.Stage == "" && a.running == nil {
 			emptyPanel(c, lucide.Activity(), "暂无任务")
 		}
 	})
