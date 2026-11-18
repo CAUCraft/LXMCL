@@ -901,6 +901,7 @@ func TestTaskHistoryReadErrorReplacesEmptyState(t *testing.T) {
 	}
 	for _, dark := range []bool{false, true} {
 		tt.SetDark(dark)
+		tt.Advance(time.Second)
 		tt.Frame()
 		if tt.HasText("暂无任务") || !tt.HasText("重新读取任务记录") {
 			t.Fatal("unreadable history should show a recovery action")
