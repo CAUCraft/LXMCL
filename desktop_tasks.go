@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/CAUCraft/LXMCL/internal/i18n"
 	"github.com/CAUCraft/LXMCL/internal/launcher"
 	"github.com/egoist/mygo/ui"
 	"github.com/lobehub/lobe-mygo/pkg/action"
@@ -363,6 +364,10 @@ func (a *desktop) logDialog(c *ui.Context) {
 					if a.logLibrary.reading {
 						content = "正在查找实例日志…"
 					}
+				} else if a.logError != "" {
+					content = "请刷新重试，或打开原文件查看。"
+				} else if a.logText == "" && a.logPath != "" {
+					content = i18n.Text("log.game_empty")
 				}
 			}
 			_, height := c.Size()

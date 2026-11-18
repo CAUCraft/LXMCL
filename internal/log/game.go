@@ -116,9 +116,6 @@ func ReadPreview(ctx context.Context, path string) (string, error) {
 		}
 	}
 	log := strings.ToValidUTF8(string(b), "\uFFFD")
-	if log == "" {
-		return i18n.Text("log.game_empty"), nil
-	}
 	if truncated {
 		return i18n.Text("log.game_tail") + log, nil
 	}

@@ -76,6 +76,7 @@ func (a *desktop) refreshLogFiles() {
 			if path == "" {
 				a.stopLogRead()
 				a.logPath, a.logText, a.logError = "", "", ""
+				a.logExported, a.logExportErr = false, ""
 			} else {
 				a.selectLog(path)
 			}

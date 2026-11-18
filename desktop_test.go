@@ -822,6 +822,11 @@ func TestInstanceLogSelectionKeepsTargetAndResetsPreview(t *testing.T) {
 	crash := filepath.Join(i.GameDir, "crash-reports", "crash-test-client.txt")
 	a.logLibrary.entries = []launcherlog.Entry{{Path: latest, Modified: modified}, {Path: crash, Modified: modified}}
 	a.selectLog(latest)
+	tt.Frame()
+	if !tt.HasText("显示 0 行") || !tt.HasText("日志暂时为空。") {
+		t.Fatal("empty file hint or line count is missing")
+	}
+	capture(t, tt, "instance-empty-log")
 	a.logText, a.logQuery, a.logFilter = "old preview", "old", 1
 	tt.Frame()
 	if err := tt.Click("选择实例日志"); err != nil {
