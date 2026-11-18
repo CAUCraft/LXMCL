@@ -159,10 +159,31 @@ func (a *desktop) submitEditor() {
 	switch form.mode {
 	case "rename":
 		err = next.Rename(form.target.ID, form.target.Revision, form.name)
+	case "export":
+		if strings.TrimSpace(form.version) == "" {
+			a.form.err = "请输入整合包版本"
+			return
+		}
+		a.pickDownloadFolder(func(folder string) {
+			a.form.open = false
+			a.runInstanceTask(form.target, "导出整合包", func(ctx context.Context) error {
+				_, err := launcher.ExportInstance(ctx, form.target, folder, form.version, form.files)
+				return err
+			})
+		})
+		return
 	case "duplicate":
 		var duplicate launcher.Instance
 		duplicate, err = next.Duplicate(form.target.ID, form.target.Revision, form.name)
 		checkID = duplicate.ID
+		if err == nil && form.files != (launcher.PortableFiles{}) {
+			if a.running != nil {
+				a.form.err = "请先退出游戏再复制文件"
+				return
+			}
+			a.copyInstanceFiles(form, next, duplicate)
+			return
+		}
 	case "loader":
 		if a.runningID == form.target.ID {
 			a.form.err = "请先退出此实例的游戏"
@@ -480,4 +501,20 @@ func (a *desktop) openLogFolder() {
 	if launcherlog.IsGame(a.lastLog) {
 		a.openPath(filepath.Dir(a.lastLog), false)
 	}
+}
+
+func (a *desktop) copyInstanceFiles(form editor, next launcher.State, duplicate launcher.Instance) {
+	if a.ctx == nil {
+		return
+	}
+	store := a.store
+	a.form.open = false
+	row := taskRecord{InstanceID: form.target.ID, Revision: form.target.Revision, Name: form.target.Name, Version: form.target.Version, Action: "复制实例", At: time.Now()}
+	a.runFileTask(row, func(ctx context.Context, _ func(launcher.Progress)) error {
+		err := launcher.DuplicateFiles(ctx, form.target, duplicate, form.files, store, next)
+		if err == nil {
+			a.post(func() { a.state = next })
+		}
+		return err
+	}, nil)
 }

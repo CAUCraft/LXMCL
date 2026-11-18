@@ -161,3 +161,50 @@ func TestInstallPreservesDestinationCreatedBeforePublication(t *testing.T) {
 		t.Fatalf("staging directory was not cleaned: %v, %v", entries, err)
 	}
 }
+
+func TestPortableSelectionRoundTrip(t *testing.T) {
+	ctx := t.Context()
+	o := options(t)
+	i := o.Target
+	i.GameDir = t.TempDir()
+	i.Name = "Source"
+	for _, name := range []string{"mods/local.jar.disabled", "saves/world/level.dat", "config/local.txt"} {
+		filename := filepath.Join(i.GameDir, name)
+		if err := os.MkdirAll(filepath.Dir(filename), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filename, []byte(name), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	files := modpack.Selection{Mods: true, Config: true}
+	filename, err := modpack.Export(ctx, i, t.TempDir(), "1.0", files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	preview, err := modpack.PrepareLocal(ctx, filename)
+	if err != nil || preview.Info().Overrides != 2 {
+		t.Fatalf("preview: %+v %v", preview.Info(), err)
+	}
+	o.Commit = func() error { return nil }
+	o.InstallGame = func(context.Context, instance.Instance, func(tasks.Progress)) error { return nil }
+	if err := modpack.Install(ctx, preview, o, nil); err != nil {
+		t.Fatal(err)
+	}
+	dup := o.Target
+	dup.GameDir = filepath.Join(t.TempDir(), "copy")
+	if err := modpack.Duplicate(ctx, i, dup, files, o.Commit); err != nil {
+		t.Fatal(err)
+	}
+	for _, dir := range []string{dup.GameDir, o.Target.GameDir} {
+		for _, name := range []string{"mods/local.jar.disabled", "config/local.txt"} {
+			b, err := os.ReadFile(filepath.Join(dir, name))
+			if string(b) != name || err != nil {
+				t.Fatalf("copied %s: %v", name, err)
+			}
+		}
+		if _, err := os.Stat(filepath.Join(dir, "saves")); !os.IsNotExist(err) {
+			t.Fatalf("unexpected saves %v", err)
+		}
+	}
+}

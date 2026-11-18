@@ -7,6 +7,7 @@ import (
 	"github.com/CAUCraft/LXMCL/internal/launcher"
 	"github.com/egoist/mygo/ui"
 	"github.com/lobehub/lobe-mygo/pkg/action"
+	"github.com/lobehub/lobe-mygo/pkg/choice"
 	"github.com/lobehub/lobe-mygo/pkg/display"
 	"github.com/lobehub/lobe-mygo/pkg/feedback"
 	"github.com/lobehub/lobe-mygo/pkg/field"
@@ -529,7 +530,9 @@ func (a *desktop) editor(c *ui.Context) {
 	case "version":
 		title, okText = "更换版本", "保存版本"
 	case "duplicate":
-		title, okText = "复制实例配置", "创建副本"
+		title, okText = "复制实例", "创建副本"
+	case "export":
+		title, okText = "导出整合包", "选择保存位置…"
 	case "loader":
 		title, okText = "选择加载器", "保存加载器"
 	}
@@ -540,6 +543,15 @@ func (a *desktop) editor(c *ui.Context) {
 		ui.Column(c).Gap(12).Children(func() {
 			if a.form.mode == "loader" {
 				a.loaderForm(c)
+				return
+			}
+			if a.form.mode == "export" {
+				panelHeading(c, lucide.FileArchive(), a.form.target.Name, "Modrinth 整合包 (.mrpack)")
+				settingsInput(c, "整合包版本", &a.form.version, "1.0.0", 170, a.busy)
+				a.portableOptions(c)
+				if a.form.err != "" {
+					feedback.Alert(c, a.form.err, feedback.AlertProps{Type: feedback.Error})
+				}
 				return
 			}
 			if a.form.mode == "remove" {
@@ -556,7 +568,8 @@ func (a *desktop) editor(c *ui.Context) {
 					feedback.AlertProps{Type: feedback.Warning})
 			} else {
 				if a.form.mode == "duplicate" {
-					panelHeading(c, lucide.Copy(), a.form.target.Name, "复制版本和启动设置，存档与资源文件留在原实例。")
+					panelHeading(c, lucide.Copy(), a.form.target.Name, "副本使用独立目录。选择随实例复制的文件。")
+					a.portableOptions(c)
 				}
 				ui.Column(c).Gap(5).Children(func() {
 					display.Text(c, "实例名称", display.TextProps{Strong: true})
@@ -615,4 +628,11 @@ func (a *desktop) loaderForm(c *ui.Context) {
 	if f.err != "" {
 		feedback.Alert(c, f.err, feedback.AlertProps{Type: feedback.Error})
 	}
+}
+
+func (a *desktop) portableOptions(c *ui.Context) {
+	f := &a.form.files
+	choice.Checkbox(c, &f.Mods, "模组、资源包和光影包", choice.CheckboxProps{}).Disabled(a.busy)
+	choice.Checkbox(c, &f.Config, "游戏选项、模组配置和脚本", choice.CheckboxProps{}).Disabled(a.busy)
+	choice.Checkbox(c, &f.Worlds, "世界存档", choice.CheckboxProps{}).Disabled(a.busy)
 }

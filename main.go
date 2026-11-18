@@ -93,6 +93,7 @@ type editor struct {
 	err     string
 	focus   bool
 	loader  *installView
+	files   launcher.PortableFiles
 }
 
 type desktop struct {

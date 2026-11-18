@@ -29,3 +29,12 @@ func (g Game) PrepareOnlineModpack(ctx context.Context, r ModpackRelease) (Prepa
 func PrepareLocalModpack(ctx context.Context, filename string) (PreparedModpack, error) {
 	return modpack.PrepareLocal(ctx, filename)
 }
+
+type PortableFiles = modpack.Selection
+
+func ExportInstance(ctx context.Context, i Instance, folder, version string, selection PortableFiles) (string, error) {
+	return modpack.Export(ctx, i, folder, version, selection)
+}
+func DuplicateFiles(ctx context.Context, source, target Instance, selection PortableFiles, store Store, next State) error {
+	return modpack.Duplicate(ctx, source, target, selection, func() error { return store.Save(next) })
+}

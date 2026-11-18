@@ -354,7 +354,7 @@ func TestInstanceSettingsKeepDraftAndLaunchTargetSeparate(t *testing.T) {
 	if err := tt.Click("更多实例操作"); err != nil {
 		t.Fatal(err)
 	}
-	if err := tt.Click("复制实例配置…"); err != nil {
+	if err := tt.Click("复制实例…"); err != nil {
 		t.Fatal(err)
 	}
 	if a.form.target.ID != 2 || a.form.mode != "duplicate" || a.state.Selected != 1 {

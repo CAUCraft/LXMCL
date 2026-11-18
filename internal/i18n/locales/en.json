@@ -200,6 +200,7 @@
   "modpack.download_metadata_missing": "Missing a valid download URL or checksum for this modpack",
   "modpack.folder_file_unavailable": "This modpack version has no verifiable download",
   "modpack.install_callbacks_required": "Game installation and instance persistence services are required",
+  "modpack.export_destination_invalid": "Choose an export folder outside the instance and enter a pack version",
   "modpack.instance_changed": "The modpack's instance configuration changed",
   "modpack.instance_directory_exists": "The target instance folder already exists. Keep the old folder and choose another location",
   "modpack.loader_unsupported": "This modpack's loader is unsupported",
