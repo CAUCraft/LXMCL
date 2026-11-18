@@ -17,6 +17,7 @@ go run . -data-dir .local/dev
 | 位置 | 内容 |
 | --- | --- |
 | `launcher.json` | 实例、启动选择、服务器收藏和全局设置 |
+| `download-queue.json` | 待下载资源的版本、顺序与原目标 |
 | `tasks.json` | 最近 24 条任务记录 |
 | `cache/` | 共享游戏文件、Java 运行时和加载器安装日志 |
 | `backups/instance-<id>/` | 实例存档的 ZIP 备份 |

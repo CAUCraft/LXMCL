@@ -34,6 +34,7 @@ func (a *desktop) load() {
 		s, err := a.store.Load()
 		account, accountErr := a.store.LoadMicrosoftAccount()
 		history, historyErr := a.journal.Load(a.store.Root)
+		pending, queueErr := readDownloadQueue(a.store.Root, history)
 		curseForgeKey := launcher.LoadCurseForgeAPIKey(a.store.Root)
 		installed := make(map[int]bool, len(s.Instances))
 		for _, i := range s.Instances {
@@ -48,6 +49,10 @@ func (a *desktop) load() {
 			a.modpacks.key = curseForgeKey
 			a.memory = strconv.Itoa(s.Settings.Memory)
 			a.restoreTaskHistory(history)
+			a.queue.pending, a.queue.loadError = pending, queueErr
+			if queueErr != nil {
+				a.message("读取下载队列失败", queueErr)
+			}
 			a.microsoftAccount = account
 			if historyErr != nil {
 				a.message("无法读取任务记录", historyErr)
