@@ -13,6 +13,29 @@ import (
 	"github.com/lobehub/lobe-mygo/pkg/overlay"
 )
 
+// The official game manifest is independent of resource and modpack search.
+func (a *desktop) gameVersionFilter(c *ui.Context, value *string, label, all string) ui.Element {
+	if len(a.releases) == 0 {
+		if a.catalogErr == "" && !a.catalogBusy {
+			a.refreshCatalog()
+		}
+		caption := "版本读取失败 · 重试"
+		if a.catalogBusy {
+			caption = "正在读取版本…"
+		}
+		b := action.Button(c, caption, action.ButtonProps{Variant: action.Default}).Label("重试游戏版本列表").Disabled(a.catalogBusy)
+		if b.Clicked() {
+			a.refreshCatalog()
+		}
+		return b
+	}
+	options := []field.SelectOption{{Value: "", Label: all}}
+	for _, v := range a.releases {
+		options = append(options, field.SelectOption{Value: v.ID, Label: v.ID})
+	}
+	return catalogPicker(c, value, options, label, "", false)
+}
+
 // Catalogs use a bounded Lobe list in a popover. Select and AutoComplete in
 // the pinned Lobe release limit the popup itself, but do not scroll its rows.
 func catalogPicker(c *ui.Context, value *string, options []field.SelectOption, label, fallback string, disabled bool) ui.Element {

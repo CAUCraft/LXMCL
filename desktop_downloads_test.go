@@ -174,12 +174,17 @@ func TestResourceDownloadsKeepInstallTargetSeparate(t *testing.T) {
 	a, tt := testDesktop(t)
 	a.state.Instances[0].Loader, a.state.Instances[0].LoaderVersion = launcher.LoaderForge, "52.1.21"
 	a.state.Instances[1].Loader, a.state.Instances[1].LoaderVersion = launcher.LoaderNeoForge, "21.4.120"
+	a.catalogErr = "无法读取官方版本列表"
 	tt.SetSize(820, 530)
 	for _, label := range []string{"下载", "模组"} {
 		if err := tt.Click(label); err != nil {
 			t.Fatal(err)
 		}
 	}
+	if _, ok := tt.Find("重试游戏版本列表"); !ok {
+		t.Fatal("unavailable version filter cannot be retried from resource search")
+	}
+	capture(t, tt, "resource-version-filter-retry")
 	p := a.browserFor(launcher.Mods)
 	if p.target.ID != 0 {
 		t.Fatal("the browser silently selected a different instance")

@@ -222,9 +222,6 @@ func (a *desktop) modpackPage(c *ui.Context) {
 		}
 	})
 	if p.mode != modpackLocal && (p.mode != modpackCurseForge || p.key != "") {
-		if len(a.releases) == 0 && a.catalogErr == "" {
-			a.refreshCatalog()
-		}
 		if !p.searched {
 			p.applied = strings.TrimSpace(p.query)
 			a.searchModpackProjects(0)
@@ -284,12 +281,8 @@ func (a *desktop) modpackSearchBar(c *ui.Context, p *modpackView) {
 			submit = field.Input(c, &p.query, field.InputProps{Placeholder: "搜索整合包", Prefix: lucide.Search()}).
 				Label("搜索整合包").Submitted()
 		})
-		options := []field.SelectOption{{Value: "", Label: "所有游戏版本"}}
-		for _, v := range a.releases {
-			options = append(options, field.SelectOption{Value: v.ID, Label: v.ID})
-		}
 		before := p.game
-		catalogPicker(c.Key("modpack-game-version"), &p.game, options, "整合包游戏版本筛选", "", false).Width(140).Shrink(0)
+		a.gameVersionFilter(c.Key("modpack-game-version"), &p.game, "整合包游戏版本筛选", "所有游戏版本").Width(156).Shrink(0)
 		if button(c, "搜索", action.Default, false) || submit || p.game != before {
 			p.applied = strings.TrimSpace(p.query)
 			a.searchModpackProjects(0)
