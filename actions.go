@@ -42,6 +42,7 @@ func (a *desktop) load() {
 		}
 		account, accountErr := a.store.LoadMicrosoftAccount()
 		history, historyErr := a.journal.Load(a.store.Root)
+		pending, queueErr := readDownloadQueue(a.store.Root, history)
 		curseForgeKey := launcher.LoadCurseForgeAPIKey(a.store.Root)
 		installed := readInstallStatus(a.game, s.Instances, "")
 		a.post(func() {
@@ -50,6 +51,10 @@ func (a *desktop) load() {
 			a.modpacks.key = curseForgeKey
 			a.memory = strconv.Itoa(s.Settings.Memory)
 			a.restoreTaskHistory(history)
+			a.queue.pending, a.queue.loadError = pending, queueErr
+			if queueErr != nil {
+				a.message("读取下载队列失败", queueErr)
+			}
 			a.microsoftAccount = account
 			if historyErr != nil {
 				a.historyReadErr = historyErr.Error()
@@ -181,10 +186,31 @@ func (a *desktop) submitEditor() {
 	switch form.mode {
 	case "rename":
 		err = next.Rename(form.target.ID, form.target.Revision, form.name)
+	case "export":
+		if strings.TrimSpace(form.version) == "" {
+			a.form.err = "请输入整合包版本"
+			return
+		}
+		a.pickDownloadFolder(func(folder string) {
+			a.form.open = false
+			a.runInstanceTask(form.target, "导出整合包", "", func(ctx context.Context) error {
+				_, err := launcher.ExportInstance(ctx, form.target, folder, form.version, form.files)
+				return err
+			})
+		})
+		return
 	case "duplicate":
 		var duplicate launcher.Instance
 		duplicate, err = next.Duplicate(form.target.ID, form.target.Revision, form.name)
 		checkID = duplicate.ID
+		if err == nil && form.files != (launcher.PortableFiles{}) {
+			if a.running != nil {
+				a.form.err = "请先退出游戏再复制文件"
+				return
+			}
+			a.copyInstanceContent(form, next, duplicate)
+			return
+		}
 	case "loader":
 		if a.runningID == form.target.ID {
 			a.form.err = "请先退出此实例的游戏"

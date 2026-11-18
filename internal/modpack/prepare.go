@@ -3,7 +3,9 @@ package modpack
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -35,6 +37,7 @@ type Info struct {
 type Prepared struct {
 	info     Info
 	filename string
+	feed     string
 	sum      [sha256.Size]byte
 }
 
@@ -97,4 +100,28 @@ func Prepare(ctx context.Context, filename string, source Source) (Prepared, err
 		return Prepared{}, err
 	}
 	return Prepared{info: plan.info, filename: filename, sum: sum}, ctx.Err()
+}
+
+func (p Prepared) ArchiveIdentity() (string, string) { return p.filename, hex.EncodeToString(p.sum[:]) }
+
+// Reopen verifies a saved archive, including cache entries without a filename extension.
+func Reopen(ctx context.Context, filename string, source Source, digest, feed string) (Prepared, error) {
+	if !filepath.IsAbs(filename) {
+		return Prepared{}, i18n.Error("modpack.archive_invalid")
+	}
+	if feed != "" {
+		u, err := url.Parse(feed)
+		if err != nil || !validFeedURL(u) {
+			return Prepared{}, i18n.Error("modpack.feed_url_invalid")
+		}
+	}
+	p, err := Prepare(ctx, filename, source)
+	if err != nil {
+		return Prepared{}, err
+	}
+	if hex.EncodeToString(p.sum[:]) != digest {
+		return Prepared{}, i18n.Error("modpack.archive_changed")
+	}
+	p.feed = feed
+	return p, nil
 }

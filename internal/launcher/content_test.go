@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha512"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func testZIP(t *testing.T, entries map[string]string) []byte {
@@ -50,7 +52,7 @@ func TestModrinthDownloadOnlyInstallsSelectedFile(t *testing.T) {
 				Loaders: []string{strings.ToLower(i.Loader)}, Files: []PackFile{file},
 				Dependencies: []ModDependency{{ProjectID: "requiredProject", VersionID: "missingVersion", Type: "required"}}}
 			var calls int
-			d := &http.Client{Transport: transportFunc(func(req *http.Request) (*http.Response, error) {
+			g := Game{Transport: transportFunc(func(req *http.Request) (*http.Response, error) {
 				if req.URL.String() != fileURL {
 					t.Fatalf("install requested dependency metadata or files: %s", req.URL)
 				}
@@ -58,14 +60,14 @@ func TestModrinthDownloadOnlyInstallsSelectedFile(t *testing.T) {
 				return fixtureResponse(http.StatusOK, body), nil
 			})}
 			var progress Progress
-			if err := downloadModrinth(t.Context(), i, Mods, v, d, func(p Progress) { progress = p }); err != nil {
+			if err := g.DownloadModrinth(t.Context(), i, Mods, v, func(p Progress) { progress = p }); err != nil {
 				t.Fatal(err)
 			}
 			files, err := ListContent(i, Mods)
 			if err != nil || len(files) != 1 || files[0].Name != file.Filename || progress.Done != 1 || progress.Total != 1 {
 				t.Fatalf("selected file was not installed alone: %v %v %+v", files, err, progress)
 			}
-			if err := downloadModrinth(t.Context(), i, Mods, v, d, nil); err != nil || calls != 1 {
+			if err := g.DownloadModrinth(t.Context(), i, Mods, v, nil); err != nil || calls != 1 {
 				t.Fatalf("retry did not reuse the verified file: %d requests, %v", calls, err)
 			}
 		})
@@ -86,11 +88,11 @@ func TestExistingResourceMustMatchLoaderFormat(t *testing.T) {
 	if err := os.WriteFile(filename, body, 0600); err != nil {
 		t.Fatal(err)
 	}
-	d := &http.Client{Transport: transportFunc(func(*http.Request) (*http.Response, error) {
+	g := Game{Transport: transportFunc(func(*http.Request) (*http.Response, error) {
 		t.Fatal("existing invalid resource triggered a network request")
 		return nil, nil
 	})}
-	if err := downloadModrinth(t.Context(), i, Mods, v, d, nil); err == nil {
+	if err := g.DownloadModrinth(t.Context(), i, Mods, v, nil); err == nil {
 		t.Fatal("existing resource bypassed archive format validation")
 	}
 	if got, err := os.ReadFile(filename); err != nil || !bytes.Equal(got, body) {
@@ -102,7 +104,7 @@ func TestModrinthPackVerifiesContentAndTargetsInstance(t *testing.T) {
 	content := testZIP(t, map[string]string{"pack.mcmeta": "{}"})
 	instance := Instance{ID: 2, Version: "1.21.1", GameDir: t.TempDir()}
 	other := Instance{ID: 1, Version: "1.21.1", GameDir: t.TempDir()}
-	d := &http.Client{Transport: transportFunc(func(req *http.Request) (*http.Response, error) {
+	g := Game{Transport: transportFunc(func(req *http.Request) (*http.Response, error) {
 		if req.URL.Hostname() != "cdn.modrinth.com" {
 			t.Fatalf("unexpected origin: %s", req.URL)
 		}
@@ -111,14 +113,14 @@ func TestModrinthPackVerifiesContentAndTargetsInstance(t *testing.T) {
 	file := PackFile{URL: "https://cdn.modrinth.com/data/pack.zip", Filename: "pack.zip", Size: int64(len(content)), Primary: true}
 	file.Hashes.SHA512 = strings.Repeat("0", 128)
 	version := PackVersion{GameVersions: []string{"1.21.1"}, Files: []PackFile{file}}
-	if err := downloadModrinth(t.Context(), instance, ResourcePacks, version, d, nil); err == nil {
+	if err := g.DownloadModrinth(t.Context(), instance, ResourcePacks, version, nil); err == nil {
 		t.Fatal("accepted a pack with a mismatched SHA-512")
 	}
 	if files, err := ListContent(instance, ResourcePacks); len(files) != 0 || err != nil {
 		t.Fatalf("bad download left files: %v, %v", files, err)
 	}
 	version.Files[0].Hashes.SHA512 = fmt.Sprintf("%x", sha512.Sum512(content))
-	if err := downloadModrinth(t.Context(), instance, ResourcePacks, version, d, nil); err != nil {
+	if err := g.DownloadModrinth(t.Context(), instance, ResourcePacks, version, nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := SetContentEnabled(instance, ResourcePacks, "pack.zip", false); err != nil {
@@ -385,5 +387,65 @@ func TestCanceledSaveOperationsDoNotCreateDirectories(t *testing.T) {
 	}
 	if entries, err := os.ReadDir(root); err != nil || len(entries) != 0 {
 		t.Fatalf("canceled operations created files: %v, %v", entries, err)
+	}
+}
+
+func TestUpdateRenamedDisabledMod(t *testing.T) {
+	i := Instance{Version: "1.21.1", Loader: LoaderFabric, LoaderVersion: "0.16.14", GameDir: t.TempDir()}
+	dir := filepath.Join(i.GameDir, "mods")
+	if err := os.Mkdir(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "local.jar.disabled")
+	old := testZIP(t, map[string]string{"fabric.mod.json": "old"})
+	newBody := testZIP(t, map[string]string{"fabric.mod.json": "updated"})
+	if err := os.WriteFile(path, old, 0644); err != nil {
+		t.Fatal(err)
+	}
+	v := func(id string, body []byte, when int64) PackVersion {
+		f := PackFile{Filename: "upstream.jar", URL: "https://cdn.modrinth.com/upstream.jar", Size: int64(len(body)), Primary: true}
+		f.Hashes.SHA512 = fmt.Sprintf("%x", sha512.Sum512(body))
+		return PackVersion{ID: id, ProjectID: "project", Number: id, GameVersions: []string{i.Version}, Loaders: []string{"fabric"}, Published: time.Unix(when, 0), Files: []PackFile{f}}
+	}
+	original, next := v("v1", old, 1), v("v2", newBody, 2)
+	digest := original.Files[0].Hashes.SHA512
+	g := Game{Transport: transportFunc(func(r *http.Request) (*http.Response, error) {
+		var data any
+		switch r.URL.Path {
+		case "/v2/version_files":
+			data = map[string]PackVersion{digest: original}
+		case "/v2/version_files/update":
+			data = map[string]PackVersion{digest: next}
+		case "/v2/projects":
+			data = []map[string]string{{"id": "project", "title": "Example", "project_type": "mod"}}
+		case "/upstream.jar":
+			return fixtureResponse(200, newBody), nil
+		default:
+			t.Fatalf("unexpected %s", r.URL)
+		}
+		b, err := json.Marshal(data)
+		return fixtureResponse(200, b), err
+	})}
+	mods, err := g.CheckMods(t.Context(), i)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := mods["local.jar.disabled"]
+	if m.Title != "Example" || m.Update.ID != "v2" {
+		t.Fatalf("unexpected match: %+v", m)
+	}
+	if err := g.UpdateMod(t.Context(), i, m); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.UpdateMod(t.Context(), i, m); err == nil {
+		t.Fatal("stale update accepted")
+	}
+	b, err := os.ReadFile(path)
+	if err != nil || !bytes.Equal(newBody, b) {
+		t.Fatalf("updated file: %v", err)
+	}
+	files, err := ListContent(i, Mods)
+	if err != nil || len(files) != 1 || files[0].Enabled {
+		t.Fatalf("file state: %v %v", files, err)
 	}
 }

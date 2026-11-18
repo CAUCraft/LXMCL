@@ -2,7 +2,6 @@ package launcher
 
 import (
 	"context"
-	"net/http"
 
 	"github.com/CAUCraft/LXMCL/internal/catalog"
 	"github.com/CAUCraft/LXMCL/internal/content"
@@ -10,10 +9,10 @@ import (
 )
 
 func DownloadModrinth(ctx context.Context, i Instance, kind ContentKind, version PackVersion, report func(Progress)) error {
-	return downloadModrinth(ctx, i, kind, version, nil, report)
+	return (Game{}).DownloadModrinth(ctx, i, kind, version, report)
 }
 
-func downloadModrinth(ctx context.Context, i Instance, kind ContentKind, version PackVersion, client *http.Client, report func(Progress)) error {
+func (g Game) DownloadModrinth(ctx context.Context, i Instance, kind ContentKind, version PackVersion, report func(Progress)) error {
 	if _, _, err := kind.Format(i); err != nil {
 		return err
 	}
@@ -32,7 +31,7 @@ func downloadModrinth(ctx context.Context, i Instance, kind ContentKind, version
 	if err != nil {
 		return err
 	}
-	if err := content.Install(ctx, i, kind, file.Filename, asset, client); err != nil {
+	if err := content.Install(ctx, i, kind, file.Filename, asset, g.downloads().Client); err != nil {
 		return err
 	}
 	report(Progress{Stage: stage, Done: 1, Total: 1})

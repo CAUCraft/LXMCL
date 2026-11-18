@@ -23,12 +23,17 @@ func (a *desktop) copyInstanceContent(form editor, next launcher.State, target l
 	a.writes.Go(func() {
 		defer cancel()
 		var last time.Time
-		err := launcher.DuplicateWithContent(ctx, store, next, form.target, target, func(progress launcher.Progress) {
-			if time.Since(last) >= 140*time.Millisecond {
-				last = time.Now()
-				a.post(func() { a.task = progress })
-			}
-		})
+		var err error
+		if !form.copyContent {
+			err = launcher.DuplicateFiles(ctx, form.target, target, form.files, store, next)
+		} else {
+			err = launcher.DuplicateWithContent(ctx, store, next, form.target, target, func(progress launcher.Progress) {
+				if time.Since(last) >= 140*time.Millisecond {
+					last = time.Now()
+					a.post(func() { a.task = progress })
+				}
+			})
+		}
 		cached := false
 		switch {
 		case errors.Is(err, context.Canceled):
@@ -38,7 +43,7 @@ func (a *desktop) copyInstanceContent(form editor, next launcher.State, target l
 		default:
 			cached = game.Installed(target)
 			record.InstanceID, record.Revision, record.Name = target.ID, target.Revision, target.Name
-			record.Status, record.Detail = taskCompleted, "已复制资源与游戏设置，来自 "+form.target.Name
+			record.Status, record.Detail = taskCompleted, "已创建实例副本，来自 "+form.target.Name
 		}
 		a.saveTask(record, func() {
 			a.busy, a.cancelTask, a.task, a.taskCanceling = false, nil, launcher.Progress{}, false

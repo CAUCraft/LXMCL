@@ -591,6 +591,8 @@ func (a *desktop) editor(c *ui.Context) {
 		title, okText = "更换版本", "保存版本"
 	case "duplicate":
 		title, okText = "复制实例", "创建副本"
+	case "export":
+		title, okText = "导出整合包", "选择保存位置…"
 	case "loader":
 		title, okText = "选择加载器", "保存加载器"
 	}
@@ -601,6 +603,15 @@ func (a *desktop) editor(c *ui.Context) {
 		ui.Column(c).Gap(12).Children(func() {
 			if a.form.mode == "loader" {
 				a.loaderForm(c)
+				return
+			}
+			if a.form.mode == "export" {
+				panelHeading(c, lucide.FileArchive(), a.form.target.Name, "Modrinth 整合包 (.mrpack)")
+				settingsInput(c, "整合包版本", &a.form.version, "1.0.0", 170, a.busy)
+				a.portableOptions(c)
+				if a.form.err != "" {
+					feedback.Alert(c, a.form.err, feedback.AlertProps{Type: feedback.Error})
+				}
 				return
 			}
 			if a.form.mode == "remove" {
@@ -631,10 +642,13 @@ func (a *desktop) editor(c *ui.Context) {
 				})
 				if a.form.mode == "duplicate" {
 					choice.Checkbox(c, &a.form.copyContent, "同时复制资源和游戏设置", choice.CheckboxProps{}).Label("同时复制资源和游戏设置").Disabled(a.busy || a.running != nil)
+					if !a.form.copyContent {
+						a.portableOptions(c)
+					}
 					if a.form.copyContent {
 						display.Text(c, "包含模组、资源包、光影、配置和服务器列表。存档、截图与日志保留在原实例。", display.TextProps{FontSize: 13})
 					} else {
-						muted(c, "副本使用独立游戏目录，默认仅复制版本和启动设置。").FontSize(12)
+						muted(c, "勾选要带入副本的文件。留空可仅复制版本和启动设置。").FontSize(12)
 					}
 					if a.running != nil {
 						muted(c, "退出游戏后可同时复制资源。").FontSize(12)
@@ -682,6 +696,7 @@ func (a *desktop) loaderForm(c *ui.Context) {
 	if canSave {
 		muted(c, "原模组文件会保留，请检查与所选加载器的兼容性。").FontSize(12)
 	}
+	muted(c, "当前加载器 · "+loaderName(f.target)).FontSize(12)
 	if f.err != "" {
 		feedback.Alert(c, f.err, feedback.AlertProps{Type: feedback.Error})
 	}
@@ -693,4 +708,11 @@ func (a *desktop) loaderForm(c *ui.Context) {
 			a.submitEditor()
 		}
 	})
+}
+
+func (a *desktop) portableOptions(c *ui.Context) {
+	f := &a.form.files
+	choice.Checkbox(c, &f.Mods, "模组、资源包和光影包", choice.CheckboxProps{}).Disabled(a.busy)
+	choice.Checkbox(c, &f.Config, "游戏选项、模组配置和脚本", choice.CheckboxProps{}).Disabled(a.busy)
+	choice.Checkbox(c, &f.Worlds, "世界存档", choice.CheckboxProps{}).Disabled(a.busy)
 }

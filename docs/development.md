@@ -59,3 +59,13 @@ PR 说明可见变化、兼容性影响和实测范围。
 [CI](../.github/workflows/ci.yml) 在 Windows 运行全部测试、`go vet` 和打包，在 Linux 运行后端测试。Windows 构建产物保留 14 天，包含便携版、安装包、许可归档、含依赖的对应源码和 SHA-256 清单。
 
 发布时更新 `mygo.json`，推送一致的 `v主.次.修订` 标签；CI 通过后生成 Release 草稿。发布前核对包内许可、校验清单及实机运行。依赖更新需同步检查[第三方许可](../THIRD_PARTY_NOTICES.txt)。
+
+## 服主整合包订阅
+
+将导出的 `.mrpack` 和 `pack.json` 放到同一 HTTPS 站点，把清单地址发给玩家。更新时先上传新版整合包，再替换清单。以下 PowerShell 命令使用实际文件的大小和 SHA-256 生成清单。
+
+```powershell
+$pack = Get-Item .\instance-1-2.0.mrpack
+$manifest = @{ file = $pack.Name; size = $pack.Length; sha256 = (Get-FileHash $pack.FullName -Algorithm SHA256).Hash }
+[IO.File]::WriteAllText((Join-Path $pack.Directory.FullName "pack.json"), ($manifest | ConvertTo-Json))
+```

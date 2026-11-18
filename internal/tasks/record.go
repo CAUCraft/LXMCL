@@ -31,8 +31,18 @@ type Resource struct {
 	Title   string `json:"title"`
 }
 
+// PackUpdate identifies a verified archive and its original instance directory.
+type PackUpdate struct {
+	Archive   string `json:"archive"`
+	Source    string `json:"source"`
+	SHA256    string `json:"sha256"`
+	GameDir   string `json:"game_directory"`
+	FeedHash  string `json:"feed_hash,omitempty"`
+	BackupDir string `json:"backup_directory,omitempty"`
+}
 type Record struct {
-	ID string `json:"id,omitempty"`
+	Pack PackUpdate `json:"pack_update,omitzero"`
+	ID   string     `json:"id,omitempty"`
 
 	InstanceID int       `json:"instance_id,omitempty"`
 	Revision   uint64    `json:"instance_revision,omitempty"`

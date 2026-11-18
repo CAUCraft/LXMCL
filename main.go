@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/CAUCraft/LXMCL/internal/launcher"
+	launcherlog "github.com/CAUCraft/LXMCL/internal/log"
 	"github.com/CAUCraft/LXMCL/internal/tasks"
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
@@ -93,6 +94,7 @@ type editor struct {
 	focus       bool
 	copyContent bool
 	loaders     *loaderSelection
+	files       launcher.PortableFiles
 }
 
 type desktop struct {
@@ -156,6 +158,9 @@ type desktop struct {
 	form                             editor
 	installed                        map[int]bool
 	releases                         []launcher.Version
+	queue                            resourceQueue
+	release                          releaseView
+	logDiagnosis                     launcherlog.Diagnosis
 	catalogBusy                      bool
 	catalogErr                       string
 	javaInfo                         string

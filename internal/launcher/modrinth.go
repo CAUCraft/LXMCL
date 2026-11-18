@@ -32,5 +32,9 @@ func ResourceCatalogVersions(ctx context.Context, project string, f ResourceFilt
 }
 
 func ModrinthVersion(ctx context.Context, project, id string) (PackVersion, error) {
-	return (catalog.Client{}).ModrinthVersion(ctx, project, id)
+	return (Game{}).ModrinthVersion(ctx, project, id)
+}
+
+func (g Game) ModrinthVersion(ctx context.Context, project, id string) (PackVersion, error) {
+	return (catalog.Client{Transport: g.Transport}).ModrinthVersion(ctx, project, id)
 }

@@ -121,6 +121,7 @@ func (a *desktop) reloadLog() {
 	ctx, cancel := context.WithCancel(a.ctx)
 	a.logCancel = cancel
 	request := a.logRequest
+	a.logDiagnosis = launcherlog.Diagnosis{}
 	path := a.logPath
 	a.logReading, a.logError = true, ""
 	a.logExported, a.logExportErr = false, ""
@@ -136,6 +137,7 @@ func (a *desktop) reloadLog() {
 				a.logText, a.logError = "", err.Error()
 			} else {
 				a.logText = log
+				a.logDiagnosis = launcherlog.Diagnose(log)
 			}
 		})
 	}()

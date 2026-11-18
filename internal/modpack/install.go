@@ -111,6 +111,9 @@ func Install(ctx context.Context, pack Prepared, options InstallOptions, report 
 		return err
 	}
 	err = fill(ctx, root, plan, options.Cache, report)
+	if err == nil {
+		err = writeReceipt(ctx, root, plan)
+	}
 	if err := errors.Join(err, root.Close()); err != nil {
 		return err
 	}

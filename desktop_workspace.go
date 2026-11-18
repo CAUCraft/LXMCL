@@ -76,6 +76,9 @@ func (a *desktop) instanceOverview(c *ui.Context, i launcher.Instance) {
 		sectionPane(c).Padding(12, 16).Gap(8).Children(func() {
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 				ui.Column(c).Grow(1).MinWidth(0).Children(func() { property(c, "版本", i.Version+" · "+loaderName(i)) })
+				if i.PackFeed != "" && button(c, "检查服主更新", action.Default, a.busy || a.running != nil) {
+					a.readPackFeed(i)
+				}
 				if button(c, "更换版本", action.Default, a.busy || a.runningID == i.ID) {
 					a.changeVersion(i)
 				}
@@ -134,6 +137,7 @@ func (a *desktop) instanceMenu(c *ui.Context, i launcher.Instance, inList bool) 
 			{Key: "folder", Label: "打开游戏目录", Icon: lucide.FolderOpen()},
 			{Divider: true},
 			{Key: "rename", Label: "重命名", Icon: lucide.Pencil(), Hotkey: renameKey, Disabled: a.busy},
+			{Key: "export", Label: "导出整合包…", Icon: lucide.FileArchive(), Disabled: a.busy || a.running != nil},
 			{Key: "duplicate", Label: "复制实例…", Icon: lucide.Copy(), Disabled: a.busy || (!i.Vanilla() && !i.Fabric() && !i.Forge() && !i.NeoForge() && !i.Quilt())},
 			{Divider: true},
 			{Key: "remove", Label: "移除配置…", Icon: lucide.Trash2(), Danger: true, Disabled: a.busy || a.runningID == i.ID},
@@ -156,6 +160,8 @@ func (a *desktop) instanceMenu(c *ui.Context, i launcher.Instance, inList bool) 
 			a.openPath(i.GameDir, true)
 		case "rename":
 			a.edit(i)
+		case "export":
+			a.form = editor{open: true, mode: "export", target: i, version: "1.0.0", files: launcher.PortableFiles{Mods: true}}
 		case "duplicate":
 			a.duplicate(i)
 		case "remove":
@@ -320,6 +326,7 @@ func (a *desktop) help(c *ui.Context) {
 				c.OpenURL("https://github.com/CAUCraft/LXMCL/issues")
 			}
 		})
+		a.releaseControls(c)
 		layout.Divider(c, layout.DividerProps{})
 		settingsRow(c, "许可证", func() {
 			display.Tag(c, "GPLv3", display.TagProps{Color: display.TagGreen, Size: theme.Small})

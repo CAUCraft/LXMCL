@@ -8,6 +8,8 @@ type Settings struct {
 }
 
 type Instance struct {
+	PackFeed      string        `json:"pack_feed,omitempty"`
+	PackDigest    string        `json:"pack_digest,omitempty"`
 	ID            int           `json:"id"`
 	Name          string        `json:"name"`
 	Version       string        `json:"version"`
