@@ -894,11 +894,19 @@ func TestInstanceLogSelectionKeepsTargetAndResetsPreview(t *testing.T) {
 	tt.Advance(500 * time.Millisecond)
 	tt.Frame()
 	capture(t, tt, "instance-crash-compact")
-	a.logError = "所选报告已移动或被其他程序占用，请刷新列表或选择其他文件。"
+	a.logText = ""
+	a.logError = "open " + strings.Repeat("模组整合包的实例目录/", 42) + "crash-reports/crash-test.txt: access denied"
 	a.logExportErr = "目标文件夹没有写入权限，请选择其他保存位置。"
 	a.logLibrary.err = "无法读取部分日志目录，请检查实例目录权限后刷新。"
 	tt.Frame()
 	capture(t, tt, "instance-log-errors-compact")
+	tt.SetDark(false)
+	tt.Advance(time.Second)
+	tt.Frame()
+	capture(t, tt, "instance-log-errors-compact-light")
+	if err := tt.Click("复制日志错误详情"); err != nil || tt.Clipboard() != a.logError {
+		t.Fatalf("copy full log error: %v", err)
+	}
 	if _, ok := tt.Find("无法读取日志"); !ok {
 		t.Fatal("preview error is not visible")
 	}
