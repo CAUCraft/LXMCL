@@ -379,7 +379,11 @@ func TestResourceAndServerEntrypoints(t *testing.T) {
 	a, tt := testDesktop(t)
 	a.state.Instances[1].Loader, a.state.Instances[1].LoaderVersion = "Fabric", "0.16.14"
 	i := a.state.Instances[1]
-	a.content = contentView{id: i.ID, revision: i.Revision, tab: 1, files: []launcher.ContentFile{{Name: "demo.jar", Enabled: true}}}
+	a.content = contentView{id: i.ID, revision: i.Revision, tab: 1, files: []launcher.ContentFile{
+		{Name: "fabric-api.jar", Size: 2 << 20, Enabled: true},
+		{Name: "iris.jar", Size: 640 << 10},
+		{Name: "sodium.jar", Size: 1 << 20, Enabled: true},
+	}}
 	a.inspect(i)
 	tt.Frame()
 	if _, ok := tt.Find("加载器"); !ok {
@@ -388,7 +392,39 @@ func TestResourceAndServerEntrypoints(t *testing.T) {
 	if err := tt.Click("资源"); err != nil {
 		t.Fatal(err)
 	}
+	tt.Advance(300 * time.Millisecond)
 	capture(t, tt, "fabric-mods")
+	tt.SetSize(820, 530)
+	tt.SetDark(true)
+	tt.Frame()
+	if err := tt.Click("已停用"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := tt.Find("iris.jar"); !ok {
+		t.Fatal("disabled resource missing from filtered list")
+	}
+	if _, ok := tt.Find("sodium.jar"); ok {
+		t.Fatal("enabled resource visible in disabled filter")
+	}
+	if err := tt.Click("搜索本地资源"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Type("SODIUM")
+	if err := tt.Click("重置资源筛选"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.Click("搜索本地资源"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Type("SODIUM")
+	if _, ok := tt.Find("sodium.jar"); !ok {
+		t.Fatal("filename search should ignore case")
+	}
+	if _, ok := tt.Find("iris.jar"); ok {
+		t.Fatal("filename search left a nonmatching row")
+	}
+	tt.Advance(300 * time.Millisecond)
+	capture(t, tt, "fabric-mods-filtered-compact")
 	if err := tt.Click("添加模组…"); err != nil {
 		t.Fatal(err)
 	}

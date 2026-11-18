@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/CAUCraft/LXMCL/internal/launcher"
@@ -13,6 +14,7 @@ import (
 	"github.com/lobehub/lobe-mygo/pkg/action"
 	"github.com/lobehub/lobe-mygo/pkg/display"
 	"github.com/lobehub/lobe-mygo/pkg/feedback"
+	"github.com/lobehub/lobe-mygo/pkg/field"
 	"github.com/lobehub/lobe-mygo/pkg/layout"
 	"github.com/lobehub/lobe-mygo/pkg/lucide"
 	"github.com/lobehub/lobe-mygo/pkg/theme"
@@ -24,6 +26,9 @@ type contentView struct {
 	files    []launcher.ContentFile
 	reading  bool
 	err      string
+	query    string
+	filter   int
+	scroll   ui.ScrollState
 }
 
 func (v contentView) kind() launcher.ContentKind {
@@ -73,6 +78,7 @@ func (a *desktop) instanceContent(c *ui.Context, i launcher.Instance) {
 			}
 			action.Segmented(c, &v.tab, options, action.SegmentedProps{Size: theme.Small}).Label("资源类型")
 			if old != v.tab {
+				v.query, v.filter, v.scroll = "", 0, ui.ScrollState{}
 				a.refreshContent(i)
 			}
 		} else {
@@ -109,31 +115,77 @@ func (a *desktop) instanceContent(c *ui.Context, i launcher.Instance) {
 	case len(v.files) == 0:
 		emptyPanel(c, lucide.PackageOpen(), "暂无本地资源")
 	default:
-		layout.ScrollArea(c, layout.ScrollAreaProps{}, func() {
-			sectionPane(c).Padding(5, 12).Gap(4).Children(func() {
-				for idx, file := range v.files {
-					if idx > 0 {
-						layout.Divider(c, layout.DividerProps{})
-					}
-					ui.Row(c.Key(file.Name + fmt.Sprint(file.Enabled))).MinHeight(42).Gap(8).AlignItems(ui.Center).Children(func() {
-						leadIcon(c, downloadTabs[downloadTab(v.kind())].Icon, 26)
-						display.Text(c, file.Name, display.TextProps{Strong: true, Rows: 1}).Grow(1).MinWidth(0).Ellipsis("…")
-						muted(c, fmt.Sprintf("%.1f MiB", float64(file.Size)/(1<<20))).FontSize(12)
-						label := "停用"
-						if !file.Enabled {
-							label = "恢复"
-							display.Tag(c, "已停用", display.TagProps{Color: display.TagGray, Size: theme.Small})
-						}
-						if button(c, label, action.Default, disabled) {
-							kind := v.kind()
-							a.runInstanceTask(i, label+"资源", func(context.Context) error {
-								return launcher.SetContentEnabled(i, kind, file.Name, !file.Enabled)
-							})
-						}
-					})
+		a.contentList(c, i, disabled)
+	}
+}
+
+func (a *desktop) contentList(c *ui.Context, i launcher.Instance, disabled bool) {
+	v := &a.content
+	query, filter := v.query, v.filter
+	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+		field.SearchBar(c, &v.query, field.SearchBarProps{Placeholder: "搜索文件名"}).Label("搜索本地资源").Grow(1).MinWidth(0).MaxWidth(340)
+		ui.Spacer(c).Grow(1)
+		action.Segmented(c, &v.filter, []string{"全部", "已启用", "已停用"}, action.SegmentedProps{Size: theme.Small}).Label("资源状态筛选")
+	})
+	if query != v.query || filter != v.filter {
+		v.scroll.Y = 0
+	}
+	files := v.files
+	if term := strings.ToLower(strings.TrimSpace(v.query)); term != "" || v.filter != 0 {
+		files = nil
+		for _, file := range v.files {
+			if v.filter == 1 && !file.Enabled || v.filter == 2 && file.Enabled {
+				continue
+			}
+			if strings.Contains(strings.ToLower(file.Name), term) {
+				files = append(files, file)
+			}
+		}
+	}
+	if len(files) == 0 {
+		display.Empty(c, display.EmptyProps{Icon: lucide.SearchX(), Title: "没有匹配的文件", Action: func() {
+			if button(c, "重置资源筛选", action.Default, false) {
+				v.query, v.filter, v.scroll.Y = "", 0, 0
+				c.Invalidate()
+			}
+		}})
+		return
+	}
+	layout.ScrollArea(c, layout.ScrollAreaProps{State: &v.scroll}, func() {
+		sectionPane(c).Padding(5, 12).Gap(4).Children(func() {
+			for idx, file := range files {
+				if idx > 0 {
+					layout.Divider(c, layout.DividerProps{})
 				}
-			})
-		}).Grow(1).MinHeight(0)
+				ui.Row(c.Key(file.Name + fmt.Sprint(file.Enabled))).MinHeight(42).Gap(8).AlignItems(ui.Center).Children(func() {
+					leadIcon(c, downloadTabs[downloadTab(v.kind())].Icon, 26)
+					display.Text(c, file.Name, display.TextProps{Strong: true, Rows: 1}).Grow(1).MinWidth(0).Ellipsis("…")
+					muted(c, resourceSize(file.Size)).FontSize(12)
+					label := "停用"
+					if !file.Enabled {
+						label = "启用"
+						display.Tag(c, "已停用", display.TagProps{Color: display.TagGray, Size: theme.Small})
+					}
+					if button(c, label, action.Default, disabled) {
+						kind := v.kind()
+						a.runInstanceTask(i, label+"资源", func(context.Context) error {
+							return launcher.SetContentEnabled(i, kind, file.Name, !file.Enabled)
+						})
+					}
+				})
+			}
+		})
+	}).Grow(1).MinHeight(0)
+}
+
+func resourceSize(bytes int64) string {
+	switch {
+	case bytes < 1024:
+		return fmt.Sprintf("%d B", bytes)
+	case bytes < 1<<20:
+		return fmt.Sprintf("%.1f KiB", float64(bytes)/1024)
+	default:
+		return fmt.Sprintf("%.1f MiB", float64(bytes)/(1<<20))
 	}
 }
 
