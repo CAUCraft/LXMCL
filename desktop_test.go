@@ -391,6 +391,8 @@ func TestTaskCenterFiltersAndDisablesStaleRetry(t *testing.T) {
 		{Name: "已完成的任务", Version: "1.21.1", Action: "下载资源", Status: taskCompleted, At: time.Now().Add(-time.Minute),
 			Resource: &resourceTask{Title: "高清资源包"}},
 	}
+	a.history[0].Log = filepath.Join(i.GameDir, "launcher-logs", "game-session.log")
+	a.lastLog = a.history[0].Log
 	if err := tt.Click("任务中心"); err != nil {
 		t.Fatal(err)
 	}
@@ -415,6 +417,9 @@ func TestTaskCenterFiltersAndDisablesStaleRetry(t *testing.T) {
 	}
 	if _, ok := tt.Find("资源 · 高清资源包"); !ok || a.browsedTask != taskKey(completed) {
 		t.Fatal("compact task selection lost the resource or selected record")
+	}
+	if _, ok := tt.Find("打开日志目录"); ok {
+		t.Fatal("task without a log inherited another task's folder")
 	}
 	tt.SetSize(1140, 720)
 	tt.Frame()

@@ -7,6 +7,7 @@ import (
 
 	"github.com/CAUCraft/LXMCL/internal/i18n"
 	"github.com/CAUCraft/LXMCL/internal/launcher"
+	launcherlog "github.com/CAUCraft/LXMCL/internal/log"
 	"github.com/egoist/mygo/ui"
 	"github.com/lobehub/lobe-mygo/pkg/action"
 	"github.com/lobehub/lobe-mygo/pkg/display"
@@ -60,9 +61,6 @@ func (a *desktop) tasks(c *ui.Context) {
 				ui.Spacer(c).Grow(1)
 				action.Segmented(c, &a.taskFilter, []string{"全部任务", "失败 / 取消"},
 					action.SegmentedProps{Size: theme.Small}).Label("历史任务筛选")
-				if a.lastLog != "" && button(c, "打开日志目录", action.Text, false) {
-					a.openLogFolder()
-				}
 			})
 			visible := a.history
 			if a.taskFilter == 1 {
@@ -257,8 +255,13 @@ func (a *desktop) taskRow(c *ui.Context, row taskRecord) {
 					a.detailPage = detailLaunch
 				}
 			}
-			if row.Log != "" && button(c, "查看日志", action.Default, false) {
-				a.showLog(row.Log)
+			if launcherlog.IsGame(row.Log) {
+				if button(c, "查看日志", action.Default, false) {
+					a.showLog(row.Log)
+				}
+				if button(c, "打开日志目录", action.Default, false) {
+					a.openPath(filepath.Dir(row.Log), false)
+				}
 			}
 			if row.Action == taskBackup && row.Status == taskCompleted && row.InstanceID > 0 && button(c, "打开备份目录", action.Default, false) {
 				a.openPath(launcher.BackupsDir(a.store.Root, row.InstanceID), false)

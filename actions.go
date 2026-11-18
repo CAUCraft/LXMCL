@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/CAUCraft/LXMCL/internal/launcher"
-	launcherlog "github.com/CAUCraft/LXMCL/internal/log"
 	"github.com/egoist/mygo"
 )
 
@@ -525,10 +524,4 @@ func (a *desktop) playOnServer(i launcher.Instance, installOnly bool, server str
 			// Closing the launcher does not stop an already launched game.
 		}
 	})
-}
-
-func (a *desktop) openLogFolder() {
-	if launcherlog.IsGame(a.lastLog) {
-		a.openPath(filepath.Dir(a.lastLog), false)
-	}
 }
