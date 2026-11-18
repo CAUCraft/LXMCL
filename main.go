@@ -96,7 +96,10 @@ type editor struct {
 }
 
 type desktop struct {
-	journal tasks.Journal
+	journal          tasks.Journal
+	historyReadErr   string
+	historyReloading bool
+	historyRetried   bool
 
 	window           *mygo.Window
 	ctx              context.Context
@@ -114,6 +117,7 @@ type desktop struct {
 	noticeJava       bool
 	noticeTaskKey    string
 	noticeAccount    bool
+	noticeHistory    bool
 	noticeJavaTarget launcher.Instance
 	microsoftAccount launcher.MicrosoftAccount
 	minecraftSession launcher.MinecraftSession
