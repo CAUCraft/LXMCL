@@ -240,16 +240,9 @@ func (a *desktop) resourceTargetBar(c *ui.Context, p *packBrowser) {
 		})
 		return
 	}
-	if len(a.releases) == 0 && !a.catalogBusy && a.catalogErr == "" {
-		a.refreshCatalog()
-	}
-	options := []field.SelectOption{{Value: "", Label: "全部游戏版本"}}
-	for _, release := range a.releases {
-		options = append(options, field.SelectOption{Value: release.ID, Label: release.ID})
-	}
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 		before := p.filter
-		catalogPicker(c.Key("game-filter"), &p.filter.Game, options, "筛选游戏版本", "", false).Width(152).Shrink(0)
+		a.gameVersionFilter(c.Key("game-filter"), &p.filter.Game, "筛选游戏版本", "全部游戏版本").Width(152).Shrink(0)
 		if p.kind == launcher.Mods {
 			ui.Column(c).Width(126).Shrink(0).Children(func() {
 				field.Select(c, &p.filter.Loader, field.SelectProps{Options: []field.SelectOption{
