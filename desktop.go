@@ -180,11 +180,13 @@ func (a *desktop) noticeBar(c *ui.Context) {
 	tk := theme.TokensOf(c)
 	layout.Divider(c, layout.DividerProps{})
 	ui.Row(c).Padding(5, 18).Gap(8).AlignItems(ui.Center).Background(tk.BgContainer).Children(func() {
-		tone := feedback.Info
 		if a.noticeError {
-			tone = feedback.Error
+			ui.Icon(c, lucide.CircleX()).FontSize(16).TextColor(tk.Error).Shrink(0)
+			display.Text(c, a.notice, display.TextProps{Rows: 2}).Grow(1).MinWidth(0).Ellipsis("…").Selectable()
+			action.CopyButton(c, a.notice, action.CopyButtonProps{}).Label("复制通知详情")
+		} else {
+			feedback.Alert(c, a.notice, feedback.AlertProps{Type: feedback.Info, Variant: feedback.Plain}).Grow(1).MinWidth(0)
 		}
-		feedback.Alert(c, a.notice, feedback.AlertProps{Type: tone, Variant: feedback.Plain}).Grow(1).MinWidth(0)
 		if a.noticeAccount {
 			if button(c, "打开账号页", action.Text, false) {
 				a.openAccounts(a.state.StationKey == "")

@@ -6,6 +6,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -423,8 +424,12 @@ func TestTaskCenterFiltersAndDisablesStaleRetry(t *testing.T) {
 	}
 	tt.SetSize(1140, 720)
 	tt.Frame()
-	a.notice, a.noticeError, a.noticeTaskKey = "任务失败", true, taskKey(a.history[0])
+	a.notice, a.noticeError, a.noticeTaskKey = "任务失败\n"+strings.Repeat("文件读取失败\n", 12), true, taskKey(a.history[0])
 	tt.Frame()
+	if err := tt.Click("复制通知详情"); err != nil || tt.Clipboard() != a.notice {
+		t.Fatal("full notification diagnostic could not be copied")
+	}
+	capture(t, tt, "task-notice-long-error")
 	if err := tt.Click("查看任务"); err != nil || a.browsedTask != taskKey(a.history[0]) || a.state.Selected != 1 {
 		t.Fatalf("task notice did not focus the failed record: %v", err)
 	}
