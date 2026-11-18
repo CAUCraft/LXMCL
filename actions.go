@@ -52,7 +52,9 @@ func (a *desktop) load() {
 			a.restoreTaskHistory(history)
 			a.microsoftAccount = account
 			if historyErr != nil {
+				a.historyReadErr = historyErr.Error()
 				a.message("无法读取任务记录", historyErr)
+				a.noticeHistory = true
 			}
 			if accountErr != nil {
 				a.message("无法读取 Microsoft 登录", accountErr)
@@ -70,7 +72,7 @@ func (a *desktop) load() {
 
 func (a *desktop) message(s string, err error) {
 	a.notice, a.noticeError = s, err != nil
-	a.noticeJava, a.noticeAccount = false, false
+	a.noticeJava, a.noticeAccount, a.noticeHistory = false, false, false
 	a.noticeTaskKey = ""
 	a.noticeJavaTarget = launcher.Instance{}
 	if err != nil {

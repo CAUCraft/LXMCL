@@ -55,6 +55,30 @@ func (a *desktop) tasks(c *ui.Context) {
 				}
 			})
 		}
+		if a.historyReadErr != "" {
+			if a.noticeHistory {
+				a.notice, a.noticeHistory = "", false
+			}
+			title := "无法读取任务记录"
+			if a.historyReloading {
+				title = "正在重新读取任务记录…"
+			} else if a.historyRetried {
+				title = "重新读取任务记录失败"
+			}
+			feedback.Alert(c, title, feedback.AlertProps{Type: feedback.Error,
+				Description: "修复 tasks.json 的内容或读取权限后，可在这里重新读取。"})
+			muted(c, a.historyReadErr).FontSize(12).MaxLines(2).Ellipsis("…")
+			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+				if button(c, "重新读取任务记录", action.Primary, a.historyReloading) {
+					a.reloadTaskHistory()
+				}
+				if button(c, "打开配置目录", action.Default, false) {
+					a.openPath(a.store.Root, false)
+				}
+				action.CopyButton(c, a.historyReadErr, action.CopyButtonProps{}).Label("复制任务记录读取错误")
+			})
+			return
+		}
 		if len(a.history) > 0 {
 			ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
 				display.Text(c, "历史记录", display.TextProps{Heading: 4})

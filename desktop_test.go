@@ -890,6 +890,32 @@ func TestInstanceLogSelectionKeepsTargetAndResetsPreview(t *testing.T) {
 	}
 }
 
+func TestTaskHistoryReadErrorReplacesEmptyState(t *testing.T) {
+	a, tt := testDesktop(t)
+	a.historyReadErr = "unexpected end of JSON input"
+	a.notice, a.noticeError, a.noticeHistory = a.historyReadErr, true, true
+	tt.SetSize(820, 530)
+	tt.Frame()
+	if err := tt.Click("查看任务记录"); err != nil {
+		t.Fatal(err)
+	}
+	for _, dark := range []bool{false, true} {
+		tt.SetDark(dark)
+		tt.Frame()
+		if tt.HasText("暂无任务") || !tt.HasText("重新读取任务记录") {
+			t.Fatal("unreadable history should show a recovery action")
+		}
+		name := "task-history-error-light"
+		if dark {
+			name = "task-history-error-dark"
+		}
+		capture(t, tt, name)
+	}
+	if err := tt.Click("复制任务记录读取错误"); err != nil || tt.Clipboard() != a.historyReadErr {
+		t.Fatalf("copy task history error: %v", err)
+	}
+}
+
 func capture(t *testing.T, tt *ui.Tester, name string) {
 	dir := os.Getenv("LXMCL_UI_CAPTURE")
 	if dir == "" {

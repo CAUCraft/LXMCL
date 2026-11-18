@@ -39,10 +39,35 @@ func (a *desktop) restoreTaskHistory(records []taskRecord) {
 	}
 }
 
+func (a *desktop) reloadTaskHistory() {
+	if a.ctx == nil || a.historyReloading || a.historyReadErr == "" {
+		return
+	}
+	a.historyReloading, a.historyRetried = true, true
+	go func() {
+		_, err := a.journal.Load(a.store.Root)
+		a.post(func() {
+			a.historyReloading = false
+			if a.historyReadErr == "" {
+				return // A concurrent task already recovered the journal.
+			}
+			if err != nil {
+				a.historyReadErr = err.Error()
+				return
+			}
+			a.historyReadErr = ""
+			a.restoreTaskHistory(a.journal.Snapshot())
+		})
+	}()
+}
+
 func (a *desktop) saveTask(record taskRecord, render func()) {
 	_, err := a.journal.Record(a.store.Root, record)
 	a.post(func() {
 		a.history = a.journal.Snapshot()
+		if len(a.history) > 0 {
+			a.historyReadErr = ""
+		}
 		render()
 		key := taskKey(record)
 		if a.noticeError && slices.ContainsFunc(a.history, func(row taskRecord) bool { return taskKey(row) == key }) {

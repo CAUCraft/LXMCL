@@ -187,7 +187,11 @@ func (a *desktop) noticeBar(c *ui.Context) {
 		} else {
 			feedback.Alert(c, a.notice, feedback.AlertProps{Type: feedback.Info, Variant: feedback.Plain}).Grow(1).MinWidth(0)
 		}
-		if a.noticeAccount {
+		if a.noticeHistory {
+			if button(c, "查看任务记录", action.Text, false) {
+				a.openTasks()
+			}
+		} else if a.noticeAccount {
 			if button(c, "打开账号页", action.Text, false) {
 				a.openAccounts(a.state.StationKey == "")
 			}
