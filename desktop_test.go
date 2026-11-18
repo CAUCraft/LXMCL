@@ -709,7 +709,7 @@ func TestResourceAndServerEntrypoints(t *testing.T) {
 	i := a.state.Instances[1]
 	a.content = contentView{id: i.ID, revision: i.Revision, tab: 1, files: []launcher.ContentFile{
 		{Name: "demo.jar", Enabled: true, Size: 2 << 20},
-		{Name: "sodium.jar", Enabled: true, Size: 1 << 20, Modified: time.Date(2026, 11, 18, 10, 30, 0, 0, time.Local)},
+		{Name: "sodium.jar", ModTitle: "Sodium · 0.6.0", ModIDs: "renderer_mod", Enabled: true, Size: 1 << 20, Modified: time.Date(2026, 11, 18, 10, 30, 0, 0, time.Local)},
 		{Name: "old.jar", Enabled: false},
 	}}
 	a.inspect(i)
@@ -772,7 +772,7 @@ func TestResourceAndServerEntrypoints(t *testing.T) {
 	if err := tt.Click("搜索本地资源"); err != nil {
 		t.Fatal(err)
 	}
-	tt.Type("SODIUM")
+	tt.Type("RENDERER_MOD")
 	if len(a.content.visibleFiles()) != 1 || len(a.content.selection(a.content.files)) != 0 {
 		t.Fatal("filter did not narrow files and clear hidden selections")
 	}

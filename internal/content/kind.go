@@ -17,10 +17,11 @@ const (
 )
 
 type File struct {
-	Name     string
-	Size     int64
-	Enabled  bool
-	Modified time.Time
+	Name             string
+	ModTitle, ModIDs string
+	Size             int64
+	Enabled          bool
+	Modified         time.Time
 }
 
 func (k Kind) Format(i instance.Instance) (ext string, markers []string, err error) {

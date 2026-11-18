@@ -139,6 +139,7 @@ type desktop struct {
 	launchDrafts                     map[int]*instanceLaunchDraft
 	content                          contentView
 	contentRequest                   uint64
+	contentCancel                    context.CancelFunc
 	install                          installView
 	modpacks                         modpackView
 	packs                            map[launcher.ContentKind]*packBrowser

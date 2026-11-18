@@ -86,12 +86,18 @@ func (a *desktop) refreshContent(i launcher.Instance) {
 	if a.ctx == nil {
 		return
 	}
+	if a.contentCancel != nil {
+		a.contentCancel()
+	}
+	ctx, cancel := context.WithCancel(a.ctx)
+	a.contentCancel = cancel
 	a.contentRequest++
 	a.content.mods, a.content.selected, a.content.checking, a.content.checkError = nil, nil, false, ""
 	request, kind := a.contentRequest, a.content.kind()
 	a.content.reading, a.content.err, a.content.files = true, "", nil
 	go func() {
-		files, err := launcher.ListContent(i, kind)
+		defer cancel()
+		files, err := launcher.ContentInventory(ctx, i, kind)
 		a.post(func() {
 			if request == a.contentRequest {
 				a.content.reading, a.content.files = false, files
@@ -144,6 +150,9 @@ func (a *desktop) instanceContent(c *ui.Context, i launcher.Instance) {
 		}
 		ui.Spacer(c).Grow(1)
 		kind := v.kind()
+		if kind == launcher.Mods && len(v.files) > 0 && button(c, "检查更新", action.Default, disabled || v.checking || v.reading) {
+			a.checkModUpdates(i)
+		}
 		if button(c, "添加"+contentLabel(kind)+"…", action.Primary, false) {
 			a.openResourceDownloads(i, kind)
 		}
@@ -231,7 +240,7 @@ func (v *contentView) visibleFiles() []launcher.ContentFile {
 	}
 	var files []launcher.ContentFile
 	for _, file := range v.files {
-		if query != "" && !strings.Contains(strings.ToLower(file.Name), query) ||
+		if query != "" && !strings.Contains(strings.ToLower(file.Name+"\n"+file.ModTitle+"\n"+file.ModIDs+"\n"+v.mods[contentKey(file)].Title), query) ||
 			v.filter == 1 && !file.Enabled || v.filter == 2 && file.Enabled {
 			continue
 		}
@@ -281,12 +290,16 @@ func (v *contentView) selection(files []launcher.ContentFile) []launcher.Content
 
 func (a *desktop) contentList(c *ui.Context, i launcher.Instance, disabled bool) {
 	v := &a.content
-	if v.kind() == launcher.Mods {
+	if v.kind() == launcher.Mods && (v.checking || v.mods != nil || v.checkError != "") {
 		a.modControls(c, i, disabled)
 	}
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 		oldQuery, oldFilter := v.query, v.filter
-		field.SearchBar(c, &v.query, field.SearchBarProps{Placeholder: "搜索本地文件"}).Label("搜索本地资源").Grow(1).MinWidth(0)
+		placeholder := "搜索本地文件"
+		if v.kind() == launcher.Mods {
+			placeholder = "搜索名称、模组 ID 或文件名"
+		}
+		field.SearchBar(c, &v.query, field.SearchBarProps{Placeholder: placeholder}).Label("搜索本地资源").Grow(1).MinWidth(0)
 		action.Segmented(c, &v.filter, []string{"全部资源", "已启用", "已停用"}, action.SegmentedProps{Size: theme.Small}).Label("本地资源筛选")
 		if oldQuery != v.query || oldFilter != v.filter {
 			v.selected, v.scroll = nil, ui.ListState{}
@@ -353,7 +366,7 @@ func (a *desktop) contentList(c *ui.Context, i launcher.Instance, disabled bool)
 				}
 			}
 			leadIcon(c, downloadTabs[downloadTab(v.kind())].Icon, 26)
-			a.contentFileTitle(c, i, file, disabled)
+			a.contentFileTitle(c, i, file)
 			detail := fileSizeLabel(file.Size)
 			if v.order == "modified" && !file.Modified.IsZero() {
 				detail = file.Modified.Local().Format("01-02 15:04") + " · " + detail
@@ -483,25 +496,31 @@ func fileSizeLabel(bytes int64) string {
 	}
 }
 
-func (a *desktop) contentFileTitle(c *ui.Context, i launcher.Instance, f launcher.ContentFile, disabled bool) {
+func (a *desktop) contentFileTitle(c *ui.Context, i launcher.Instance, f launcher.ContentFile) {
 	v := &a.content
 	key := contentKey(f)
 	m, found := v.mods[key]
-	if !found || m.Current.ID == "" {
+	if (!found || m.Current.ID == "") && f.ModTitle == "" {
 		display.Text(c, f.Name, display.TextProps{Strong: true, Rows: 1}).Grow(1).MinWidth(0).Ellipsis("…")
 		return
 	}
-	title := m.Title
-	if title == "" {
-		title = f.Name
+	title, detail := f.ModTitle, f.Name
+	if m.Current.ID != "" {
+		title = m.Title
+		if title == "" {
+			title = f.Name
+		}
+		if m.Current.Number != "" {
+			title += " · " + m.Current.Number
+		}
+		if m.Update.ID != "" {
+			title += " → " + m.Update.Number
+		}
+		detail = "Modrinth · " + detail
 	}
 	ui.Column(c).Grow(1).MinWidth(0).Children(func() {
-		version := m.Current.Number
-		if m.Update.ID != "" {
-			version += " → " + m.Update.Number
-		}
-		display.Text(c, title+" · "+version, display.TextProps{Strong: true, Rows: 1}).Ellipsis("…")
-		muted(c, "Modrinth · "+f.Name).FontSize(11).Ellipsis("…")
+		display.Text(c, title, display.TextProps{Strong: true, Rows: 1}).Ellipsis("…")
+		muted(c, detail).FontSize(11).SingleLine().Ellipsis("…")
 	})
 	if len(m.Unconfirmed) > 0 && button(c, fmt.Sprintf("核对前置 (%d)", len(m.Unconfirmed)), action.Default, false) {
 		a.openResourceDownloads(i, launcher.Mods)
@@ -516,27 +535,29 @@ func (a *desktop) contentFileTitle(c *ui.Context, i launcher.Instance, f launche
 	}
 }
 
+func (a *desktop) checkModUpdates(i launcher.Instance) {
+	v := &a.content
+	req, g, ctx := a.contentRequest, a.game, a.ctx
+	v.checking, v.checkError = true, ""
+	go func() {
+		mods, err := g.CheckMods(ctx, i)
+		a.post(func() {
+			if a.contentRequest != req {
+				return
+			}
+			v.checking = false
+			if err != nil {
+				v.checkError = err.Error()
+				return
+			}
+			v.mods, v.listing = mods, nil
+		})
+	}()
+}
+
 func (a *desktop) modControls(c *ui.Context, i launcher.Instance, disabled bool) {
 	v := &a.content
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-		if button(c, "检查更新", action.Default, disabled || v.checking) {
-			req, g, ctx := a.contentRequest, a.game, a.ctx
-			v.checking, v.checkError = true, ""
-			go func() {
-				mods, err := g.CheckMods(ctx, i)
-				a.post(func() {
-					if a.contentRequest != req {
-						return
-					}
-					v.checking = false
-					if err != nil {
-						v.checkError = err.Error()
-						return
-					}
-					v.mods, v.listing = mods, nil
-				})
-			}()
-		}
 		switch {
 		case v.checking:
 			muted(c, "正在识别模组并检查兼容版本…")
