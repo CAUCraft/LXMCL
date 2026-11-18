@@ -13,6 +13,12 @@ type ModDependency = catalog.ModDependency
 type PackFile = catalog.PackFile
 type PackSearch = catalog.PackSearch
 
+const CurseForgeMods = "curseforge"
+
+func (g Game) CurseMods(key string) catalog.CurseMods {
+	return (catalog.Client{Transport: g.Transport}).CurseMods(key)
+}
+
 const PackPageSize = catalog.PackPageSize
 
 func SearchModrinth(ctx context.Context, i Instance, kind ContentKind, query, order string, page int) (PackSearch, error) {

@@ -15,7 +15,9 @@ func TestQueueRestartRetainsTargetsAndPrunesFinishedWork(t *testing.T) {
 	res := resourceTask{Kind: string(launcher.Mods), Project: "project", Version: "build", Title: "Sodium"}
 	i := launcher.Instance{ID: 17, Revision: 3, Version: "1.21.1", GameDir: filepath.Join(root, "game"), Name: "World"}
 	v := launcher.PackVersion{Number: "0.6"}
-	entries := []queuedResource{{id: "done", resource: res, folder: root, version: v}, {id: "interrupted", resource: res, target: i, version: v}, {id: "waiting", resource: res, folder: root, version: v}}
+	curse := res
+	curse.Source, curse.Project, curse.Version = launcher.CurseForgeMods, "248787", "5864741"
+	entries := []queuedResource{{id: "done", resource: res, folder: root, version: v}, {id: "interrupted", resource: curse, target: i, version: v}, {id: "waiting", resource: res, folder: root, version: v}}
 	if err := writeDownloadQueue(root, queueEntries(entries)); err != nil {
 		t.Fatal(err)
 	}

@@ -26,6 +26,7 @@ type Resource struct {
 	// Kind preserves the resource identifier from tasks.json. The caller owns
 	// resource compatibility and download behavior, including unknown kinds.
 	Kind    string `json:"kind"`
+	Source  string `json:"source,omitempty"`
 	Project string `json:"project"`
 	Version string `json:"version"`
 	Title   string `json:"title"`

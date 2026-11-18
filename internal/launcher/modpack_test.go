@@ -314,3 +314,53 @@ func TestFailedPackReopensOnlyTheOriginalArchiveAndTarget(t *testing.T) {
 		t.Fatal("modified archive accepted")
 	}
 }
+
+func TestCurseModFileRetryRechecksProjectAndDigest(t *testing.T) {
+	const cdn = "https://edge.forgecdn.net/files/1/2/example.jar"
+	jar := packArchive(t, map[string]string{"fabric.mod.json": `{"id":"example","version":"1.0"}`})
+	allowed := true
+	body := jar
+	g := Game{Transport: transportFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.String() == cdn {
+			if req.Header.Get("x-api-key") != "" {
+				t.Fatal("credential sent to CDN")
+			}
+			return packResponse(body), nil
+		}
+		if req.URL.Host != "api.curseforge.com" || req.Header.Get("x-api-key") != "test-key" {
+			t.Fatalf("unexpected metadata host or key")
+		}
+		switch req.URL.Path {
+		case "/v1/mods/12":
+			return fixtureResponse(200, []byte(fmt.Sprintf(`{"data":{"id":12,"gameId":432,"classId":6,"name":"Example","isAvailable":true,"allowModDistribution":%t}}`, allowed))), nil
+		case "/v1/mods/12/files/34":
+			return fixtureResponse(200, []byte(fmt.Sprintf(`{"data":{"id":34,"modId":12,"gameId":432,"isAvailable":true,"fileName":"example.jar","fileLength":%d,"downloadUrl":%q,"gameVersions":["Fabric","1.21.1"],"hashes":[{"algo":1,"value":"%x"}],"dependencies":[{"modId":55,"relationType":3},{"modId":56,"relationType":2}]}}`, len(jar), cdn, sha1.Sum(jar)))), nil
+		}
+		return nil, fmt.Errorf("unexpected path %s", req.URL.Path)
+	})}
+	ctx := t.Context()
+	cf := g.CurseMods("test-key")
+	v, err := cf.Version(ctx, "12", "34")
+	if err != nil || len(v.RequiredDependencies()) != 1 || v.RequiredDependencies()[0].ProjectID != "55" {
+		t.Fatalf("file dependencies: %+v, %v", v.RequiredDependencies(), err)
+	}
+	i := Instance{ID: 1, GameDir: t.TempDir(), Version: "1.21.1", Loader: LoaderFabric, LoaderVersion: "0.16.14"}
+	body = bytes.Repeat([]byte{'x'}, len(jar))
+	if err := g.InstallResource(ctx, i, Mods, v, nil); err == nil {
+		t.Fatal("accepted corrupted CDN file")
+	}
+	if _, err := os.Stat(filepath.Join(i.GameDir, "mods", "example.jar")); !os.IsNotExist(err) {
+		t.Fatal("corrupt file published", err)
+	}
+	body = jar
+	if err := g.InstallResource(ctx, i, Mods, v, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := os.ReadFile(filepath.Join(i.GameDir, "mods", "example.jar")); err != nil || !bytes.Equal(got, jar) {
+		t.Fatal("installed bytes differ", err)
+	}
+	allowed = false
+	if _, err := cf.Version(ctx, "12", "34"); err == nil {
+		t.Fatal("retry ignored withdrawn distribution permission")
+	}
+}

@@ -224,7 +224,11 @@ func (a *desktop) taskRow(c *ui.Context, row taskRecord) {
 			muted(c, "服务器 · "+row.Server).FontSize(13).Selectable()
 		}
 		if row.Resource != nil && row.Resource.Title != "" {
-			muted(c, "资源 · "+row.Resource.Title).FontSize(13).Selectable()
+			label := "资源"
+			if row.Resource.Source == launcher.CurseForgeMods {
+				label = "CurseForge"
+			}
+			muted(c, label+" · "+row.Resource.Title).FontSize(13).Selectable()
 		}
 		if row.Detail != "" {
 			if row.Status == taskFailed {

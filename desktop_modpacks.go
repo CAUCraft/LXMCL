@@ -542,7 +542,10 @@ func (a *desktop) curseKeyDialog(c *ui.Context) {
 				key := strings.TrimSpace(p.keyDraft)
 				if (button(c, "应用", action.Primary, key == "") || submit) && key != "" {
 					p.key, p.keyOpen, p.keyDraft = key, false, ""
-					if p.mode == modpackCurseForge && p.prepared.Info().Source == "" {
+					if mods := a.packs[launcher.Mods]; mods != nil && mods.source == launcher.CurseForgeMods {
+						mods.resetCatalog()
+					}
+					if a.page == pageDownloads && a.downloadPage == downloadModpacks && p.mode == modpackCurseForge && p.prepared.Info().Source == "" {
 						p.applied = strings.TrimSpace(p.query)
 						a.searchModpackProjects(0)
 					}

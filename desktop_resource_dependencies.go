@@ -38,9 +38,16 @@ func (a *desktop) fetchDependencyNames(p *packBrowser, version string, deps []la
 	if a.ctx != nil {
 		ctx, cancel := context.WithTimeout(a.ctx, 12*time.Second)
 		names.cancel = cancel
+		source, curse := p.source, a.game.CurseMods(a.modpacks.key)
 		go func() {
 			defer cancel()
-			projects, err := launcher.ResourceDependencyProjects(ctx, deps)
+			var projects map[string]launcher.PackProject
+			var err error
+			if source == launcher.CurseForgeMods {
+				projects, err = curse.DependencyProjects(ctx, deps)
+			} else {
+				projects, err = launcher.ResourceDependencyProjects(ctx, deps)
+			}
 			if err == nil {
 				a.post(func() {
 					if p.dependencyNames == names {
@@ -135,6 +142,10 @@ func (p *packBrowser) backDependency() {
 
 func (a *desktop) loadPackDependency(p *packBrowser) {
 	if p.dependency == nil {
+		return
+	}
+	if p.source == launcher.CurseForgeMods {
+		a.loadResourceFiles(p, 0)
 		return
 	}
 	p.abort()

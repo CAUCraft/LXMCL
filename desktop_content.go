@@ -525,8 +525,13 @@ func (a *desktop) contentFileTitle(c *ui.Context, i launcher.Instance, f launche
 	if len(m.Unconfirmed) > 0 && button(c, fmt.Sprintf("核对前置 (%d)", len(m.Unconfirmed)), action.Default, false) {
 		a.openResourceDownloads(i, launcher.Mods)
 		p := a.browserFor(launcher.Mods)
+		if p.source != "" {
+			p.source = ""
+			p.resetCatalog()
+		}
 		p.abort()
 		p.clearProject()
+		p.searched, p.searchBusy, p.err = true, false, ""
 		v := m.Current
 		if m.Update.ID != "" {
 			v = m.Update

@@ -43,7 +43,7 @@ func (a *desktop) enqueueResource(item queuedResource) {
 		return
 	}
 	if slices.ContainsFunc(a.queue.pending, func(other queuedResource) bool {
-		return other.target.ID == item.target.ID && other.target.Revision == item.target.Revision && other.folder == item.folder && other.resource.Project == item.resource.Project && other.resource.Version == item.resource.Version
+		return other.target.ID == item.target.ID && other.target.Revision == item.target.Revision && other.folder == item.folder && other.resource.Source == item.resource.Source && other.resource.Kind == item.resource.Kind && other.resource.Project == item.resource.Project && other.resource.Version == item.resource.Version
 	}) {
 		a.message("此版本已在队列中", nil)
 		return
@@ -112,6 +112,9 @@ func (a *desktop) queuePanel(c *ui.Context) {
 						dest := "保存到 " + label
 						if item.target.ID != 0 {
 							dest = "安装到 " + item.target.Name + " · " + item.target.Version
+						}
+						if item.resource.Source == launcher.CurseForgeMods {
+							dest = "CurseForge · " + dest
 						}
 						hint := item.folder
 						if item.target.ID != 0 {
@@ -188,7 +191,7 @@ func (a *desktop) runResource(item queuedResource, done func(error)) {
 	if i.ID != 0 {
 		row.InstanceID, row.Revision, row.Name, row.Version, row.Action = i.ID, i.Revision, i.Name, i.Version, "安装"+contentLabel(kind)
 	}
-	game := a.game
+	game, key := a.game, a.modpacks.key
 	a.runFileTask(row, func(ctx context.Context, report func(launcher.Progress)) error {
 		if i.ID != 0 && (!found || current.Revision != i.Revision || current.Version != i.Version || current.GameDir != i.GameDir || !kind.Supports(current)) {
 			return errors.New("实例已变更，请重新选择兼容文件")
@@ -196,15 +199,25 @@ func (a *desktop) runResource(item queuedResource, done func(error)) {
 		if i.ID == 0 && !filepath.IsAbs(item.folder) {
 			return errors.New("请选择下载目录")
 		}
-		if v.ID == "" {
-			var err error
-			v, err = game.ModrinthVersion(ctx, r.Project, r.Version)
-			if err != nil {
-				return err
+		var err error
+		switch r.Source {
+		case launcher.CurseForgeMods:
+			if kind != launcher.Mods {
+				return errors.New("CurseForge 单文件下载仅支持模组")
 			}
+			v, err = game.CurseMods(key).Version(ctx, r.Project, r.Version)
+		case "":
+			if v.ID == "" {
+				v, err = game.ModrinthVersion(ctx, r.Project, r.Version)
+			}
+		default:
+			return fmt.Errorf("未知下载来源 %q", r.Source)
+		}
+		if err != nil {
+			return err
 		}
 		if i.ID != 0 {
-			return game.DownloadModrinth(ctx, current, kind, v, report)
+			return game.InstallResource(ctx, current, kind, v, report)
 		}
 		if item.id != "" && item.version.ID == "" {
 			return game.ResumeResourceFile(ctx, kind, v, item.folder, report)

@@ -13,6 +13,10 @@ func DownloadModrinth(ctx context.Context, i Instance, kind ContentKind, version
 }
 
 func (g Game) DownloadModrinth(ctx context.Context, i Instance, kind ContentKind, version PackVersion, report func(Progress)) error {
+	return g.InstallResource(ctx, i, kind, version, report)
+}
+
+func (g Game) InstallResource(ctx context.Context, i Instance, kind ContentKind, version PackVersion, report func(Progress)) error {
 	if _, _, err := kind.Format(i); err != nil {
 		return err
 	}
