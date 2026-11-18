@@ -112,18 +112,28 @@ func restore(ctx context.Context, gameDir, source string, preview *Preview, worl
 }
 
 func publishWorlds(ctx context.Context, root *os.Root, stage string, worlds []string) (int, error) {
+	// A generated copy name must not claim another imported world's original name.
+	reserved := make(map[string]bool, len(worlds))
+	for _, name := range worlds {
+		reserved[strings.ToLower(name)] = true
+	}
 	for n, world := range worlds {
 		dst := world
-		for suffix := 2; ; suffix++ {
+		for suffix := 1; ; suffix++ {
 			if err := ctx.Err(); err != nil {
 				return n, err
+			}
+			if suffix > 1 {
+				dst = fmt.Sprintf("%s (%d)", world, suffix)
+				if reserved[strings.ToLower(dst)] {
+					continue
+				}
 			}
 			if _, err := root.Lstat(dst); errors.Is(err, fs.ErrNotExist) {
 				break
 			} else if err != nil {
 				return n, err
 			}
-			dst = fmt.Sprintf("%s (%d)", world, suffix)
 		}
 		if err := root.Rename(path.Join(stage, world), dst); err != nil {
 			return n, err
