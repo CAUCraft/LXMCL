@@ -31,6 +31,9 @@ var (
 
 func (a *desktop) restoreTaskHistory(records []taskRecord) {
 	a.history = records
+	if a.lastLog != "" {
+		return // A game launched in this session has a newer log than the recovered history.
+	}
 	for _, r := range records {
 		if launcherlog.IsGame(r.Log) {
 			a.lastLog = r.Log
