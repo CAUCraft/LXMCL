@@ -153,6 +153,7 @@ type desktop struct {
 	form                             editor
 	installed                        map[int]bool
 	releases                         []launcher.Version
+	queue                            resourceQueue
 	release                          releaseView
 	catalogBusy                      bool
 	catalogErr                       string

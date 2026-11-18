@@ -209,7 +209,7 @@ func (a *desktop) runContentTask(i launcher.Instance, label string, resource *re
 		return
 	}
 	row := taskRecord{InstanceID: i.ID, Revision: i.Revision, Name: i.Name, Version: i.Version, Action: label, At: time.Now(), Resource: resource}
-	a.runFileTask(row, work, func() {
+	a.runFileTask(row, work, func(error) {
 		if a.content.id == i.ID && a.content.revision == i.Revision {
 			a.refreshContent(i)
 		}
@@ -224,7 +224,7 @@ func (a *desktop) runFolderDownload(folder, action, name string, resource *resou
 	a.runFileTask(row, work, nil)
 }
 
-func (a *desktop) runFileTask(row taskRecord, work func(context.Context, func(launcher.Progress)) error, refresh func()) {
+func (a *desktop) runFileTask(row taskRecord, work func(context.Context, func(launcher.Progress)) error, refresh func(error)) {
 	row = row.Submitted()
 	ctx, cancel := context.WithCancel(a.ctx)
 	a.busy, a.taskName, a.cancelTask = true, row.Name, cancel
@@ -240,7 +240,7 @@ func (a *desktop) runFileTask(row taskRecord, work func(context.Context, func(la
 			a.busy, a.cancelTask, a.task = false, nil, launcher.Progress{}
 			a.message(row.Action+" · "+row.Status, err)
 			if refresh != nil {
-				refresh()
+				refresh(err)
 			}
 		})
 	})

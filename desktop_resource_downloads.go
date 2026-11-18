@@ -198,6 +198,9 @@ func (a *desktop) resourceDownloads(c *ui.Context, p *packBrowser) {
 	}
 	label := contentLabel(p.kind)
 	a.resourceTargetBar(c, p)
+	if n := len(a.queue.pending); n > 0 && button(c, fmt.Sprintf("查看下载队列 (%d)", n), action.Text, false) {
+		a.openTasks()
+	}
 	layout.Divider(c, layout.DividerProps{})
 	if !p.searched {
 		a.applyPackSearch(p)
@@ -441,8 +444,16 @@ func (a *desktop) packVersions(c *ui.Context, p *packBrowser, kind launcher.Cont
 			note, labelAction = "安装到 "+p.target.Name, "安装"+contentLabel(kind)
 		}
 		muted(c, note).FontSize(12).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+		r := resourceTask{Kind: string(kind), Project: p.project.ID, Version: version.ID, Title: p.project.Title}
+		if button(c, "加入队列", action.Default, locked) {
+			item := queuedResource{target: p.target, resource: r, version: version}
+			if p.target.ID != 0 {
+				a.enqueueResource(item)
+			} else {
+				a.pickDownloadFolder(func(folder string) { item.folder = folder; a.enqueueResource(item) })
+			}
+		}
 		if button(c, labelAction, action.Primary, locked) {
-			r := resourceTask{Kind: string(kind), Project: p.project.ID, Version: version.ID, Title: p.project.Title}
 			if p.target.ID != 0 {
 				a.downloadResource(p.target, r, version)
 			} else {
@@ -455,32 +466,9 @@ func (a *desktop) packVersions(c *ui.Context, p *packBrowser, kind launcher.Cont
 	}
 }
 
-func (a *desktop) saveResourceFile(folder string, r resourceTask, version launcher.PackVersion) {
-	game := a.game
-	kind := launcher.ContentKind(r.Kind)
-	a.runFolderDownload(folder, "保存"+contentLabel(kind), r.Title, &r, func(ctx context.Context, report func(launcher.Progress)) error {
-		if version.ID == "" {
-			var err error
-			version, err = launcher.ModrinthVersion(ctx, r.Project, r.Version)
-			if err != nil {
-				return err
-			}
-		}
-		return game.DownloadResourceFile(ctx, kind, version, folder, report)
-	})
+func (a *desktop) saveResourceFile(folder string, r resourceTask, v launcher.PackVersion) {
+	a.runResource(queuedResource{folder: folder, resource: r, version: v}, nil)
 }
-
-func (a *desktop) downloadResource(i launcher.Instance, r resourceTask, version launcher.PackVersion) {
-	game := a.game
-	kind := launcher.ContentKind(r.Kind)
-	a.runContentTask(i, "安装"+contentLabel(kind), &r, func(ctx context.Context, report func(launcher.Progress)) error {
-		if version.ID == "" {
-			var err error
-			version, err = launcher.ModrinthVersion(ctx, r.Project, r.Version)
-			if err != nil {
-				return err
-			}
-		}
-		return game.DownloadModrinth(ctx, i, kind, version, report)
-	})
+func (a *desktop) downloadResource(i launcher.Instance, r resourceTask, v launcher.PackVersion) {
+	a.runResource(queuedResource{target: i, resource: r, version: v}, nil)
 }

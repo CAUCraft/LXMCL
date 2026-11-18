@@ -321,6 +321,7 @@ func (a *desktop) openTasks() {
 
 func (a *desktop) tasks(c *ui.Context) {
 	ui.Column(c).Grow(1).Basis(0).MinHeight(0).Gap(8).Children(func() {
+		a.queuePanel(c)
 		if a.task.Stage != "" {
 			sectionPane(c).Padding(10, 14).Gap(6).Children(func() {
 				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
@@ -378,7 +379,7 @@ func (a *desktop) tasks(c *ui.Context) {
 					a.showLog(a.lastLog)
 				}
 			})
-		} else if a.task.Stage == "" && a.running == nil {
+		} else if len(a.queue.pending) == 0 && a.task.Stage == "" && a.running == nil {
 			emptyPanel(c, lucide.Activity(), "暂无任务")
 		}
 	})
