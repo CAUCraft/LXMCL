@@ -30,6 +30,7 @@ const (
 )
 
 type modpackView struct {
+	retry                                 *packRetry
 	feedURL, feedStatus                   string
 	target                                string
 	update                                *launcher.PackUpdate
@@ -81,6 +82,7 @@ func (p *modpackView) begin(parent context.Context, timeout time.Duration) (cont
 func (p *modpackView) clearPreview() {
 	p.target, p.update, p.changePage = "", nil, 0
 	p.feedStatus = ""
+	p.retry = nil
 	p.prepared = launcher.PreparedModpack{}
 	p.archive, p.name, p.prepareErr, p.installErr = "", "", "", ""
 }
@@ -267,6 +269,8 @@ func (a *desktop) modpackPage(c *ui.Context) {
 			}
 		case p.prepared.Info().Source != "":
 			a.modpackConfirmation(right, p)
+		case p.retry != nil:
+			a.packRetryInput(right, p)
 		case p.mode == modpackLocal:
 			if p.prepareErr != "" {
 				feedback.Alert(right, p.prepareErr, feedback.AlertProps{Type: feedback.Error})
@@ -449,6 +453,12 @@ func (a *desktop) modpackConfirmation(c *ui.Context, p *modpackView) {
 	if p.prepared.Info().Source == "" {
 		return
 	}
+	if p.retry != nil {
+		if _, ok := launcher.PackRetryTarget(p.retry.row, a.state); !ok {
+			feedback.Alert(c, "原实例已变更，请重新选择更新目标。", feedback.AlertProps{Type: feedback.Warning})
+			return
+		}
+	}
 	loader := (launcher.Instance{Loader: info.Loader, LoaderVersion: info.LoaderVersion}).LoaderName()
 	subtitle := string(info.Source)
 	if info.Version != "" {
@@ -462,7 +472,7 @@ func (a *desktop) modpackConfirmation(c *ui.Context, p *modpackView) {
 	before := p.target
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 		display.Text(c, "安装到", display.TextProps{Strong: true})
-		catalogPicker(c.Key("pack-target"), &p.target, options, "整合包安装目标", "", a.busy).Grow(1).MinWidth(0).MaxWidth(300)
+		catalogPicker(c.Key("pack-target"), &p.target, options, "整合包安装目标", "", a.busy || p.retry != nil).Grow(1).MinWidth(0).MaxWidth(300)
 	})
 	id, _ := strconv.Atoi(p.target)
 	target, exists := a.state.Find(id)

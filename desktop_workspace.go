@@ -493,6 +493,18 @@ func (a *desktop) taskRow(c *ui.Context, row taskRecord) {
 				button(c, "重试", action.Default, a.busy || a.running != nil) {
 				a.saveResourceFile(row.Folder, *row.Resource, launcher.PackVersion{})
 			}
+			if row.Pack.Archive != "" {
+				if launcher.CanOpenPackBackup(row.Pack) && button(c, "打开回滚备份", action.Default, false) {
+					a.openPackBackup(row)
+				}
+				if _, ok := launcher.PackRetryTarget(row, a.state); ok {
+					if button(c, "重新预览更新", action.Primary, a.busy || a.pickerBusy || a.running != nil) {
+						a.openPackRetry(row)
+					}
+				} else {
+					muted(c, "原实例已变更，请重新选择更新目标。").FontSize(12)
+				}
+			}
 			if i, ok := launcher.RetryTarget(row, a.state); ok {
 				if button(c, "重试", action.Default, a.busy || a.running != nil) {
 					if row.Resource != nil {

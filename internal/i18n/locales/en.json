@@ -206,6 +206,7 @@
   "modpack.rollback_directory": "Original files are available in %s",
   "modpack.feed_url_invalid": "Enter an HTTPS pack feed URL",
   "modpack.feed_invalid": "Invalid pack feed. Check the archive URL, size and SHA-256 digest",
+  "modpack.original_feed_required": "Enter the original server pack feed URL for this update",
   "modpack.instance_changed": "The modpack's instance configuration changed",
   "modpack.instance_directory_exists": "The target instance folder already exists. Keep the old folder and choose another location",
   "modpack.loader_unsupported": "This modpack's loader is unsupported",

@@ -16,6 +16,7 @@ import (
 
 	"github.com/CAUCraft/LXMCL/internal/catalog"
 	"github.com/CAUCraft/LXMCL/internal/i18n"
+	"github.com/CAUCraft/LXMCL/internal/tasks"
 )
 
 func packArchive(t *testing.T, entries map[string]string) []byte {
@@ -271,5 +272,45 @@ func TestCurseForgeCatalogAndImport(t *testing.T) {
 	b, err := os.ReadFile(filepath.Join(i.GameDir, "mods", "example.jar"))
 	if err != nil || string(b) != dependency {
 		t.Fatalf("CurseForge dependency missing: %q, %v", b, err)
+	}
+}
+
+func TestFailedPackReopensOnlyTheOriginalArchiveAndTarget(t *testing.T) {
+	i := Instance{ID: 7, Name: "Pack", Version: "1.21.1", Revision: 2, GameDir: t.TempDir(), Loader: LoaderVanilla}
+	entries := map[string]string{"modrinth.index.json": `{"formatVersion":1,"game":"minecraft","name":"Pack","versionId":"1","dependencies":{"minecraft":"1.21.1"},"files":[]}`}
+	file := packFile(t, "pack.mrpack", entries)
+	pack, err := PrepareLocalModpack(t.Context(), file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	row := tasks.Record{ID: "attempt", InstanceID: i.ID, Revision: i.Revision, Version: i.Version, Status: tasks.Failed, Pack: PackUpdateReference(i, pack)}
+	dir := t.TempDir()
+	if err := tasks.Save(dir, []tasks.Record{row}); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := tasks.Load(dir)
+	if err != nil || len(saved) != 1 || saved[0].Pack != row.Pack {
+		t.Fatalf("history: %+v %v", saved, err)
+	}
+	if _, ok := PackRetryTarget(saved[0], State{Instances: []Instance{i}}); !ok {
+		t.Fatal("lost target")
+	}
+	i.Revision++
+	if _, ok := PackRetryTarget(row, State{Instances: []Instance{i}}); ok {
+		t.Fatal("stale target accepted")
+	}
+	moved := filepath.Join(t.TempDir(), "cache-entry")
+	if err := os.Rename(file, moved); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ReopenPackUpdate(t.Context(), row.Pack, moved, ""); err != nil {
+		t.Fatal(err)
+	}
+	entries["overrides/options.txt"] = "changed"
+	if err := os.WriteFile(moved, packArchive(t, entries), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ReopenPackUpdate(t.Context(), row.Pack, moved, ""); err == nil {
+		t.Fatal("modified archive accepted")
 	}
 }

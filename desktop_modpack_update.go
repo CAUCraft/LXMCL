@@ -53,7 +53,7 @@ func (a *desktop) packChangeList(c *ui.Context, p *modpackView, i launcher.Insta
 func (a *desktop) previewPackUpdate(p *modpackView, i launcher.Instance) {
 	game, pack, key := a.game, p.prepared, p.key
 	var preview launcher.PackUpdate
-	row := taskRecord{InstanceID: i.ID, Revision: i.Revision, Version: i.Version, Name: i.Name, Action: "预览整合包更新"}
+	row := taskRecord{InstanceID: i.ID, Revision: i.Revision, Version: i.Version, Name: i.Name, Action: "预览整合包更新", Pack: launcher.PackUpdateReference(i, pack)}
 	a.runFileTask(row, func(ctx context.Context, _ func(launcher.Progress)) error {
 		var err error
 		preview, err = game.PreviewPackUpdate(ctx, i, pack, key)
@@ -72,7 +72,7 @@ func (a *desktop) previewPackUpdate(p *modpackView, i launcher.Instance) {
 func (a *desktop) applyPackUpdate(p *modpackView, i launcher.Instance) {
 	game, store, state, pack, key, u := a.game, a.store, a.state.Clone(), p.prepared, p.key, *p.update
 	var next launcher.State
-	row := taskRecord{InstanceID: i.ID, Revision: i.Revision, Version: i.Version, Name: i.Name, Action: "更新整合包"}
+	row := taskRecord{InstanceID: i.ID, Revision: i.Revision, Version: i.Version, Name: i.Name, Action: "更新整合包", Pack: launcher.PackUpdateReference(i, pack)}
 	a.runFileTask(row, func(ctx context.Context, report func(launcher.Progress)) error {
 		var err error
 		next, err = game.ApplyPackUpdate(ctx, store, state, i, pack, key, u, report)

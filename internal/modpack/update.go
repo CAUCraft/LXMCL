@@ -182,7 +182,7 @@ func publishUpdate(ctx context.Context, target, stage *os.Root, changes []Change
 			}
 		}
 		if rollback != nil {
-			result = errors.Join(result, rollback, i18n.Error("modpack.rollback_directory", temp))
+			result = &RollbackError{Directory: temp, Err: errors.Join(result, rollback, i18n.Error("modpack.rollback_directory", temp))}
 			return
 		}
 		target.RemoveAll(backup)
@@ -248,3 +248,11 @@ func publishUpdate(ctx context.Context, target, stage *os.Root, changes []Change
 func (u UpdatePreview) Matches(p Prepared, i instance.Instance) bool {
 	return u.target == i && u.pack == p
 }
+
+type RollbackError struct {
+	Directory string
+	Err       error
+}
+
+func (e *RollbackError) Error() string { return e.Err.Error() }
+func (e *RollbackError) Unwrap() error { return e.Err }

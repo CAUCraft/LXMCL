@@ -239,6 +239,11 @@ func (a *desktop) runFileTask(row taskRecord, work func(context.Context, func(la
 		row.Status = tasks.Outcome(err)
 		if err != nil {
 			row.Detail = err.Error()
+			if row.Pack.Archive != "" {
+				row.Pack.BackupDir = launcher.RollbackDirectory(err)
+			}
+		} else {
+			row.Pack = tasks.PackUpdate{}
 		}
 		a.saveTask(row, func() {
 			a.busy, a.cancelTask, a.task = false, nil, launcher.Progress{}
