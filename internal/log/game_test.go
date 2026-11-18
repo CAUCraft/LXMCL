@@ -131,6 +131,19 @@ func TestLogFilterKeepsExceptionContext(t *testing.T) {
 	}
 }
 
+func TestFilterCrashReportSections(t *testing.T) {
+	head := "---- Minecraft Crash Report ----\r\njava.lang.IllegalStateException: startup\r\n"
+	level := "-- Affected level --\r\n[World information]\r\nLevel name: Workshop\r\n"
+	system := "-- System Details --\r\nJava Version: 21\r\n"
+	report := head + level + system
+	if got := Filter(report, "workshop", false); got != level {
+		t.Fatalf("level section: %q", got)
+	}
+	if got := Filter(report, "", true); got != head {
+		t.Fatalf("exception section: %q", got)
+	}
+}
+
 func TestExportPreviewPreservesSourceAndWritesOnlyCapturedText(t *testing.T) {
 	dir := t.TempDir()
 	source := filepath.Join(dir, "game.log")

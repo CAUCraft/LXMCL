@@ -380,7 +380,7 @@ func (a *desktop) logDialog(c *ui.Context) {
 			if a.logLibrary != nil {
 				hint = "最近 30 个文件 · 预览末尾 64 KiB · 保留堆栈"
 				if filepath.Base(filepath.Dir(a.logPath)) == "crash-reports" {
-					hint = "最近 30 个文件 · 报告开头 64 KiB · 保留堆栈"
+					hint = "最近 30 个文件 · 报告开头 64 KiB · 按章节筛选"
 				}
 			}
 			muted(c, hint).FontSize(12)

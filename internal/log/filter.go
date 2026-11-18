@@ -7,13 +7,14 @@ import (
 
 var problemLine = regexp.MustCompile(`(?im)(\b(?:WARN(?:ING)?|ERROR|FATAL)\b|(?:Error|Exception)\b|^Caused by:)`)
 
-// Filter keeps complete bracket-prefixed log entries, including their following
-// stack traces. Query and severity narrow the preview without losing context.
+// Filter keeps complete log entries or Minecraft crash report sections so
+// matching a stack frame also keeps its surrounding diagnostic context.
 func Filter(text, query string, problemsOnly bool) string {
 	query = strings.ToLower(strings.TrimSpace(query))
 	if query == "" && !problemsOnly {
 		return text
 	}
+	crashReport := strings.HasPrefix(strings.TrimPrefix(text, "\uFEFF"), "---- Minecraft Crash Report ----")
 	var result, block strings.Builder
 	flush := func() {
 		entry := block.String()
@@ -23,7 +24,11 @@ func Filter(text, query string, problemsOnly bool) string {
 		block.Reset()
 	}
 	for _, line := range strings.SplitAfter(text, "\n") {
-		if strings.HasPrefix(line, "[") {
+		boundary := strings.HasPrefix(line, "[")
+		if crashReport {
+			boundary = strings.HasPrefix(line, "-- ") && strings.HasSuffix(strings.TrimRight(line, "\r\n"), " --")
+		}
+		if boundary {
 			flush()
 		}
 		block.WriteString(line)
