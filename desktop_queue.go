@@ -57,9 +57,14 @@ func (a *desktop) queuePanel(c *ui.Context) {
 	q := &a.queue
 	if q.loadError != nil {
 		feedback.Alert(c, "读取下载队列失败："+q.loadError.Error(), feedback.AlertProps{Type: feedback.Error})
-		if button(c, "重新读取队列", action.Default, q.loading) {
-			a.reloadDownloadQueue()
-		}
+		ui.Row(c).Gap(8).Children(func() {
+			if button(c, "重新读取队列", action.Default, q.loading) {
+				a.reloadDownloadQueue(false)
+			}
+			if errors.Is(q.loadError, errQueueFormat) && button(c, "备份原文件并恢复条目", action.Primary, q.loading) {
+				a.reloadDownloadQueue(true)
+			}
+		})
 		return
 	}
 	if q.saveError != nil {

@@ -1,6 +1,9 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
+	"errors"
 	"github.com/CAUCraft/LXMCL/internal/launcher"
 	"os"
 	"path/filepath"
@@ -36,5 +39,24 @@ func TestQueueRestartRetainsTargetsAndPrunesFinishedWork(t *testing.T) {
 	}
 	if data, err := os.ReadFile(path); err != nil || string(data) != "{" {
 		t.Fatal("invalid queue overwritten")
+	}
+	first, _ := json.Marshal(entries[1].saved())
+	last, _ := json.Marshal(entries[2].saved())
+	torn := []byte("[" + string(first) + ",42," + string(last) + ",")
+	if err := os.WriteFile(path, torn, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readDownloadQueue(root, nil); !errors.Is(err, errQueueFormat) {
+		t.Fatalf("invalid queue was not flagged: %v", err)
+	}
+	restored, backup, err := repairDownloadQueue(root, nil)
+	if err != nil || len(restored) != 2 || restored[0].id != "interrupted" || restored[1].id != "waiting" {
+		t.Fatalf("repaired entries: %v %v", restored, err)
+	}
+	if b, err := os.ReadFile(filepath.Join(root, backup)); err != nil || !bytes.Equal(b, torn) {
+		t.Fatalf("original bytes lost: %v", err)
+	}
+	if saved, err := readDownloadQueue(root, nil); err != nil || len(saved) != 2 {
+		t.Fatalf("reloaded repaired queue: %v %v", saved, err)
 	}
 }
