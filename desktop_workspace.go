@@ -2,9 +2,11 @@ package main
 
 import (
 	"fmt"
+	"path/filepath"
 	"strconv"
 
 	"github.com/CAUCraft/LXMCL/internal/launcher"
+	launcherlog "github.com/CAUCraft/LXMCL/internal/log"
 	"github.com/egoist/mygo/ui"
 	"github.com/lobehub/lobe-mygo/pkg/action"
 	"github.com/lobehub/lobe-mygo/pkg/display"
@@ -405,7 +407,7 @@ func (a *desktop) taskHistoryPane(c *ui.Context, rows []taskRecord) {
 	}, func() {
 		detailPane(c.Key(taskKey(selected)), func() {
 			layout.ScrollArea(c, layout.ScrollAreaProps{}, func() {
-				sectionPane(c).Padding(8, 14).Children(func() { a.taskRow(c, selected) })
+				surface(c).Padding(10, 14).Children(func() { a.taskRow(c, selected) })
 			}).Grow(1).MinHeight(0)
 		})
 	})
@@ -440,7 +442,7 @@ func (a *desktop) taskRow(c *ui.Context, row taskRecord) {
 	case taskStarted:
 		tone = display.TagProcessing
 	}
-	ui.Column(c).Padding(5, 0).Gap(4).Children(func() {
+	ui.Column(c).Gap(8).Children(func() {
 		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
 			leadIcon(c, taskIcon(row), 26)
 			ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
@@ -458,13 +460,27 @@ func (a *desktop) taskRow(c *ui.Context, row taskRecord) {
 				muted(c, detail).FontSize(12)
 			})
 			display.Tag(c, row.Status, display.TagProps{Color: tone, Round: true})
-			if row.Log != "" && button(c, "查看日志", action.Text, false) {
+		})
+		if row.Folder != "" {
+			muted(c, row.Folder).FontSize(13).SingleLine().Ellipsis("…").Selectable()
+		}
+		if row.Detail != "" {
+			layout.Divider(c, layout.DividerProps{})
+			ui.Row(c).Gap(6).AlignItems(ui.Start).Children(func() {
+				display.Text(c, row.Detail, display.TextProps{FontSize: 13}).Grow(1).MinWidth(0).Selectable()
+				if row.Status == taskFailed {
+					action.CopyButton(c, row.Detail, action.CopyButtonProps{Size: theme.Small}).Label("复制错误详情")
+				}
+			})
+		}
+		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+			if launcherlog.IsGame(row.Log) && button(c, "查看日志", action.Text, false) {
 				a.showLog(row.Log)
 			}
-			if row.Folder != "" && button(c, "打开文件夹", action.Text, false) {
+			if filepath.IsAbs(row.Folder) && button(c, "打开文件夹", action.Text, false) {
 				a.openPath(row.Folder, false)
 			}
-			if row.Folder != "" && row.Resource != nil && (row.Status == taskFailed || row.Status == taskCanceled) &&
+			if filepath.IsAbs(row.Folder) && row.Resource != nil && (row.Status == taskFailed || row.Status == taskCanceled) &&
 				button(c, "重试", action.Default, a.busy || a.running != nil) {
 				a.saveResourceFile(row.Folder, *row.Resource, launcher.PackVersion{})
 			}
@@ -478,12 +494,6 @@ func (a *desktop) taskRow(c *ui.Context, row taskRecord) {
 				}
 			}
 		})
-		if row.Folder != "" {
-			muted(c, row.Folder).FontSize(13).SingleLine().Ellipsis("…").Selectable()
-		}
-		if row.Status == taskFailed && row.Detail != "" {
-			muted(c, row.Detail).FontSize(13).Selectable()
-		}
 	})
 }
 

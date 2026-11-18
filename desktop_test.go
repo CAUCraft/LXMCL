@@ -265,7 +265,7 @@ func TestTaskCenterFiltersAndDisablesStaleRetry(t *testing.T) {
 	a, tt := testDesktop(t)
 	i := a.state.Instances[1]
 	a.history = []taskRecord{
-		{InstanceID: i.ID, Revision: i.Revision, Name: i.Name, Version: i.Version, Action: taskVerify, Status: taskFailed, At: time.Now()},
+		{InstanceID: i.ID, Revision: i.Revision, Name: i.Name, Version: i.Version, Action: taskVerify, Status: taskFailed, Detail: "文件摘要不匹配，请重新校验。", At: time.Now()},
 		{Name: "已完成的任务", Version: "1.21.1", Action: taskVerify, Status: taskCompleted, At: time.Now().Add(-time.Minute)},
 	}
 	if err := tt.Click("任务中心"); err != nil {
@@ -291,6 +291,18 @@ func TestTaskCenterFiltersAndDisablesStaleRetry(t *testing.T) {
 	if _, ok := tt.Find("重试"); !ok {
 		t.Fatal("unchanged task target cannot be retried")
 	}
+	a.browsedTask = a.history[1].Key()
+	a.notice, a.noticeTask = "校验失败", a.history[0].Key()
+	if err := tt.Click("主页"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.Click("查看任务"); err != nil || a.browsedTask != a.history[0].Key() {
+		t.Fatalf("notification opened the wrong task: %v", err)
+	}
+	if err := tt.Click("复制错误详情"); err != nil || tt.Clipboard() != a.history[0].Detail {
+		t.Fatalf("copy error detail: %q, %v", tt.Clipboard(), err)
+	}
+	tt.Advance(300 * time.Millisecond)
 	capture(t, tt, "task-filter")
 	a.state.Instances[1].Revision++
 	tt.Frame()

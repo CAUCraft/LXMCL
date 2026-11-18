@@ -567,7 +567,6 @@ func (a *desktop) installModpack() {
 				}
 				a.message("整合包安装失败 · "+i.Name, err)
 				a.noticeJava = errors.Is(err, launcher.ErrJavaRequired)
-				a.noticeTask = true
 			}
 		})
 	})

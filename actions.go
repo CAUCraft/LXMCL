@@ -68,7 +68,7 @@ func (a *desktop) load() {
 
 func (a *desktop) message(s string, err error) {
 	a.notice, a.noticeError = s, err != nil
-	a.noticeJava, a.noticeTask, a.noticeAccount = false, false, false
+	a.noticeJava, a.noticeTask, a.noticeAccount = false, "", false
 	a.noticeJavaTarget = launcher.Instance{}
 	if err != nil {
 		a.notice = fmt.Sprintf("%s：%s", s, err)
@@ -455,7 +455,6 @@ func (a *desktop) playOnServer(i launcher.Instance, installOnly bool, server str
 				if a.noticeJava && i.Launch.JavaMode != launcher.JavaInherit {
 					a.noticeJavaTarget = i
 				}
-				a.noticeTask = true
 			case installOnly:
 				a.message("已校验游戏文件 · "+i.Name, nil)
 			default:
@@ -475,7 +474,6 @@ func (a *desktop) playOnServer(i launcher.Instance, installOnly bool, server str
 			a.saveTask(record, func() {
 				a.running, a.runningID = nil, 0
 				a.message("游戏已退出 · "+i.Name, err)
-				a.noticeTask = err != nil
 			})
 		case <-a.ctx.Done():
 			// Closing the launcher does not stop an already launched game.

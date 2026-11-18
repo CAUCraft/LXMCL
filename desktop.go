@@ -181,10 +181,13 @@ func (a *desktop) noticeBar(c *ui.Context) {
 					a.inspect(i)
 					a.detailPage = detailLaunch
 				} else {
+					a.browsedTask = a.noticeTask
 					a.openTasks()
 				}
 			}
-		} else if a.noticeTask && button(c, "查看任务", action.Text, false) {
+		} else if a.noticeTask != "" && button(c, "查看任务", action.Text, false) {
+			a.browsedTask = a.noticeTask
+			a.notice = ""
 			a.openTasks()
 		}
 		if icon(c, lucide.X(), "关闭通知", false) {

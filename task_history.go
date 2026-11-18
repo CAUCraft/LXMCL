@@ -42,6 +42,9 @@ func (a *desktop) saveTask(record taskRecord, render func()) {
 	a.post(func() {
 		a.history = a.journal.Snapshot()
 		render()
+		if record.Status == taskFailed || record.Status == taskCanceled {
+			a.noticeTask = record.Key()
+		}
 		if err != nil {
 			// Preserve the game outcome and report the separate disk error.
 			a.notice += " · 任务记录保存失败：" + err.Error()

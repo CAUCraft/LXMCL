@@ -113,7 +113,7 @@ type desktop struct {
 	notice           string
 	noticeError      bool
 	noticeJava       bool
-	noticeTask       bool
+	noticeTask       string
 	noticeAccount    bool
 	noticeJavaTarget launcher.Instance
 	microsoftAccount launcher.MicrosoftAccount
