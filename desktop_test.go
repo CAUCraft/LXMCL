@@ -384,6 +384,36 @@ func TestInstanceFilterAndVersionEditor(t *testing.T) {
 	}
 }
 
+func TestRecoveredHistoryKeepsCurrentGameLog(t *testing.T) {
+	a, tt := testDesktop(t)
+	current, former := a.state.Instances[1], a.state.Instances[0]
+	activeLog := filepath.Join(current.GameDir, "launcher-logs", "game-current.log")
+	oldLog := filepath.Join(former.GameDir, "launcher-logs", "game-previous.log")
+	a.running = &launcher.Running{PID: 123, Log: activeLog}
+	a.runningID, a.lastLog = current.ID, activeLog
+	a.restoreTaskHistory([]taskRecord{{Name: former.Name, InstanceID: former.ID, Log: oldLog, Status: taskExited}})
+	tt.SetSize(820, 530)
+	if err := tt.Click("任务中心"); err != nil {
+		t.Fatal(err)
+	}
+	for _, dark := range []bool{false, true} {
+		tt.SetDark(dark)
+		tt.Advance(time.Second)
+		tt.Frame()
+		name := "running-game-history-light"
+		if dark {
+			name = "running-game-history-dark"
+		}
+		capture(t, tt, name)
+	}
+	if err := tt.Click("查看当前日志"); err != nil {
+		t.Fatal(err)
+	}
+	if a.logPath != activeLog || a.lastLog != activeLog || a.history[0].Log != oldLog || a.state.Selected != former.ID {
+		t.Fatal("history recovery changed the running game's log or the home selection")
+	}
+}
+
 func TestTaskCenterFiltersAndDisablesStaleRetry(t *testing.T) {
 	a, tt := testDesktop(t)
 	i := a.state.Instances[1]
