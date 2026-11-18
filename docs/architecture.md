@@ -11,7 +11,7 @@ LXMCL 的主包绘制 MyGo 原生窗口，持有当前页面、表单草稿和�
 | [account](../internal/account) | Microsoft 和皮肤站协议、外观与凭据存储 |
 | [minecraft](../internal/minecraft) 和 [javaruntime](../internal/javaruntime) | 查询版本，安装并校验游戏、加载器及 Java，组装参数并启动进程 |
 | [catalog](../internal/catalog) 和 [distribution](../internal/distribution) | 查询项目、版本与依赖，按平台规则下载、校验、缓存或导出文件 |
-| [content](../internal/content) 和 [modpack](../internal/modpack) | 管理实例资源的导入与启停，解析整合包清单并安装到独立实例 |
+| [content](../internal/content) 和 [modpack](../internal/modpack) | 导入与启停实例资源，安装、导出和更新整合包 |
 | [server](../internal/server) 和 [saves](../internal/saves) | 规范化联机地址，查询服务器状态，备份与恢复世界 |
 | [tasks](../internal/tasks) 和 [log](../internal/log) | 记录任务结果、进度与目标，管理游戏和安装器日志 |
 | [transfer](../internal/transfer)、[storage](../internal/storage)、[process](../internal/process) 和 [i18n](../internal/i18n) | 提供校验、重试、文件发布、平台进程属性和后端文案 |
@@ -30,11 +30,11 @@ LXMCL 的主包绘制 MyGo 原生窗口，持有当前页面、表单草稿和�
 
 - `catalog` 返回带来源、大小和摘要的文件描述。`distribution` 管理缓存与导出，`content` 按实例检查资源兼容性和归档内容。普通资源安装选中的文件，整合包按清单下载必需依赖。
 - `storage.PublishNew` 在目标目录准备临时文件，校验、同步并关闭后发布，同名文件会保留。`ReplaceFile` 用于可替换的缓存和配置。取消或校验失败时清理本次临时文件。
-- 整合包安装在同级临时目录完成，发布实例目录后提交配置。提交失败会尝试回滚，并报告回滚结果。单实例的资源与存档写入须串行。
+- 新实例在同级临时目录安装，发布目录后提交配置。原地更新将清单与实例的 `.lxmcl-pack.json` 比对，应用前复核差异。提交失败时回滚文件，恢复失败时报告备份位置。
 - 存档应在游戏停止写入后备份。恢复先解压并校验整份 ZIP，再逐个发布世界。同名世界自动加后缀，发布阶段中断时保留已恢复的世界。
 
 ## 任务与诊断
 
-`tasks.Run` 管理一次任务的进度回调，`Journal` 串行写入历史。重试实例任务时核对原实例 ID、修订、游戏版本和相关账号。资源重试保留原文件版本及目标，文件夹下载保留原路径。失败通知通过记录 ID 打开对应详情。
+`tasks.Run` 管理一次任务的进度回调，`Journal` 串行写入历史。重试实例任务时核对原实例 ID、修订、游戏版本和相关账号。队列绑定提交时的资源版本与目标，每个文件单独记入历史。资源重试沿用该版本和目标。失败通知通过记录 ID 打开对应详情。
 
 游戏日志位于实例的 `launcher-logs/`，加载器安装日志位于数据目录的 `cache/installer-logs/`。界面预览游戏日志尾部，完整内容可从日志窗口打开。

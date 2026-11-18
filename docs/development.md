@@ -32,8 +32,8 @@ CurseForge 查询和依赖下载需要 [API Key](https://console.curseforge.com/
 
 ```powershell
 $pack = Get-Item .\instance-1-2.0.mrpack
-@{ file = $pack.Name; size = $pack.Length; sha256 = (Get-FileHash $pack.FullName -Algorithm SHA256).Hash } |
-    ConvertTo-Json | Set-Content -Encoding utf8NoBOM pack.json
+$manifest = @{ file = $pack.Name; size = $pack.Length; sha256 = (Get-FileHash $pack.FullName -Algorithm SHA256).Hash }
+[IO.File]::WriteAllText((Join-Path $pack.Directory.FullName "pack.json"), ($manifest | ConvertTo-Json))
 ```
 
 ## 验证
