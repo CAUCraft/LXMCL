@@ -141,8 +141,7 @@ func (a *desktop) openInstall(version string, fabric bool) {
 	}
 }
 
-func (a *desktop) loadInstallLoaders() {
-	p := &a.install
+func (a *desktop) loadInstallLoaders(p *installView, preferred string) {
 	if p.version == "" || p.loader == 0 || a.ctx == nil {
 		return
 	}
@@ -163,6 +162,12 @@ func (a *desktop) loadInstallLoaders() {
 				p.loaderErr = err.Error()
 			} else if len(versions) != 0 {
 				p.loaderVersion = versions[0].Version
+				if preferred != "" {
+					p.loaderVersion = preferred
+					if !slices.ContainsFunc(versions, func(v launcher.LoaderRelease) bool { return v.Version == preferred }) {
+						p.loaderVersions = append([]launcher.LoaderRelease{{Version: preferred}}, versions...)
+					}
+				}
 			}
 		})
 	}()
@@ -240,48 +245,7 @@ func (a *desktop) installDetails(c *ui.Context, p *installView) {
 					p.err = ""
 				}
 			})
-			settingsRow(c, "加载器", func() {
-				before := p.loader
-				action.Segmented(c, &p.loader, []string{"原版", "Fabric", "Forge", "NeoForge", "Quilt"}, action.SegmentedProps{Size: theme.Small}).Label("安装加载器")
-				if before != p.loader {
-					p.err = ""
-					if p.loader == 0 && p.loaderBusy {
-						p.cancelLoaders()
-						p.loaderGame = ""
-					}
-				}
-			})
-			if p.loader != 0 {
-				kind := p.kind()
-				if !p.currentLoaderCatalog() {
-					a.loadInstallLoaders()
-				}
-				settingsRow(c, "加载器版本", func() {
-					switch {
-					case p.loaderBusy:
-						flightLoading(c, "读取 "+kind+" 版本…")
-					case p.loaderErr != "":
-						if button(c, "重试读取 "+kind, action.Default, false) {
-							a.loadInstallLoaders()
-						}
-					case len(p.loaderVersions) == 0:
-						muted(c, "此游戏版本没有可用的 "+kind+" 版本").FontSize(12)
-					default:
-						options := make([]field.SelectOption, 0, len(p.loaderVersions))
-						for _, v := range p.loaderVersions {
-							label := v.Version
-							if v.Preview {
-								label += " · 预览"
-							}
-							options = append(options, field.SelectOption{Value: v.Version, Label: label})
-						}
-						catalogPicker(c.Key(kind), &p.loaderVersion, options, kind+" 版本", "", false).Grow(1).MinWidth(0).MaxWidth(254)
-					}
-				})
-				if p.loaderErr != "" {
-					feedback.Alert(c, p.loaderErr, feedback.AlertProps{Type: feedback.Warning})
-				}
-			}
+			a.loaderFields(c, p, "安装加载器", "")
 			layout.Divider(c, layout.DividerProps{})
 			dir := filepath.Join(a.state.Settings.GameRoot, fmt.Sprintf("instance-%d", a.state.NextID))
 			settingsRow(c, "游戏目录", func() {
@@ -361,4 +325,49 @@ func (a *desktop) submitInstall(p *installView, defaultName string) {
 
 func newLoaderInstallation(state launcher.State, name, version, loader, loaderVersion string) (launcher.State, launcher.Instance, error) {
 	return state.PrepareInstallation(name, version, loader, loaderVersion)
+}
+
+func (a *desktop) loaderFields(c *ui.Context, p *installView, label, preferred string) {
+	settingsRow(c, "加载器", func() {
+		before := p.loader
+		action.Segmented(c, &p.loader, []string{"原版", "Fabric", "Forge", "NeoForge", "Quilt"}, action.SegmentedProps{Size: theme.Small}).Label(label)
+		if before != p.loader {
+			p.err = ""
+			if p.loader == 0 && p.loaderBusy {
+				p.cancelLoaders()
+				p.loaderGame = ""
+			}
+		}
+	})
+	if p.loader != 0 {
+		kind := p.kind()
+		if !p.currentLoaderCatalog() {
+			a.loadInstallLoaders(p, preferred)
+		}
+		settingsRow(c, "加载器版本", func() {
+			switch {
+			case p.loaderBusy:
+				flightLoading(c, "读取 "+kind+" 版本…")
+			case p.loaderErr != "":
+				if button(c, "重试读取 "+kind, action.Default, false) {
+					a.loadInstallLoaders(p, preferred)
+				}
+			case len(p.loaderVersions) == 0:
+				muted(c, "此游戏版本没有可用的 "+kind+" 版本").FontSize(12)
+			default:
+				options := make([]field.SelectOption, 0, len(p.loaderVersions))
+				for _, v := range p.loaderVersions {
+					label := v.Version
+					if v.Preview {
+						label += " · 预览"
+					}
+					options = append(options, field.SelectOption{Value: v.Version, Label: label})
+				}
+				catalogPicker(c.Key(kind), &p.loaderVersion, options, kind+" 版本", "", false).Grow(1).MinWidth(0).MaxWidth(254)
+			}
+		})
+		if p.loaderErr != "" {
+			feedback.Alert(c, p.loaderErr, feedback.AlertProps{Type: feedback.Warning})
+		}
+	}
 }

@@ -134,27 +134,13 @@ func (a *desktop) duplicate(i launcher.Instance) {
 }
 
 func (a *desktop) configureLoader(i launcher.Instance) {
-	a.form = editor{open: true, mode: "loader", target: i, version: i.LoaderVersion}
-	a.fetchFabricVersions(i)
-}
-
-func (a *desktop) fetchFabricVersions(i launcher.Instance) {
-	a.form.loaderLoading, a.form.loaderError = true, ""
-	go func() {
-		ctx, cancel := context.WithTimeout(a.ctx, 15*time.Second)
-		defer cancel()
-		versions, err := launcher.FabricVersions(ctx, i.Version)
-		a.post(func() {
-			f := &a.form
-			if !f.open || f.mode != "loader" || f.target.ID != i.ID || f.target.Revision != i.Revision {
-				return
-			}
-			f.loaderLoading, f.loaderVersions = false, versions
-			if err != nil {
-				f.loaderError = "无法读取 Fabric 版本：" + err.Error()
-			}
-		})
-	}()
+	p := &installView{version: i.Version}
+	for index, kind := range installLoaders {
+		if strings.EqualFold(kind, i.Loader) {
+			p.loader = index
+		}
+	}
+	a.form = editor{open: true, mode: "loader", target: i, loader: p}
 }
 
 func (a *desktop) inspect(i launcher.Instance) {
@@ -182,7 +168,16 @@ func (a *desktop) submitEditor() {
 			a.form.err = "请先退出此实例的游戏"
 			return
 		}
-		err = next.ConfigureLoader(form.target.ID, form.target.Revision, form.version)
+		p := form.loader
+		if p.loader != 0 && (!p.currentLoaderCatalog() || p.loaderBusy || !slices.ContainsFunc(p.loaderVersions, func(v launcher.LoaderRelease) bool { return v.Version == p.loaderVersion })) {
+			a.form.err = "请选择此游戏版本可用的加载器版本"
+			return
+		}
+		version := p.loaderVersion
+		if p.loader == 0 {
+			version = ""
+		}
+		err = next.ConfigureModLoader(form.target.ID, form.target.Revision, p.kind(), version)
 		checkID = form.target.ID
 	case "version":
 		if a.runningID == form.target.ID {

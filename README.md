@@ -8,7 +8,7 @@ Windows x64：从 [GitHub Actions](https://github.com/CAUCraft/LXMCL/actions/wor
 
 面向 Minecraft Java 版 1.20.1 及之后的正式版本。Windows x64 可按游戏元数据自动安装所需 Java，也可在设置中指定已有 Java。
 
-- **实例**：从「下载 → 游戏版本」选择 Minecraft 版本和加载器，可直接安装原版、Fabric、Forge、NeoForge 或 Quilt。实例页可校验文件和配置启动设置。
+- **实例**：从「下载 → 游戏版本」选择 Minecraft 版本和加载器，可直接安装原版、Fabric、Forge、NeoForge 或 Quilt。在已有实例的「概览 → 加载器」中可切换加载器及其构建版本，下次启动时校验所需文件。
 - **整合包**：从 Modrinth 或 CurseForge 保存整合包文件，也可直接安装为独立实例，或导入本地 `.mrpack` 和 CurseForge `.zip`。CurseForge 在线查询和依赖下载需要 API Key。
 - **资源**：在「下载」浏览 Modrinth 模组、资源包和光影包，将文件保存到自选文件夹。从实例的「资源」页可安装兼容文件，按文件名和启用状态筛选本地资源。需要前置时，可从「查看前置」选择下载。
 - **存档**：备份为 ZIP，恢复时保留已有同名世界。

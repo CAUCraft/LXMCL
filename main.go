@@ -84,16 +84,14 @@ func main() {
 }
 
 type editor struct {
-	open           bool
-	mode           string
-	target         launcher.Instance
-	name           string
-	version        string
-	err            string
-	focus          bool
-	loaderVersions []string
-	loaderLoading  bool
-	loaderError    string
+	open    bool
+	mode    string
+	target  launcher.Instance
+	name    string
+	version string
+	err     string
+	focus   bool
+	loader  *installView
 }
 
 type desktop struct {

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"slices"
 	"strconv"
 	"strings"
 
@@ -607,25 +606,12 @@ func (a *desktop) editor(c *ui.Context) {
 func (a *desktop) loaderForm(c *ui.Context) {
 	f := &a.form
 	panelHeading(c, lucide.Layers(), f.target.Name, "Minecraft "+f.target.Version)
-	options := []field.SelectOption{{Value: "", Label: "原版"}}
-	if f.target.LoaderVersion != "" && !slices.Contains(f.loaderVersions, f.target.LoaderVersion) {
-		options = append(options, field.SelectOption{Value: f.target.LoaderVersion, Label: "Fabric " + f.target.LoaderVersion})
+	preferred := ""
+	if strings.EqualFold(f.target.Loader, f.loader.kind()) {
+		preferred = f.target.LoaderVersion
 	}
-	for _, version := range f.loaderVersions {
-		options = append(options, field.SelectOption{Value: version, Label: "Fabric " + version})
-	}
-	catalogPicker(c, &f.version, options, "加载器", "", a.busy)
-	switch {
-	case f.loaderLoading:
-		flightLoading(c, "正在读取 Fabric 版本…")
-	case f.loaderError != "":
-		feedback.Alert(c, f.loaderError, feedback.AlertProps{Type: feedback.Warning})
-		if button(c, "重试读取版本", action.Text, a.busy) {
-			a.fetchFabricVersions(f.target)
-		}
-	case len(f.loaderVersions) == 0 && len(options) == 1:
-		muted(c, "此版本没有可用的 Fabric 稳定版")
-	}
+	muted(c, "当前加载器 · "+loaderName(f.target)).FontSize(12)
+	a.loaderFields(c, f.loader, "实例加载器", preferred)
 	if f.err != "" {
 		feedback.Alert(c, f.err, feedback.AlertProps{Type: feedback.Error})
 	}
