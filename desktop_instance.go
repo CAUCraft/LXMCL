@@ -274,6 +274,7 @@ var instanceFolders = []struct{ label, path string }{
 	{"资源包", "resourcepacks"},
 	{"截图", "screenshots"},
 	{"崩溃报告", "crash-reports"},
+	{"游戏日志", "logs"},
 	{"启动日志", launcherlog.GameDirectory},
 }
 
