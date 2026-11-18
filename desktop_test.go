@@ -441,6 +441,33 @@ func TestResourceAndServerEntrypoints(t *testing.T) {
 	if _, ok := tt.Find("启动并加入"); !ok || a.page != pageNetwork {
 		t.Fatal("the saved Java server has no quick join entry")
 	}
+	if err := tt.Click("服务器地址"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Type("localhost:99999")
+	tt.Key(0, ui.KeyEnter)
+	if a.serverError == "" || a.busy || len(a.state.Servers) != 1 {
+		t.Fatal("invalid direct connection started a task or changed favorites")
+	}
+	a.serverAddress, a.serverError = "localhost", ""
+	tt.Frame()
+	if err := tt.Click("添加收藏…"); err != nil {
+		t.Fatal(err)
+	}
+	if a.favorite.address != "localhost" {
+		t.Fatal("favorite dialog lost the typed address")
+	}
+	if err := tt.Click("保存收藏"); err != nil {
+		t.Fatal(err)
+	}
+	if a.favorite.err == "" || len(a.state.Servers) != 1 {
+		t.Fatal("favorite dialog accepted a duplicate address")
+	}
+	tt.Key(0, ui.KeyEscape)
+	if a.favorite.open || a.serverAddress != "localhost" || a.state.Selected != 1 {
+		t.Fatal("canceling a favorite changed the direct connection")
+	}
+	tt.Advance(300 * time.Millisecond)
 	capture(t, tt, "saved-servers")
 }
 

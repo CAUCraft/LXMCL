@@ -128,33 +128,34 @@ type desktop struct {
 	stationPreviews  map[string]*stationPreview
 	browsedServer    string
 
-	page, settingsPage, downloadPage       int
-	inspected                              int
-	detailPage                             int
-	launchDrafts                           map[int]*instanceLaunchDraft
-	content                                contentView
-	contentRequest                         uint64
-	install                                installView
-	modpacks                               modpackView
-	packs                                  map[launcher.ContentKind]*packBrowser
-	catalogIcons                           map[string]catalogIcon
-	catalogIconSlots                       chan struct{}
-	downloadFolder                         string
-	serverName, serverAddress, serverError string
-	serverStatus                           map[string]*serverCheck
-	query                                  string
-	focusSearch                            bool
-	instanceFilter                         int
-	listMenuID                             int
-	taskFilter                             int
-	browsedTask                            string
-	scroll                                 ui.ScrollState
-	form                                   editor
-	installed                              map[int]bool
-	releases                               []launcher.Version
-	catalogBusy                            bool
-	catalogErr                             string
-	javaInfo                               string
+	page, settingsPage, downloadPage int
+	inspected                        int
+	detailPage                       int
+	launchDrafts                     map[int]*instanceLaunchDraft
+	content                          contentView
+	contentRequest                   uint64
+	install                          installView
+	modpacks                         modpackView
+	packs                            map[launcher.ContentKind]*packBrowser
+	catalogIcons                     map[string]catalogIcon
+	catalogIconSlots                 chan struct{}
+	downloadFolder                   string
+	serverAddress, serverError       string
+	favorite                         favoriteForm
+	serverStatus                     map[string]*serverCheck
+	query                            string
+	focusSearch                      bool
+	instanceFilter                   int
+	listMenuID                       int
+	taskFilter                       int
+	browsedTask                      string
+	scroll                           ui.ScrollState
+	form                             editor
+	installed                        map[int]bool
+	releases                         []launcher.Version
+	catalogBusy                      bool
+	catalogErr                       string
+	javaInfo                         string
 
 	busy         bool
 	cancelTask   context.CancelFunc
