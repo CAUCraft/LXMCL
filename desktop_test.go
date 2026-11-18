@@ -214,10 +214,12 @@ func TestDesktopTasksReachableDuringDownload(t *testing.T) {
 	if err := tt.Click("复制当前日志"); err != nil || tt.Clipboard() != failure {
 		t.Fatalf("log filter lost the stack trace: %v", err)
 	}
-	if err := tt.Click("搜索游戏日志"); err != nil {
-		t.Fatal(err)
-	}
+	mods, key, _ := display.HotkeyBinding("mod+f", display.HotkeyAuto)
+	tt.Key(mods, key)
 	tt.Type("Client.java")
+	if a.logQuery != "Client.java" {
+		t.Fatal("find shortcut did not focus the log search")
+	}
 	capture(t, tt, "log-filtered-compact")
 	if err := tt.Click("复制当前日志"); err != nil || tt.Clipboard() != failure {
 		t.Fatalf("log search lost the event context: %v", err)
@@ -235,6 +237,29 @@ func TestDesktopTasksReachableDuringDownload(t *testing.T) {
 	tt.Frame()
 	if err := tt.Click("复制当前日志"); err != nil || tt.Clipboard() != a.logText {
 		t.Fatalf("copy used the previous filtered preview after refresh: %v", err)
+	}
+	if err := tt.Click("警告 / 错误"); err != nil {
+		t.Fatal(err)
+	}
+	for _, dark := range []bool{false, true} {
+		tt.SetDark(dark)
+		tt.Advance(time.Second)
+		tt.Frame()
+		name := "log-no-match-light-compact"
+		if dark {
+			name = "log-no-match-dark-compact"
+		}
+		capture(t, tt, name)
+	}
+	if err := tt.Click("清除筛选"); err != nil || a.logQuery != "" || a.logFilter != 0 {
+		t.Fatalf("cannot recover from combined log filters: %v", err)
+	}
+	tt.Type("reloaded")
+	if a.logQuery != "reloaded" {
+		t.Fatal("search lost keyboard focus after clearing filters")
+	}
+	if err := tt.Click("复制当前日志"); err != nil || tt.Clipboard() != a.logText || a.state.Selected != 1 {
+		t.Fatalf("reset did not restore the current log in place: %v", err)
 	}
 	tt.Key(0, ui.KeyEscape)
 	if a.logOpen {

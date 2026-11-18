@@ -369,10 +369,11 @@ func (a *desktop) logDialog(c *ui.Context) {
 				location = p.instance.Name + " · " + location
 			}
 			muted(c, location).FontSize(12).SingleLine().Ellipsis("…").Selectable()
+			var search ui.Element
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 				query, filter := a.logQuery, a.logFilter
 				ui.Column(c).Grow(1).MinWidth(0).Children(func() {
-					field.SearchBar(c, &a.logQuery, field.SearchBarProps{Placeholder: "搜索日志与堆栈"}).Label("搜索游戏日志")
+					search = field.SearchBar(c, &a.logQuery, field.SearchBarProps{Placeholder: "搜索日志与堆栈", ShortKey: "mod+f"}).Label("搜索游戏日志")
 				})
 				action.Segmented(c, &a.logFilter, []string{"全部日志", "警告 / 错误"}, action.SegmentedProps{Size: theme.Small}).Label("日志筛选")
 				if query != a.logQuery || filter != a.logFilter {
@@ -395,7 +396,7 @@ func (a *desktop) logDialog(c *ui.Context) {
 			preview.update(a.logText, a.logQuery, a.logFilter == 1)
 			content := preview.text
 			if content == "" {
-				content = "没有匹配的日志，请调整筛选或刷新。"
+				content = "没有匹配的日志。"
 				if a.logReading {
 					content = "正在读取游戏日志…"
 				} else if a.logLibrary != nil && a.logPath == "" {
@@ -420,6 +421,17 @@ func (a *desktop) logDialog(c *ui.Context) {
 				reserved += 90
 			}
 			layout.ScrollArea(c.Key(a.logPath), layout.ScrollAreaProps{State: &a.logScroll}, func() {
+				if preview.text == "" && a.logText != "" && !a.logReading && (a.logQuery != "" || a.logFilter != 0) {
+					ui.Row(c).Padding(12).Gap(8).AlignItems(ui.Center).Children(func() {
+						display.Text(c, content, display.TextProps{})
+						if button(c, "清除筛选", action.Default, false) {
+							a.logQuery, a.logFilter, a.logScroll.Y = "", 0, 0
+							search.Focus()
+							a.logExported, a.logExportErr = false, ""
+						}
+					})
+					return
+				}
 				display.Text(c, content, display.TextProps{Code: true, FontSize: 12}).Padding(12).Selectable()
 			}).Height(max(80, min(340, height-reserved))).Radius(8).Background(theme.TokensOf(c).FillTertiary)
 			hint := "最近 64 KiB · 按日志条目筛选，保留堆栈"
