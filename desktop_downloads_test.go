@@ -145,6 +145,13 @@ func TestDownloadPageSelectsVersionAndLoader(t *testing.T) {
 		t.Fatal("a hidden version can still be installed")
 	}
 	capture(t, tt, "install-search-empty")
+	a.catalogErr = "连接超时"
+	tt.Frame()
+	if err := tt.Click("复制版本列表错误"); err != nil || tt.Clipboard() != a.catalogErr {
+		t.Fatal("empty search hid the failed catalog refresh")
+	}
+	capture(t, tt, "install-search-refresh-error")
+	a.catalogErr = ""
 	if err := tt.Click("清除搜索"); err != nil || p.version != "1.21.4" {
 		t.Fatalf("clearing search lost the visible selection: %v", err)
 	}
