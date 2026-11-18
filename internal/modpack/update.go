@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/CAUCraft/LXMCL/internal/content"
 	"github.com/CAUCraft/LXMCL/internal/i18n"
 	"github.com/CAUCraft/LXMCL/internal/instance"
 	"github.com/CAUCraft/LXMCL/internal/storage"
@@ -152,7 +153,10 @@ func compareUpdate(ctx context.Context, target, stage *os.Root, pack Prepared, i
 		}
 		preview.Changes = append(preview.Changes, change)
 	}
-	return preview, nil
+	nextInstance := i
+	nextInstance.Version, nextInstance.Loader = pack.info.Minecraft, pack.info.Loader
+	err = preserveRenamedMods(ctx, preview.Changes, target, stage, i, nextInstance)
+	return preview, err
 }
 
 func resourcePaths(name string) (key, alternate string) {
@@ -167,6 +171,73 @@ func resourcePaths(name string) (key, alternate string) {
 	default:
 		return name, ""
 	}
+}
+
+// A renamed JAR inherits its toggle only when one removed and one added JAR
+// declare the same set of mod IDs. File names alone do not establish identity.
+func preserveRenamedMods(ctx context.Context, changes []Change, target, stage *os.Root, old, next instance.Instance) error {
+	var removed, added []int
+	hasDisabled := false
+	for n, step := range changes {
+		if step.opposite == "" || path.Dir(step.Path) != "mods" {
+			continue
+		}
+		switch step.Action {
+		case "remove":
+			removed = append(removed, n)
+		case "add":
+			added = append(added, n)
+		default:
+			continue
+		}
+		hasDisabled = hasDisabled || strings.HasSuffix(step.Path, ".disabled")
+	}
+	if !hasDisabled || len(added) == 0 {
+		return nil
+	}
+	index := func(root *os.Root, i instance.Instance, candidates []int) (map[string]int, error) {
+		_, markers, err := content.Mods.Format(i)
+		if err != nil {
+			return nil, nil
+		}
+		unique := make(map[string]int)
+		for _, n := range candidates {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			_, ids := content.ReadModMetadata(root, changes[n].Path, markers)
+			if ids == "" {
+				continue
+			}
+			set := strings.Split(ids, ", ")
+			slices.Sort(set)
+			key := strings.Join(set, ", ")
+			if _, seen := unique[key]; seen {
+				unique[key] = -1
+			} else {
+				unique[key] = n
+			}
+		}
+		return unique, nil
+	}
+	previous, err := index(target, old, removed)
+	if err != nil {
+		return err
+	}
+	incoming, err := index(stage, next, added)
+	if err != nil {
+		return err
+	}
+	for ids, n := range incoming {
+		last, ok := previous[ids]
+		if n < 0 || !ok || last < 0 {
+			continue
+		}
+		if step := &changes[n]; strings.HasSuffix(step.Path, ".disabled") != strings.HasSuffix(changes[last].Path, ".disabled") {
+			step.Path, step.opposite = step.opposite, step.Path
+		}
+	}
+	return nil
 }
 
 func PreviewUpdate(ctx context.Context, pack Prepared, o InstallOptions) (UpdatePreview, error) {

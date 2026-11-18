@@ -10,8 +10,9 @@ import (
 	"github.com/pelletier/go-toml/v2"
 )
 
-// Read only the loader's manifest. A broken or unfamiliar JAR still appears in the list.
-func modMetadata(root *os.Root, name string, markers []string) (string, string) {
+// ReadModMetadata returns a display title and comma-separated mod IDs from loader manifests.
+// A broken or unfamiliar JAR returns empty strings.
+func ReadModMetadata(root *os.Root, name string, markers []string) (string, string) {
 	f, err := root.Open(name)
 	if err != nil {
 		return "", ""

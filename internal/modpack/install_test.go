@@ -2,6 +2,7 @@ package modpack_test
 
 import (
 	"archive/zip"
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"crypto/sha512"
@@ -218,6 +219,7 @@ func TestPortableSelectionRoundTrip(t *testing.T) {
 func TestUpdatePreservesPlayerFilesAndRollsBackFailedCommit(t *testing.T) {
 	ctx := t.Context()
 	o := options(t)
+	o.Target.Loader, o.Target.LoaderVersion = instance.LoaderFabric, "0.16.14"
 	source := o.Target
 	source.GameDir = t.TempDir()
 	out := t.TempDir()
@@ -246,6 +248,23 @@ func TestUpdatePreservesPlayerFilesAndRollsBackFailedCommit(t *testing.T) {
 	for _, name := range []string{"mods/a.jar", "mods/obsolete.jar", "config/client", "saves/world/level.dat"} {
 		put(source.GameDir, name, "initial")
 	}
+	modJar := func(version string) string {
+		t.Helper()
+		var buf bytes.Buffer
+		w := zip.NewWriter(&buf)
+		manifest, err := w.Create("fabric.mod.json")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := json.NewEncoder(manifest).Encode(map[string]string{"id": "map_mod", "version": version}); err != nil {
+			t.Fatal(err)
+		}
+		if err := w.Close(); err != nil {
+			t.Fatal(err)
+		}
+		return buf.String()
+	}
+	put(source.GameDir, "mods/map-1.jar", modJar("1"))
 	o.Commit = func() error { return nil }
 	o.InstallGame = func(context.Context, instance.Instance, func(tasks.Progress)) error { return nil }
 	if err := modpack.Install(ctx, pack("1"), o, nil); err != nil {
@@ -254,6 +273,14 @@ func TestUpdatePreservesPlayerFilesAndRollsBackFailedCommit(t *testing.T) {
 	if err := os.Rename(filepath.Join(o.Target.GameDir, "mods/a.jar"), filepath.Join(o.Target.GameDir, "mods/a.jar.disabled")); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.Rename(filepath.Join(o.Target.GameDir, "mods/map-1.jar"), filepath.Join(o.Target.GameDir, "mods/map-1.jar.disabled")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(source.GameDir, "mods/map-1.jar")); err != nil {
+		t.Fatal(err)
+	}
+	newJar := modJar("2")
+	put(source.GameDir, "mods/map-2.jar", newJar)
 	put(o.Target.GameDir, "config/client", "player")
 	put(o.Target.GameDir, "saves/world/level.dat", "played")
 	for _, name := range []string{"mods/a.jar", "mods/new.jar", "config/client", "saves/world/level.dat"} {
@@ -264,7 +291,7 @@ func TestUpdatePreservesPlayerFilesAndRollsBackFailedCommit(t *testing.T) {
 	}
 	latest := pack("2")
 	preview, err := modpack.PreviewUpdate(ctx, latest, o)
-	if err != nil || !preview.Tracked || len(preview.Changes) != 4 {
+	if err != nil || !preview.Tracked || len(preview.Changes) != 6 {
 		t.Fatalf("preview %+v: %v", preview, err)
 	}
 	o.Commit = func() error { return errors.New("disk full") }
@@ -291,6 +318,10 @@ func TestUpdatePreservesPlayerFilesAndRollsBackFailedCommit(t *testing.T) {
 	put(o.Target.GameDir, "mods/a.jar.disabled", "initial")
 	if err := modpack.ApplyUpdate(ctx, preview, o, nil); err != nil {
 		t.Fatal(err)
+	}
+	check("mods/map-2.jar.disabled", newJar)
+	if _, err := os.Stat(filepath.Join(o.Target.GameDir, "mods/map-2.jar")); !os.IsNotExist(err) {
+		t.Fatalf("renamed mod enabled: %v", err)
 	}
 	check("mods/a.jar.disabled", "upstream")
 	if _, err := os.Stat(filepath.Join(o.Target.GameDir, "mods/a.jar")); !os.IsNotExist(err) {
