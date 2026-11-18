@@ -385,7 +385,12 @@ func (a *desktop) logDialog(c *ui.Context) {
 			})
 			problem, detail := a.logProblem()
 			if detail != "" {
-				feedback.Alert(c, problem, feedback.AlertProps{Type: feedback.Error, Description: detail})
+				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+					layout.ScrollArea(c.Key(problem), layout.ScrollAreaProps{}, func() {
+						feedback.Alert(c, problem, feedback.AlertProps{Type: feedback.Error, Description: detail})
+					}).Grow(1).MinWidth(0).MaxHeight(90)
+					action.CopyButton(c, detail, action.CopyButtonProps{}).Label("复制日志错误详情")
+				})
 			}
 			preview.update(a.logText, a.logQuery, a.logFilter == 1)
 			content := preview.text
