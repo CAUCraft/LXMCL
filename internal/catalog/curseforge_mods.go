@@ -63,7 +63,7 @@ func (c CurseMods) Search(ctx context.Context, filter ResourceFilter, query, ord
 	p.Set("gameId", strconv.Itoa(curseGameID))
 	p.Set("classId", "6")
 	p.Set("searchFilter", strings.TrimSpace(query))
-	sort := map[string]string{"downloads": "6", "updated": "3"}[order]
+	sort := map[string]string{"downloads": "6", "updated": "3", "popularity": "2"}[order]
 	if sort != "" {
 		p.Set("sortField", sort)
 		p.Set("sortOrder", "desc")

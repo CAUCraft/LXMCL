@@ -259,6 +259,12 @@ func TestResourceDownloadsKeepInstallTargetSeparate(t *testing.T) {
 	if err := tt.Click("应用"); err != nil {
 		t.Fatal(err)
 	}
+	if err := tt.Click("搜索排序"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.Click("热门"); err != nil || p.order != "popularity" {
+		t.Fatalf("select CurseForge popularity: %v", err)
+	}
 	project = launcher.PackProject{ID: "248787", Title: "AppleSkin", Author: "squeek502", Description: "在 HUD 中显示食物的饱和度与回复效果。"}
 	p.searched, p.project, p.result = true, project, launcher.PackSearch{Hits: []launcher.PackProject{project}, Total: 1}
 	const modFile = "appleskin-neoforge-mc1.21.3-3.0.8.jar"

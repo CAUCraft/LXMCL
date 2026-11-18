@@ -329,6 +329,13 @@ func (a *desktop) packSearchBar(c *ui.Context, p *packBrowser, label string) {
 				return
 			}
 		}
+		providerSort := field.SelectOption{Value: "relevance", Label: "相关性"}
+		if p.source == launcher.CurseForgeMods {
+			providerSort = field.SelectOption{Value: "popularity", Label: "热门"}
+		}
+		if p.order == "relevance" || p.order == "popularity" {
+			p.order = providerSort.Value
+		}
 		submit := false
 		ui.Column(c).Grow(1).MinWidth(0).Children(func() {
 			submit = field.Input(c, &p.query, field.InputProps{Placeholder: "搜索" + label, Prefix: lucide.Search()}).
@@ -341,7 +348,7 @@ func (a *desktop) packSearchBar(c *ui.Context, p *packBrowser, label string) {
 		ui.Column(c).Width(116).Shrink(0).Children(func() {
 			field.Select(c, &p.order, field.SelectProps{Options: []field.SelectOption{
 				{Value: "downloads", Label: "下载量"},
-				{Value: "relevance", Label: "相关性"},
+				providerSort,
 				{Value: "updated", Label: "最近更新"},
 			}}).Label("搜索排序")
 		})
