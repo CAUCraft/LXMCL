@@ -24,21 +24,21 @@ func TestDuplicateSetupPublishesOnlyChosenContent(t *testing.T) {
 	parent := t.TempDir()
 	target := filepath.Join(parent, "instance-2")
 	failedSave := errors.New("save failed")
-	err := DuplicateSetup(t.Context(), source, target, func() error { return failedSave }, nil)
+	err := DuplicateSetup(t.Context(), source, target, false, func() error { return failedSave }, nil)
 	if !errors.Is(err, failedSave) {
 		t.Fatalf("lost commit error: %v", err)
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	commit := func() error { t.Fatal("unexpected commit"); return nil }
-	err = DuplicateSetup(ctx, source, target, commit, func(tasks.Progress) { cancel() })
+	err = DuplicateSetup(ctx, source, target, false, commit, func(tasks.Progress) { cancel() })
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("lost cancellation: %v", err)
 	}
 	if entries, err := os.ReadDir(parent); err != nil || len(entries) != 0 {
 		t.Fatalf("failed copies left files: %v %v", entries, err)
 	}
-	if err := DuplicateSetup(t.Context(), source, target, func() error { return nil }, nil); err != nil {
+	if err := DuplicateSetup(t.Context(), source, target, false, func() error { return nil }, nil); err != nil {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"options.txt", "mods/test.jar.disabled", "config/a/b.cfg"} {
@@ -58,17 +58,17 @@ func TestDuplicateSetupPublishesOnlyChosenContent(t *testing.T) {
 			t.Fatalf("%s copied: %v", name, err)
 		}
 	}
-	if err := DuplicateSetup(t.Context(), source, target, commit, nil); err == nil {
+	if err := DuplicateSetup(t.Context(), source, target, false, commit, nil); err == nil {
 		t.Fatal("accepted existing destination")
 	}
-	if err := DuplicateSetup(t.Context(), source, filepath.Join(source, "nested", "copy"), commit, nil); err == nil {
+	if err := DuplicateSetup(t.Context(), source, filepath.Join(source, "nested", "copy"), false, commit, nil); err == nil {
 		t.Fatal("accepted nested destination")
 	}
 	if _, err := os.Stat(filepath.Join(source, "nested")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("changed source: %v", err)
 	}
 	if err := os.Symlink("saves", filepath.Join(source, "scripts")); err == nil {
-		if err := DuplicateSetup(t.Context(), source, filepath.Join(parent, "linked"), commit, nil); err == nil {
+		if err := DuplicateSetup(t.Context(), source, filepath.Join(parent, "linked"), false, commit, nil); err == nil {
 			t.Fatal("followed linked resources")
 		}
 	}

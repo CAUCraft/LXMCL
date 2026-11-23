@@ -25,10 +25,10 @@ var setupPaths = []struct {
 }
 
 // DuplicateSetup copies resources and game settings into a new, independent
-// directory. Worlds, screenshots and launcher account files are not copied.
+// directory. Screenshots are optional. Worlds and launcher accounts stay in place.
 // Callers stop game writes and serialize configuration commits. A failed commit
 // rolls the new directory back; it never removes or modifies the source.
-func DuplicateSetup(ctx context.Context, source, destination string, commit func() error, report func(tasks.Progress)) error {
+func DuplicateSetup(ctx context.Context, source, destination string, includeScreenshots bool, commit func() error, report func(tasks.Progress)) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -95,6 +95,9 @@ func DuplicateSetup(ctx context.Context, source, destination string, commit func
 		return err
 	}
 	err = copySetup(ctx, src, dst, report)
+	if err == nil && includeScreenshots {
+		err = CopyScreenshots(ctx, source, dst)
+	}
 	if err := errors.Join(err, dst.Close()); err != nil {
 		return err
 	}

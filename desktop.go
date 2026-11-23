@@ -684,8 +684,9 @@ func (a *desktop) editor(c *ui.Context) {
 					if !a.form.copyContent {
 						a.portableOptions(c)
 					}
+					choice.Checkbox(c, &a.form.files.Screenshots, "游戏截图", choice.CheckboxProps{}).Disabled(a.busy || a.running != nil)
 					if a.form.copyContent {
-						display.Text(c, "包含模组、资源包、光影、配置和服务器列表。存档、截图与日志保留在原实例。", display.TextProps{FontSize: 13})
+						display.Text(c, "包含模组、资源包、光影、配置和服务器列表。存档与日志保留在原实例。", display.TextProps{FontSize: 13})
 					} else {
 						muted(c, "勾选要带入副本的文件。留空可仅复制版本和启动设置。").FontSize(12)
 					}

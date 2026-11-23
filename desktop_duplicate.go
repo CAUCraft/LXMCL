@@ -27,7 +27,7 @@ func (a *desktop) copyInstanceContent(form editor, next launcher.State, target l
 		if !form.copyContent {
 			err = launcher.DuplicateFiles(ctx, form.target, target, form.files, store, next)
 		} else {
-			err = launcher.DuplicateWithContent(ctx, store, next, form.target, target, func(progress launcher.Progress) {
+			err = launcher.DuplicateWithContent(ctx, store, next, form.target, target, form.files.Screenshots, func(progress launcher.Progress) {
 				if time.Since(last) >= 140*time.Millisecond {
 					last = time.Now()
 					a.post(func() { a.task = progress })
