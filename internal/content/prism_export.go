@@ -1,0 +1,196 @@
+package content
+
+import (
+	"archive/zip"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"io/fs"
+	"os"
+	"path"
+	"path/filepath"
+	"regexp"
+	"strings"
+
+	"github.com/CAUCraft/LXMCL/internal/distribution"
+	"github.com/CAUCraft/LXMCL/internal/i18n"
+	"github.com/CAUCraft/LXMCL/internal/instance"
+	"github.com/CAUCraft/LXMCL/internal/saves"
+	"github.com/CAUCraft/LXMCL/internal/storage"
+	"github.com/CAUCraft/LXMCL/internal/tasks"
+	"github.com/CAUCraft/LXMCL/internal/transfer"
+)
+
+// MultiMC's line-based settings format is also supported by Prism.
+var escapePrismName = strings.NewReplacer("\\", "\\\\", "\n", "\\n", "\t", "\\t", "#", "\\#")
+var unescapePrismName = strings.NewReplacer("\\\\", "\\", "\\n", "\n", "\\t", "\t", "\\#", "#")
+
+// ExportPrismZIP publishes a new archive containing only portable vanilla configuration
+// and the optional game data selected by the player.
+func ExportPrismZIP(ctx context.Context, i instance.Instance, filename string, worlds, options bool, report func(tasks.Progress)) error {
+	if err := i.Validate(); err != nil {
+		return err
+	}
+	if !i.Vanilla() {
+		return i18n.Error("prism.version")
+	}
+	portable := instance.LaunchOptions{Memory: i.Launch.Memory, Display: i.Launch.Display, Width: i.Launch.Width, Height: i.Launch.Height}
+	if err := portable.Validate(); err != nil {
+		return err
+	}
+	if strings.TrimSpace(i.Name) == "" || strings.ContainsAny(i.Name, "\x00\r") {
+		return i18n.Error("prism.export_name")
+	}
+	parent, name := filepath.Dir(filename), filepath.Base(filename)
+	if !filepath.IsAbs(filename) || !storage.ValidFilename(name) || !strings.EqualFold(filepath.Ext(name), ".zip") {
+		return i18n.Error("prism.export_target")
+	}
+	if err := CheckSeparateDirectory(i.GameDir, parent); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	out, err := os.OpenRoot(parent)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+	err = storage.PublishNew(ctx, out, name, 0600, func(f *os.File) error {
+		z := zip.NewWriter(&prismZIPWriter{file: f, remaining: storage.MaxPackSize})
+		total, err := writePrismMetadata(z, i)
+		if err != nil {
+			return err
+		}
+		count := 2
+		paths := make(storage.ArchivePaths)
+		add := func(root *os.Root, source, relative string, info fs.FileInfo) error {
+			entry := "instance/.minecraft/" + relative
+			if err := paths.Add(entry, false); err != nil {
+				return err
+			}
+			if !info.Mode().IsRegular() {
+				return i18n.Error("instance.duplicate_file_unsupported", source)
+			}
+			if count >= storage.MaxPackEntries || info.Size() > distribution.MaxFileSize || info.Size() > storage.MaxPackBytes-total {
+				return i18n.Error("modpack.archive_expanded_too_large")
+			}
+			count++
+			total += info.Size()
+			if report != nil {
+				report(tasks.Progress{Stage: i18n.Text("progress.copy_instance_file", relative), Done: count - 2})
+			}
+			return transfer.WriteZIPFile(ctx, root, z, source, entry, info)
+		}
+		if options {
+			if err := addPrismOptions(i.GameDir, add); err != nil {
+				return err
+			}
+		}
+		if worlds {
+			err := saves.VisitWorldFiles(ctx, i.GameDir, func(root *os.Root, name string, info fs.FileInfo) error {
+				_, relative, _ := strings.Cut(name, "/")
+				if !prismWorldData(relative) {
+					return nil
+				}
+				return add(root, name, "saves/"+name, info)
+			})
+			if err != nil {
+				return err
+			}
+		}
+		if err := z.Close(); err != nil {
+			return err
+		}
+		return ctx.Err()
+	})
+	if errors.Is(err, fs.ErrExist) {
+		return i18n.Error("prism.export_exists", err)
+	}
+	return err
+}
+
+func writePrismMetadata(z *zip.Writer, i instance.Instance) (int64, error) {
+	w, err := z.Create("instance/instance.cfg")
+	if err != nil {
+		return 0, err
+	}
+	cfg := "InstanceType=OneSix\nname=" + escapePrismName.Replace(i.Name) + "\n"
+	if i.Launch.Memory != 0 {
+		cfg += fmt.Sprintf("OverrideMemory=true\nMaxMemAlloc=%d\n", i.Launch.Memory)
+	}
+	if i.Launch.Display == instance.DisplayResolution {
+		cfg += fmt.Sprintf("OverrideWindow=true\nLaunchMaximized=false\nMinecraftWinWidth=%d\nMinecraftWinHeight=%d\n", i.Launch.Width, i.Launch.Height)
+	}
+	if _, err := io.WriteString(w, cfg); err != nil {
+		return 0, err
+	}
+	w, err = z.Create("instance/mmc-pack.json")
+	if err != nil {
+		return 0, err
+	}
+	component := map[string]any{"uid": "net.minecraft", "version": i.Version, "important": true}
+	manifest, err := json.Marshal(map[string]any{"formatVersion": 1, "components": []map[string]any{component}})
+	if err != nil {
+		return 0, err
+	}
+	if _, err := w.Write(manifest); err != nil {
+		return 0, err
+	}
+	return int64(len(cfg) + len(manifest)), nil
+}
+
+func addPrismOptions(gameDir string, add func(*os.Root, string, string, fs.FileInfo) error) error {
+	root, err := os.OpenRoot(gameDir)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	info, err := root.Lstat("options.txt")
+	if err != nil {
+		return err
+	}
+	return add(root, "options.txt", "options.txt", info)
+}
+
+type prismZIPWriter struct {
+	file      *os.File
+	remaining int64
+}
+
+func (w *prismZIPWriter) Write(p []byte) (int, error) {
+	if int64(len(p)) > w.remaining {
+		return 0, i18n.Error("modpack.archive_invalid")
+	}
+	n, err := w.file.Write(p)
+	w.remaining -= int64(n)
+	return n, err
+}
+
+var playerProgressFile = regexp.MustCompile(`(?i)^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}[.]json$`)
+
+// Select game-owned world formats. Data packs, scripts, session locks, and
+// unrelated files stored alongside a world are outside the export.
+func prismWorldData(name string) bool {
+	switch name {
+	case "level.dat", "level.dat_old", "icon.png":
+		return true
+	}
+	top, _, _ := strings.Cut(name, "/")
+	ext := path.Ext(name)
+	switch top {
+	case "region", "poi", "entities", "DIM-1", "DIM1", "dimensions", "data", "playerdata", "players", "generated", "advancements", "stats":
+	default:
+		return false
+	}
+	switch path.Base(path.Dir(name)) {
+	case "region", "poi", "entities":
+		return ext == ".mca" || ext == ".mcc"
+	}
+	switch top {
+	case "advancements", "stats", "players":
+		if dir := path.Dir(name); dir == "advancements" || dir == "stats" || dir == "players/advancements" || dir == "players/stats" {
+			return playerProgressFile.MatchString(path.Base(name))
+		}
+	}
+	return ext == ".dat" || ext == ".dat_old" || ext == ".nbt"
+}

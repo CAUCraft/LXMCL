@@ -1,4 +1,7 @@
 {
+  "prism.export_target": "Choose a new .zip file outside the source instance.",
+  "prism.export_exists": "A file with this name already exists. Choose a different ZIP filename. %w",
+  "prism.export_name": "Rename the instance using a non-empty name without carriage returns or NUL characters.",
   "prism.select_root": "Choose a Prism or MultiMC instance folder containing instance.cfg and mmc-pack.json",
   "prism.zip_layout": "Choose a ZIP containing one vanilla instance, with instance.cfg and mmc-pack.json at the root or in the same top-level folder",
   "prism.format": "Unrecognized instance metadata. Select an instance using format version 1",

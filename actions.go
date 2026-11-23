@@ -216,6 +216,9 @@ func (a *desktop) submitEditor() {
 		err = next.SetInstanceNote(form.target.ID, form.target.Revision, form.originalNote, form.note)
 	case "rename":
 		err = next.Rename(form.target.ID, form.target.Revision, form.name)
+	case "prismExport":
+		a.savePrismExport(form.prismExport)
+		return
 	case "export":
 		if strings.TrimSpace(form.version) == "" {
 			a.form.err = "请输入整合包版本"

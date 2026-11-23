@@ -103,6 +103,7 @@ type editor struct {
 	groupMove          *groupMoveDraft
 	icon               *instanceIconDraft
 	prism              *prismDraft
+	prismExport        *prismExportDraft
 	worlds             *worldBrowser
 }
 
