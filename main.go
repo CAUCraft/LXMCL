@@ -163,6 +163,7 @@ type desktop struct {
 	catalogIconSlots                 chan struct{}
 	downloadFolder                   string
 	serverForm                       *serverForm
+	serverBackup                     *serverBackupView
 	serverStatus                     map[string]*serverCheck
 	serverInstanceID                 int
 	query                            string

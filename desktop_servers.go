@@ -82,6 +82,12 @@ func (a *desktop) network(c *ui.Context) {
 		}
 		heading(c, "联机", func() {
 			action.Segmented(c, &a.serverSource, []string{"启动器收藏", "游戏内收藏"}, action.SegmentedProps{Size: theme.Small}).Label("收藏来源")
+			if a.serverSource == 0 && button(c, "备份与恢复…", action.Default, a.busy || a.pickerBusy) {
+				a.serverBackup = &serverBackupView{}
+				if len(a.state.Servers) == 0 {
+					a.serverBackup.mode = 1
+				}
+			}
 			if a.serverSource == 0 && len(a.state.Servers) != 0 {
 				controls()
 			}
