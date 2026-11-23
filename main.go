@@ -100,6 +100,7 @@ type editor struct {
 
 	note, originalNote string
 	originalGroup      string
+	groupMove          *groupMoveDraft
 	icon               *instanceIconDraft
 	prism              *prismDraft
 	worlds             *worldBrowser

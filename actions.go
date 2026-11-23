@@ -206,6 +206,8 @@ func (a *desktop) submitEditor() {
 			return
 		}
 		err = next.SetInstanceIcon(form.target.ID, form.target.Revision, form.icon.original, form.icon.encoded)
+	case "moveGroups":
+		err = form.groupMove.apply(&next)
 	case "renameGroup":
 		err = next.RenameInstanceGroup(form.originalGroup, form.name)
 	case "group":
@@ -317,11 +319,11 @@ func (a *desktop) submitEditor() {
 				name := strings.TrimSpace(form.name)
 				a.libraryGroup = &name
 			}
-		case "group":
+		case "group", "moveGroups":
 			if a.libraryGroup != nil && *a.libraryGroup != "" && !slices.Contains(next.GroupNames(), *a.libraryGroup) {
 				a.libraryGroup = nil
 			}
-			if a.inspected == form.target.ID && !a.matchesGroup(a.inspected) {
+			if !a.matchesGroup(a.inspected) {
 				a.inspected = 0
 			}
 		case "duplicate":

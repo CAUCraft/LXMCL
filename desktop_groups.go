@@ -39,7 +39,7 @@ func (a *desktop) chooseLibraryGroup(group *string) {
 }
 
 func groupLabel(name string) string {
-	if name == "全部分组" || name == "未分组" || name == "重命名当前分组…" {
+	if name == "全部分组" || name == "未分组" || name == "重命名当前分组…" || name == "批量设置分组…" {
 		return "分组 · " + name
 	}
 	return name
@@ -64,8 +64,15 @@ func (a *desktop) libraryGroupPicker(c *ui.Context) {
 	if a.libraryGroup != nil && *a.libraryGroup != "" {
 		options = append(options, field.SelectOption{Value: "rename", Label: "重命名当前分组…"})
 	}
+	if len(groups) > 0 && len(a.state.Instances) > 1 {
+		options = append(options, field.SelectOption{Value: "move", Label: "批量设置分组…"})
+	}
 	selected := key
 	catalogPicker(c, &selected, options, "筛选实例分组", fallback, a.busy).Width(128)
+	if selected == "move" {
+		a.openGroupMove()
+		return
+	}
 	if selected == "rename" && a.libraryGroup != nil {
 		name := *a.libraryGroup
 		a.form = editor{mode: "renameGroup", open: true, focus: true, name: name, originalGroup: name}
@@ -80,12 +87,12 @@ func (a *desktop) libraryGroupPicker(c *ui.Context) {
 	}
 }
 
-func groupDestinationPicker(c *ui.Context, value *string, groups []string, label string, disabled bool) {
+func groupDestinationPicker(c *ui.Context, value *string, groups []string, label string, disabled bool) ui.Element {
 	options := []field.SelectOption{{Value: "", Label: "未分组"}}
 	for _, g := range groups {
 		options = append(options, field.SelectOption{Value: g, Label: groupLabel(g)})
 	}
-	catalogPicker(c, value, options, label, "", disabled)
+	return catalogPicker(c, value, options, label, "", disabled)
 }
 
 func (a *desktop) editGroup(i launcher.Instance) {
