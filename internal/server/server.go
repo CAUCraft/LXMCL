@@ -15,6 +15,21 @@ type Server struct {
 	Address string `json:"address"`
 }
 
+// NewFavorite validates and normalizes an entry for the launcher favorites list.
+func NewFavorite(name, address string) (Server, error) {
+	address, err := Address(address)
+	if err != nil {
+		return Server{}, err
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		name = address
+	} else if len([]rune(name)) > 80 {
+		return Server{}, i18n.Error("server.favorite_name_too_long")
+	}
+	return Server{Name: name, Address: address}, nil
+}
+
 var serverHost = regexp.MustCompile(`^[a-zA-Z0-9](?:[a-zA-Z0-9.-]{0,251}[a-zA-Z0-9])?$`)
 
 func Address(address string) (string, error) {

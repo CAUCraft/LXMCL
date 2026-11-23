@@ -2,7 +2,6 @@ package config
 
 import (
 	"slices"
-	"strings"
 
 	"github.com/CAUCraft/LXMCL/internal/i18n"
 	"github.com/CAUCraft/LXMCL/internal/server"
@@ -21,28 +20,52 @@ func (s *State) EditServer(original server.Server, name, address string) error {
 }
 
 func (s *State) saveServer(index int, name, address string) error {
-	address, err := server.Address(address)
+	entry, err := server.NewFavorite(name, address)
 	if err != nil {
 		return err
 	}
-	name = strings.TrimSpace(name)
-	if name == "" {
-		name = address
-	} else if len([]rune(name)) > 80 {
-		return i18n.Error("server.favorite_name_too_long")
+	if s.serverAddressesExcept(index)[entry.Address] {
+		return i18n.Error("server.favorite_duplicate")
 	}
-	for i, entry := range s.Servers {
-		if i != index && entry.Address == address {
-			return i18n.Error("server.favorite_duplicate")
-		}
-	}
-	entry := server.Server{Name: name, Address: address}
 	if index < 0 {
 		s.Servers = append(s.Servers, entry)
 	} else {
 		s.Servers[index] = entry
 	}
 	return nil
+}
+
+// SavedServerAddresses includes equivalent spellings from older configurations.
+func (s *State) SavedServerAddresses() map[string]bool {
+	return s.serverAddressesExcept(-1)
+}
+
+func (s *State) serverAddressesExcept(index int) map[string]bool {
+	saved := make(map[string]bool, len(s.Servers))
+	for i, entry := range s.Servers {
+		if i == index {
+			continue
+		}
+		if address, err := server.Address(entry.Address); err == nil {
+			saved[address] = true
+		}
+	}
+	return saved
+}
+
+// ImportServers appends eligible favorites in selection order, preserving existing entries.
+func (s *State) ImportServers(rows []server.Server) int {
+	saved := s.SavedServerAddresses()
+	before := len(s.Servers)
+	for _, row := range rows {
+		entry, err := server.NewFavorite(row.Name, row.Address)
+		if err != nil || saved[entry.Address] {
+			continue
+		}
+		s.Servers = append(s.Servers, entry)
+		saved[entry.Address] = true
+	}
+	return len(s.Servers) - before
 }
 
 // MoveServer moves a captured favorite one position in the saved list.

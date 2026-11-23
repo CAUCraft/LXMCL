@@ -10,6 +10,7 @@ import (
 
 	"github.com/CAUCraft/LXMCL/internal/config"
 	"github.com/CAUCraft/LXMCL/internal/instance"
+	"github.com/CAUCraft/LXMCL/internal/server"
 )
 
 func TestLegacySettingsRemainIntactAndCurrentConfigTakesPrecedence(t *testing.T) {
@@ -53,6 +54,25 @@ func TestLegacySettingsRemainIntactAndCurrentConfigTakesPrecedence(t *testing.T)
 	}
 	if got, err := os.ReadFile(current); err != nil || string(got) != string(corrupt) {
 		t.Fatalf("failed load replaced current data: %v", err)
+	}
+}
+
+func TestImportServersPreservesSavedAliasesAndFirstChosenName(t *testing.T) {
+	existing := server.Server{Name: "保留", Address: "OLD.example.invalid"}
+	state := config.State{Servers: []server.Server{existing}}
+	rows := []server.Server{
+		{Name: "另一名称", Address: "old.example.invalid:25565"},
+		{Name: "河谷", Address: "River.example.invalid"},
+		{Name: "同一地址", Address: "river.example.invalid:25565"},
+		{Address: "[2001:db8::1]:25570"},
+		{Name: "无地址"},
+	}
+	want := []server.Server{existing, {Name: "河谷", Address: "river.example.invalid:25565"}, {Name: "[2001:db8::1]:25570", Address: "[2001:db8::1]:25570"}}
+	if n := state.ImportServers(rows); n != 2 || !slices.Equal(state.Servers, want) {
+		t.Fatalf("imported %d, got %+v", n, state.Servers)
+	}
+	if n := state.ImportServers(rows); n != 0 || !slices.Equal(state.Servers, want) {
+		t.Fatalf("re-imported %d, got %+v", n, state.Servers)
 	}
 }
 
