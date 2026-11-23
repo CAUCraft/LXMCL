@@ -22,8 +22,9 @@ import (
 )
 
 type Selection struct {
-	Mods, Config, Worlds    bool
-	Screenshots, ServerList bool // Local instance copies only.
+	Mods, Config, Worlds                 bool // Mods selects the full resource group for pack exports and existing callers.
+	ModFiles, ResourcePacks, ShaderPacks bool // Individual resource folders for instance copies.
+	Screenshots, ServerList              bool // Local instance copies only.
 }
 
 func (s Selection) walk(ctx context.Context, dir string, write func(string, io.Reader) error) error {
@@ -39,8 +40,14 @@ func (s Selection) walk(ctx context.Context, dir string, write func(string, io.R
 	}
 	defer root.Close()
 	var folders []string
-	if s.Mods {
-		folders = append(folders, "mods", "resourcepacks", "shaderpacks")
+	if s.Mods || s.ModFiles {
+		folders = append(folders, "mods")
+	}
+	if s.Mods || s.ResourcePacks {
+		folders = append(folders, "resourcepacks")
+	}
+	if s.Mods || s.ShaderPacks {
+		folders = append(folders, "shaderpacks")
 	}
 	if s.Config {
 		folders = append(folders, "options.txt", "config", "defaultconfigs", "kubejs", "scripts")

@@ -178,7 +178,7 @@ func TestPortableSelectionRoundTrip(t *testing.T) {
 	i := o.Target
 	i.GameDir = t.TempDir()
 	i.Name = "Source"
-	for _, name := range []string{"mods/local.jar.disabled", "saves/world/level.dat", "config/local.txt", "servers.dat"} {
+	for _, name := range []string{"mods/local.jar.disabled", "resourcepacks/pack.zip", "shaderpacks/light.zip", "saves/world/level.dat", "config/local.txt", "servers.dat"} {
 		filename := filepath.Join(i.GameDir, name)
 		if err := os.MkdirAll(filepath.Dir(filename), 0755); err != nil {
 			t.Fatal(err)
@@ -209,7 +209,7 @@ func TestPortableSelectionRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	preview, err := modpack.PrepareLocal(ctx, filename)
-	if err != nil || preview.Info().Overrides != 2 {
+	if err != nil || preview.Info().Overrides != 4 {
 		t.Fatalf("preview: %+v %v", preview.Info(), err)
 	}
 	_, err = modpack.Export(ctx, i, filepath.Dir(filename), "1.0", modpack.Selection{})
@@ -237,6 +237,19 @@ func TestPortableSelectionRoundTrip(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(o.Target.GameDir, "servers.dat")); !os.IsNotExist(err) {
 		t.Fatal("game server list included in exported pack", err)
 	}
+	packs := dup
+	packs.GameDir = filepath.Join(t.TempDir(), "packs")
+	if err := modpack.Duplicate(ctx, i, packs, modpack.Selection{ResourcePacks: true}, o.Commit); err != nil {
+		t.Fatal(err)
+	}
+	if b, err := os.ReadFile(filepath.Join(packs.GameDir, "resourcepacks/pack.zip")); err != nil || string(b) != "resourcepacks/pack.zip" {
+		t.Fatal("resource pack missing", err)
+	}
+	for _, name := range []string{"mods", "shaderpacks", "config", "saves"} {
+		if _, err := os.Stat(filepath.Join(packs.GameDir, name)); !os.IsNotExist(err) {
+			t.Fatal("unselected folder", name, err)
+		}
+	}
 	copyShot := filepath.Join(dup.GameDir, shot)
 	b, err := os.ReadFile(copyShot)
 	if err != nil || !bytes.Equal(b, picture.Bytes()) {
@@ -250,7 +263,7 @@ func TestPortableSelectionRoundTrip(t *testing.T) {
 		t.Fatal("private screenshot included in exported pack", err)
 	}
 	for _, dir := range []string{dup.GameDir, o.Target.GameDir} {
-		for _, name := range []string{"mods/local.jar.disabled", "config/local.txt"} {
+		for _, name := range []string{"mods/local.jar.disabled", "config/local.txt", "resourcepacks/pack.zip", "shaderpacks/light.zip"} {
 			b, err := os.ReadFile(filepath.Join(dir, name))
 			if string(b) != name || err != nil {
 				t.Fatalf("copied %s: %v", name, err)

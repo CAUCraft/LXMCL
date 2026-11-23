@@ -799,7 +799,15 @@ func (a *desktop) loaderForm(c *ui.Context) {
 
 func (a *desktop) portableOptions(c *ui.Context) {
 	f := &a.form.files
-	choice.Checkbox(c, &f.Mods, "模组、资源包和光影包", choice.CheckboxProps{}).Disabled(a.busy)
+	if a.form.mode == "duplicate" {
+		ui.Row(c).Gap(18).Children(func() {
+			choice.Checkbox(c, &f.ModFiles, "模组", choice.CheckboxProps{}).Disabled(a.busy)
+			choice.Checkbox(c, &f.ResourcePacks, "资源包", choice.CheckboxProps{}).Disabled(a.busy)
+			choice.Checkbox(c, &f.ShaderPacks, "光影包", choice.CheckboxProps{}).Disabled(a.busy)
+		})
+	} else {
+		choice.Checkbox(c, &f.Mods, "模组、资源包和光影包", choice.CheckboxProps{}).Disabled(a.busy)
+	}
 	choice.Checkbox(c, &f.Config, "游戏选项、模组配置和脚本", choice.CheckboxProps{}).Disabled(a.busy)
 	choice.Checkbox(c, &f.Worlds, "世界存档", choice.CheckboxProps{}).Disabled(a.busy)
 }
