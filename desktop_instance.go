@@ -45,7 +45,22 @@ func launchFields(opts launcher.LaunchOptions) instanceLaunchFields {
 		}
 		return strconv.Itoa(n)
 	}
-	return instanceLaunchFields{opts.JavaMode, opts.JavaPath, number(opts.Memory), opts.Display, number(opts.Width), number(opts.Height)}
+	f := instanceLaunchFields{opts.JavaMode, opts.JavaPath, number(opts.Memory), opts.Display, number(opts.Width), number(opts.Height)}
+	if opts.Display != launcher.DisplayResolution {
+		f.width, f.height = "1280", "720"
+	}
+	return f
+}
+
+func (f instanceLaunchFields) changed(opts launcher.LaunchOptions) bool {
+	saved := launchFields(opts)
+	if f.display != launcher.DisplayResolution {
+		f.width, f.height = saved.width, saved.height
+	}
+	if f.javaMode != launcher.JavaCustom {
+		f.javaPath = saved.javaPath
+	}
+	return f != saved
 }
 
 func (f instanceLaunchFields) javaOptions() launcher.LaunchOptions {
@@ -105,7 +120,7 @@ func (a *desktop) instanceLaunchSettings(c *ui.Context, i launcher.Instance) {
 	if before != d.fields {
 		d.err = ""
 	}
-	if d.fields != launchFields(i.Launch) {
+	if d.fields.changed(i.Launch) {
 		_, invalid := d.fields.options()
 		if invalid != nil {
 			feedback.Alert(c, invalid.Error(), feedback.AlertProps{Type: feedback.Error})
@@ -133,7 +148,7 @@ func (a *desktop) instanceRuntimeSettings(c *ui.Context, i launcher.Instance, d 
 				field.Select(c, &d.fields.javaMode, field.SelectProps{Options: instanceJavaModes, Disabled: disabled}).Label("Java 模式")
 			})
 			if mode != d.fields.javaMode {
-				d.fields.javaPath, d.javaResult = "", ""
+				d.javaResult = ""
 			}
 			if button(c, "检测 Java", action.Default, disabled) {
 				a.checkInstanceJava(i, d)
@@ -196,17 +211,9 @@ func instanceDisplaySettings(c *ui.Context, f *instanceLaunchFields, disabled bo
 	sectionPane(c).Padding(10, 14).Gap(6).Children(func() {
 		panelHeading(c, lucide.Monitor(), "游戏窗口", "")
 		settingsRow(c, "显示模式", func() {
-			prev := f.display
 			ui.Column(c).Grow(1).MaxWidth(220).Children(func() {
 				field.Select(c, &f.display, field.SelectProps{Options: instanceDisplayModes, Disabled: disabled}).Label("显示模式")
 			})
-			if prev != f.display {
-				if f.display == launcher.DisplayResolution {
-					f.width, f.height = "1280", "720"
-				} else {
-					f.width, f.height = "", ""
-				}
-			}
 		})
 		if f.display == launcher.DisplayResolution {
 			settingsRow(c, "分辨率（像素）", func() {
