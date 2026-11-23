@@ -1,8 +1,11 @@
 package main
 
 import (
+	"compress/gzip"
+	"encoding/binary"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/CAUCraft/LXMCL/internal/saves"
@@ -56,4 +59,59 @@ func TestWorldSearchKeepsOnlyVisibleSelection(t *testing.T) {
 	if p.selected != -1 || len(p.visible) != 3 || p.visible[0].Folder() != "Alpha" {
 		t.Fatal("clearing search did not restore the original list", p.selected)
 	}
+}
+
+func TestWorldSortUsesSavedTimeAndKeepsFolderSelection(t *testing.T) {
+	game := t.TempDir()
+	for _, fixture := range []struct {
+		folder string
+		played uint64
+	}{
+		{"00 旧世界", 0},
+		{"01 河谷", 1000},
+		{"02 河谷", 2000},
+		{"03 河谷", 2000},
+		{"04 旧世界", 0},
+	} {
+		dir := filepath.Join(game, "saves", fixture.folder)
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		file, err := os.Create(filepath.Join(dir, "level.dat"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		z := gzip.NewWriter(file)
+		// A named root compound with a Data compound and a LastPlayed long.
+		nbt := binary.BigEndian.AppendUint64([]byte("\x0a\x00\x00\x0a\x00\x04Data\x04\x00\x0aLastPlayed"), fixture.played)
+		_, writeErr := z.Write(append(nbt, 0, 0))
+		gzipErr, fileErr := z.Close(), file.Close()
+		if writeErr != nil || gzipErr != nil || fileErr != nil {
+			t.Fatal(writeErr, gzipErr, fileErr)
+		}
+	}
+	worlds, err := saves.Worlds(t.Context(), game)
+	if err != nil || len(worlds) != 5 {
+		t.Fatal(worlds, err)
+	}
+	p := &worldBrowser{entries: worlds, visible: worlds, selected: 1, order: sortRecent}
+	check := func(selected string, order ...string) {
+		t.Helper()
+		p.filter()
+		var got []string
+		for _, w := range p.visible {
+			got = append(got, w.Folder())
+		}
+		world, _ := p.selectedWorld()
+		if !slices.Equal(got, order) || world.Folder() != selected {
+			t.Fatal(got, world.Folder(), "want", order, selected)
+		}
+	}
+	check("01 河谷", "02 河谷", "03 河谷", "01 河谷", "00 旧世界", "04 旧世界")
+	p.query = "河谷"
+	check("01 河谷", "02 河谷", "03 河谷", "01 河谷")
+	p.query = "无匹配"
+	check("")
+	p.query, p.order = "", ""
+	check("", "00 旧世界", "01 河谷", "02 河谷", "03 河谷", "04 旧世界")
 }
