@@ -3,6 +3,7 @@
 package config
 
 import (
+	"maps"
 	"slices"
 
 	"github.com/CAUCraft/LXMCL/internal/account"
@@ -19,6 +20,7 @@ type State struct {
 	Servers          []server.Server          `json:"servers,omitempty"`
 	Settings         instance.Settings        `json:"settings"`
 	Instances        []instance.Instance      `json:"instances"`
+	InstanceNotes    map[int]string           `json:"instance_notes,omitempty"`
 	OfflinePlayers   []string                 `json:"offline_players,omitempty"`
 	Selected         int                      `json:"selected"`
 	NextID           int                      `json:"next_id"`
@@ -26,6 +28,7 @@ type State struct {
 
 func (s State) Clone() State {
 	s.Instances = slices.Clone(s.Instances)
+	s.InstanceNotes = maps.Clone(s.InstanceNotes)
 	s.OfflinePlayers = slices.Clone(s.OfflinePlayers)
 	s.Servers = slices.Clone(s.Servers)
 	s.StationProfiles = slices.Clone(s.StationProfiles)

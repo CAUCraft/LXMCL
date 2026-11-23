@@ -55,6 +55,23 @@ func (s *State) Rename(id int, revision uint64, name string) error {
 	return i18n.Error("instance.form_target_changed")
 }
 
+// SetInstanceNote changes launcher metadata without invalidating game tasks.
+func (s *State) SetInstanceNote(id int, revision uint64, previous, text string) error {
+	i, ok := s.Find(id)
+	if !ok || i.Revision != revision || s.InstanceNotes[id] != previous {
+		return i18n.Error("instance.form_target_changed")
+	}
+	if text == "" {
+		delete(s.InstanceNotes, id)
+		return nil
+	}
+	if s.InstanceNotes == nil {
+		s.InstanceNotes = make(map[int]string)
+	}
+	s.InstanceNotes[id] = text
+	return nil
+}
+
 func (s *State) ChangeVersion(id int, revision uint64, version, loaderVersion string) error {
 	for n := range s.Instances {
 		i := &s.Instances[n]

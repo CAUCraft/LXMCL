@@ -95,6 +95,8 @@ type editor struct {
 	copyContent bool
 	loaders     *loaderSelection
 	files       launcher.PortableFiles
+
+	note, originalNote string
 }
 
 type desktop struct {
