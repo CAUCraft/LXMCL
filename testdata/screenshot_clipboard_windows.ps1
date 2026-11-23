@@ -13,8 +13,8 @@ function New-Screenshot($dir, $name, [int]$width, [int]$height, $color) {
     return (Get-Item -LiteralPath $path)
 }
 
-function Assert-ImageCopy($file, $dimensions) {
-    Find-Control $file.Name -Press
+function Assert-ImageCopy($file, $dimensions, [switch]$InViewer) {
+    if (!$InViewer) { Find-Control $file.Name -Press }
     Find-Control $dimensions
     Set-Clipboard -Value 'waiting for the selected image'
     Find-Control '复制图片' -Press
@@ -40,15 +40,26 @@ function Assert-ImageCopy($file, $dimensions) {
 $wide = New-Screenshot $Base 'shared.png' 1703 3 ([Drawing.Color]::FromArgb(177, 42, 153, 228))
 $tall = New-Screenshot $Base 'portrait.png' 7 19 ([Drawing.Color]::FromArgb(83, 213, 31, 142))
 $other = New-Screenshot $Peer 'shared.png' 11 5 ([Drawing.Color]::FromArgb(223, 93, 21, 70))
+$wide.LastWriteTimeUtc = $tall.LastWriteTimeUtc.AddMinutes(-1)
 $files = @($wide, $tall, $other)
 $before = $files | ForEach-Object { (Get-FileHash -LiteralPath $_.FullName).Hash + $_.LastWriteTimeUtc.Ticks }
 Find-Control 'Profile 1' -Press
 Find-Control '截图' -Press
 Assert-ImageCopy $wide '1703 × 3'
-Assert-ImageCopy $tall '7 × 19'
+Find-Control '查看大图' -Press
+Find-Control '上一张' -Press
+Assert-ImageCopy $tall '7 × 19' -InViewer
+Find-Control '返回图库' -Press
+Find-Control '查看大图'
+Find-Control '1703 × 3'
 Find-Control 'Profile 2' -Press
 Find-Control '截图' -Press
-Assert-ImageCopy $other '11 × 5'
+Find-Control $other.Name -Press
+Find-Control '11 × 5'
+Find-Control '查看大图' -Press
+Assert-ImageCopy $other '11 × 5' -InViewer
+Find-Control '返回图库' -Press
+Find-Control '查看大图'
 $after = $files | ForEach-Object { $_.Refresh(); (Get-FileHash -LiteralPath $_.FullName).Hash + $_.LastWriteTimeUtc.Ticks }
 if (($before -join ',') -cne ($after -join ',')) { throw 'Source screenshots changed.' }
 
