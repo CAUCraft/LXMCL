@@ -216,6 +216,7 @@
   "modpack.folder_file_unavailable": "This modpack version has no verifiable download",
   "modpack.install_callbacks_required": "Game installation and instance persistence services are required",
   "modpack.export_destination_invalid": "Choose an export folder outside the instance and enter a pack version",
+  "modpack.export_name_conflict": "A modpack with this name already exists. Export again from the instance menu and choose a different folder.\n%w",
   "modpack.receipt_invalid": "Invalid instance pack file record",
   "modpack.preview_changed": "Instance files changed after preview. Preview the update again",
   "modpack.rollback_directory": "Original files are available in %s",

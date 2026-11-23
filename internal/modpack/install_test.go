@@ -193,6 +193,15 @@ func TestPortableSelectionRoundTrip(t *testing.T) {
 	if err != nil || preview.Info().Overrides != 2 {
 		t.Fatalf("preview: %+v %v", preview.Info(), err)
 	}
+	_, err = modpack.Export(ctx, i, filepath.Dir(filename), "1.0", modpack.Selection{})
+	var conflict *os.PathError
+	if !errors.Is(err, os.ErrExist) || !errors.As(err, &conflict) || err.Error() != i18n.Error("modpack.export_name_conflict", conflict).Error() {
+		t.Fatalf("missing export conflict guidance or cause: %v", err)
+	}
+	again, err := modpack.PrepareLocal(ctx, filename)
+	if err != nil || again != preview {
+		t.Fatalf("repeat export changed the original archive: %v", err)
+	}
 	o.Commit = func() error { return nil }
 	o.InstallGame = func(context.Context, instance.Instance, func(tasks.Progress)) error { return nil }
 	if err := modpack.Install(ctx, preview, o, nil); err != nil {
