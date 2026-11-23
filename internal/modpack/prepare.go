@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/CAUCraft/LXMCL/internal/i18n"
+	"github.com/CAUCraft/LXMCL/internal/storage"
 	"github.com/CAUCraft/LXMCL/internal/transfer"
 )
 
@@ -20,10 +21,10 @@ type Source string
 const (
 	Modrinth        Source = "Modrinth"
 	CurseForge      Source = "CurseForge"
-	MaxArchiveSize         = 1 << 30
+	MaxArchiveSize         = storage.MaxPackSize
 	maxManifestSize        = 8 << 20
-	maxBytes               = 16 << 30
-	maxEntries             = 20000
+	maxBytes               = storage.MaxPackBytes
+	maxEntries             = storage.MaxPackEntries
 )
 
 type Info struct {
@@ -54,22 +55,6 @@ func PrepareLocal(ctx context.Context, filename string) (Prepared, error) {
 	}
 }
 
-func openArchive(filename string) (*os.File, int64, error) {
-	f, err := os.Open(filename)
-	if err != nil {
-		return nil, 0, err
-	}
-	info, err := f.Stat()
-	if err == nil && (!info.Mode().IsRegular() || info.Size() == 0 || info.Size() > MaxArchiveSize) {
-		err = i18n.Error("modpack.archive_invalid")
-	}
-	if err != nil {
-		f.Close()
-		return nil, 0, err
-	}
-	return f, info.Size(), nil
-}
-
 func fingerprint(ctx context.Context, f *os.File, size int64) ([sha256.Size]byte, error) {
 	var sum [sha256.Size]byte
 	h := sha256.New()
@@ -86,7 +71,7 @@ func Prepare(ctx context.Context, filename string, source Source) (Prepared, err
 	if err := ctx.Err(); err != nil {
 		return Prepared{}, err
 	}
-	f, size, err := openArchive(filename)
+	f, size, err := storage.OpenPackFile(filename)
 	if err != nil {
 		return Prepared{}, err
 	}

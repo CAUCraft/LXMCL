@@ -1,10 +1,11 @@
 {
   "prism.select_root": "请选择包含 instance.cfg 和 mmc-pack.json 的 Prism 或 MultiMC 实例目录",
+  "prism.zip_layout": "请选择只含一个原版实例的 ZIP，instance.cfg 和 mmc-pack.json 应位于顶层或同一个一级目录内",
   "prism.format": "无法识别实例元数据，请选择使用格式版本 1 的实例",
   "prism.version": "请选择只含一个 Minecraft 1.20.1 或更高正式版的原版实例",
   "prism.component": "此实例包含额外组件或自定义补丁 %s。请选择原版实例，或在下载页单独安装所需加载器。",
   "prism.game_folder": "无法确定游戏目录，请选择只使用 minecraft 或 .minecraft 其中之一的实例",
-  "prism.changed": "来源自预览后已变化，请重新选择实例目录",
+  "prism.changed": "来源自预览后已变化，请重新选择实例目录或 ZIP",
   "account.credentials_delete_failed": "无法移除账号凭据：%w",
   "account.credentials_save_failed": "无法保存账号凭据；新凭据保留在本次会话中，可重试保存：%w",
   "account.offline_name_invalid": "离线名称须为 3–16 位字母、数字或下划线",

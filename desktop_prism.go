@@ -27,18 +27,23 @@ type prismDraft struct {
 func (a *desktop) startPrismImport() {
 	d := &prismDraft{}
 	a.form = editor{mode: "prism", open: true, prism: d}
-	a.choosePrismDirectory(d)
 }
 
-func (a *desktop) choosePrismDirectory(d *prismDraft) {
-	a.pickPath(mygo.OpenDialogOptions{Title: "选择 Prism 或 MultiMC 实例目录", Directory: true, ButtonLabel: "预览实例"}, func(path string) {
+func (a *desktop) choosePrismSource(d *prismDraft, archive bool) {
+	options := mygo.OpenDialogOptions{Title: "选择 Prism 或 MultiMC 实例目录", Directory: true, ButtonLabel: "预览实例"}
+	read := content.ReadPrismInstance
+	if archive {
+		options = mygo.OpenDialogOptions{Title: "选择 Prism 或 MultiMC 实例 ZIP", ButtonLabel: "预览实例", Filters: []mygo.FileFilter{{Name: "实例 ZIP", Extensions: []string{"zip"}}}}
+		read = content.ReadPrismZIP
+	}
+	a.pickPath(options, func(path string) {
 		if !a.form.open || a.form.prism != d {
 			return
 		}
 		*d = prismDraft{reading: true}
 		a.form.err = ""
 		go func() {
-			p, err := content.ReadPrismInstance(a.ctx, path)
+			p, err := read(a.ctx, path)
 			a.post(func() {
 				if !a.form.open || a.form.prism != d {
 					return
@@ -59,14 +64,19 @@ func (a *desktop) prismEditor(c *ui.Context) {
 	d := a.form.prism
 	wait := d.reading || a.pickerBusy || a.busy
 	p := d.source
-	if button(c, "选择实例目录…", action.Default, wait) {
-		a.choosePrismDirectory(d)
-	}
+	ui.Row(c).Gap(8).Children(func() {
+		if button(c, "选择实例目录…", action.Default, wait) {
+			a.choosePrismSource(d, false)
+		}
+		if button(c, "选择实例 ZIP…", action.Default, wait) {
+			a.choosePrismSource(d, true)
+		}
+	})
 	if d.reading {
 		flightLoading(c, "正在读取实例配置…")
 	} else if p.Version != "" {
 		display.Text(c, "Minecraft "+p.Version+" · 原版", display.TextProps{Strong: true})
-		muted(c, p.Directory).FontSize(12).Ellipsis("…")
+		muted(c, p.Source).FontSize(12).Ellipsis("…")
 		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
 			display.Text(c, "实例名称", display.TextProps{})
 			field.Input(c, &a.form.name, field.InputProps{Placeholder: "实例名称"}).Label("导入后的实例名称").Grow(1).MinWidth(0)
@@ -94,7 +104,7 @@ func (a *desktop) prismEditor(c *ui.Context) {
 			muted(c, "此实例没有可复制的存档或游戏选项。").FontSize(12)
 		}
 	} else if a.form.err == "" {
-		muted(c, "选择含 instance.cfg 和 mmc-pack.json 的原版实例目录。").FontSize(13)
+		muted(c, "选择含 instance.cfg 和 mmc-pack.json 的原版实例目录或 ZIP。").FontSize(13)
 	}
 	if a.form.err != "" {
 		feedback.Alert(c, a.form.err, feedback.AlertProps{Type: feedback.Error})
@@ -141,7 +151,7 @@ func (a *desktop) importPrism(d *prismDraft) {
 		cached := false
 		if err == nil {
 			cached = game.Installed(target)
-			record.InstanceID, record.Revision, record.Status, record.Detail = target.ID, target.Revision, taskCompleted, "来自 "+filepath.Base(p.Directory)
+			record.InstanceID, record.Revision, record.Status, record.Detail = target.ID, target.Revision, taskCompleted, "来自 "+filepath.Base(p.Source)
 		}
 		render := func() {
 			a.busy, a.cancelTask, a.task, a.taskCanceling = false, nil, launcher.Progress{}, false

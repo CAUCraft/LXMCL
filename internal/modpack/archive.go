@@ -23,27 +23,9 @@ func readPlan(r io.ReaderAt, size int64, source Source) (plan, error) {
 	if err != nil {
 		return p, i18n.Error("modpack.archive_open_failed", err)
 	}
-	if len(z.File) > maxEntries {
-		return p, i18n.Error("modpack.archive_too_many_files")
-	}
-	files := make(map[string]*zip.File, len(z.File))
-	seen := make(map[string]bool, len(z.File))
-	var bytes uint64
-	for _, f := range z.File {
-		dir := f.Mode().IsDir() && strings.HasSuffix(f.Name, "/")
-		name := strings.TrimSuffix(f.Name, "/")
-		key := strings.ToLower(name)
-		if !storage.ValidPortablePath(name) || seen[key] || (!dir && (!f.Mode().IsRegular() || f.Name != name)) {
-			return p, i18n.Error("modpack.archive_path_invalid", f.Name)
-		}
-		seen[key] = true
-		if f.UncompressedSize64 > distribution.MaxFileSize || bytes+f.UncompressedSize64 > maxBytes {
-			return p, i18n.Error("modpack.archive_expanded_too_large")
-		}
-		bytes += f.UncompressedSize64
-		if !dir {
-			files[name] = f
-		}
+	files, err := storage.IndexPackEntries(z.File, distribution.MaxFileSize)
+	if err != nil {
+		return p, err
 	}
 	var layers []string
 	switch source {

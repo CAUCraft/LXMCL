@@ -1,11 +1,16 @@
 package content
 
 import (
+	"archive/zip"
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/fstest"
+
+	"github.com/CAUCraft/LXMCL/internal/tasks"
 )
 
 func TestPrismImportLimitsAndRechecksPreview(t *testing.T) {
@@ -60,5 +65,67 @@ func TestPrismImportLimitsAndRechecksPreview(t *testing.T) {
 		if _, err := ReadPrismInstance(t.Context(), dir); err == nil || !strings.Contains(err.Error(), uid) {
 			t.Fatal(uid, err)
 		}
+	}
+}
+
+func TestPrismZIPRechecksAndStagesSelectedFiles(t *testing.T) {
+	filename := filepath.Join(t.TempDir(), "Island.zip")
+	write := func(world string) {
+		t.Helper()
+		f, err := os.Create(filename)
+		if err != nil {
+			t.Fatal(err)
+		}
+		z := zip.NewWriter(f)
+		files := fstest.MapFS{
+			"instance.cfg":                      {Data: []byte("name=Island\n")},
+			"mmc-pack.json":                     {Data: []byte(`{"formatVersion":1,"components":[{"uid":"net.minecraft","version":"1.21.4"}]}`)},
+			".minecraft/saves/Island/level.dat": {Data: []byte(world)},
+			".minecraft/options.txt":            {Data: []byte("music:0.25")},
+			".minecraft/mods/notes.txt":         {Data: []byte("not selected")},
+		}
+		if err := errors.Join(z.AddFS(files), z.Close(), f.Close()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("first")
+	ctx := t.Context()
+	p, err := ReadPrismZIP(ctx, filename)
+	if err != nil || !p.Worlds || !p.Options || p.Version != "1.21.4" {
+		t.Fatal(p, err)
+	}
+	parent := t.TempDir()
+	dst := filepath.Join(parent, "new")
+	commit := func() error { return nil }
+	cancelCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	err = CopyPrismInstance(cancelCtx, p, dst, true, true, commit, func(progress tasks.Progress) {
+		if progress.Done == 1 {
+			cancel()
+		}
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatal(err)
+	}
+	write("later")
+	if err := CopyPrismInstance(ctx, p, dst, true, false, commit, nil); err == nil {
+		t.Fatal("stale world accepted")
+	}
+	if entries, err := os.ReadDir(parent); err != nil || len(entries) != 0 {
+		t.Fatal(entries, err)
+	}
+	p, err = ReadPrismZIP(ctx, filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := CopyPrismInstance(ctx, p, dst, false, true, commit, nil); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(dst, "options.txt"))
+	if err != nil || string(data) != "music:0.25" {
+		t.Fatal(string(data), err)
+	}
+	if entries, err := os.ReadDir(dst); err != nil || len(entries) != 1 {
+		t.Fatal(entries, err)
 	}
 }

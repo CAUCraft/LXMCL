@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 
 	"github.com/CAUCraft/LXMCL/internal/i18n"
+	"github.com/CAUCraft/LXMCL/internal/storage"
 )
 
 type backupFile struct {
@@ -32,7 +33,7 @@ func planBackup(ctx context.Context, root *os.Root, selected *World) ([]backupFi
 	}
 	var files []backupFile
 	var size uint64
-	paths := make(archivePaths)
+	paths := make(storage.ArchivePaths)
 	for _, world := range entries {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -82,7 +83,7 @@ func planBackup(ctx context.Context, root *os.Root, selected *World) ([]backupFi
 			if uint64(info.Size()) > maxSaveBytes-size {
 				return i18n.Error("saves.backup_too_large")
 			}
-			if err := paths.add(name, false); err != nil {
+			if err := paths.Add(name, false); err != nil {
 				return err
 			}
 			size += uint64(info.Size())

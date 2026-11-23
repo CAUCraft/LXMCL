@@ -57,7 +57,7 @@ func planRestore(ctx context.Context, source string, entries []*zip.File) (resto
 		}
 	}
 	wrapped := prefix == "" && wrapsWorlds(entries)
-	paths := make(archivePaths)
+	paths := make(storage.ArchivePaths)
 	worlds := make(map[string]bool)
 	index := sha256.New()
 	var size uint64
@@ -89,7 +89,7 @@ func planRestore(ctx context.Context, source string, entries []*zip.File) (resto
 			}
 			name = prefix + "/" + name
 		}
-		if err := paths.add(name, directory); err != nil {
+		if err := paths.Add(name, directory); err != nil {
 			return plan, err
 		}
 		world, rest, nested := strings.Cut(name, "/")
