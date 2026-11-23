@@ -45,6 +45,20 @@ func (s *State) saveServer(index int, name, address string) error {
 	return nil
 }
 
+// MoveServer moves a captured favorite one position in the saved list.
+func (s *State) MoveServer(original server.Server, step int) bool {
+	if step != -1 && step != 1 {
+		return false
+	}
+	from := slices.Index(s.Servers, original)
+	to := from + step
+	if from < 0 || to < 0 || to >= len(s.Servers) {
+		return false
+	}
+	s.Servers[from], s.Servers[to] = s.Servers[to], s.Servers[from]
+	return true
+}
+
 func (s *State) RemoveServer(address string) {
 	s.Servers = slices.DeleteFunc(s.Servers, func(entry server.Server) bool { return entry.Address == address })
 }

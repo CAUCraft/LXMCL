@@ -56,6 +56,26 @@ func TestLegacySettingsRemainIntactAndCurrentConfigTakesPrecedence(t *testing.T)
 	}
 }
 
+func TestMoveServerRetainsRecordAndStopsAtListEnds(t *testing.T) {
+	var state config.State
+	for _, addr := range []string{"a.example", "b.example", "c.example"} {
+		if err := state.AddServer("", addr); err != nil {
+			t.Fatal(err)
+		}
+	}
+	a, b, c := state.Servers[0], state.Servers[1], state.Servers[2]
+	if !state.MoveServer(b, -1) || state.MoveServer(b, -1) || state.MoveServer(c, 1) ||
+		state.Servers[0] != b || state.Servers[1] != a || state.Servers[2] != c {
+		t.Fatal(state.Servers)
+	}
+	if err := state.EditServer(b, "Renamed", b.Address); err != nil {
+		t.Fatal(err)
+	}
+	if state.MoveServer(b, 1) || !state.MoveServer(a, 1) || state.Servers[1] != c || state.Servers[2] != a {
+		t.Fatal("stale or downward move", state.Servers)
+	}
+}
+
 func TestEditServerKeepsOrderAndRejectsStaleOrDuplicateEdits(t *testing.T) {
 	store := config.Store{Root: t.TempDir()}
 	state, err := store.Load()

@@ -98,8 +98,9 @@ func (a *desktop) network(c *ui.Context) {
 			return
 		}
 		server := a.state.Servers[0]
+		index := 0
 		items := make([]display.ListItem, 0, len(a.state.Servers))
-		for _, entry := range a.state.Servers {
+		for n, entry := range a.state.Servers {
 			description := entry.Address
 			if entry.Name == entry.Address {
 				description = ""
@@ -109,12 +110,22 @@ func (a *desktop) network(c *ui.Context) {
 				Avatar: func() { a.serverBadge(c, entry.Address, 28) },
 			})
 			if entry.Address == a.browsedServer {
-				server = entry
+				server, index = entry, n
 			}
 		}
 		w, _ := c.Size()
 		splitWorkspace(c, listWidth(w), func() {
-			muted(c, "收藏服务器").Padding(3, 5)
+			ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
+				muted(c, "收藏服务器").Padding(3, 5).Grow(1)
+				if len(a.state.Servers) > 1 {
+					if icon(c, lucide.ArrowUp(), "上移收藏服务器", a.busy || index == 0) {
+						a.moveServer(server, -1)
+					}
+					if icon(c, lucide.ArrowDown(), "下移收藏服务器", a.busy || index == len(a.state.Servers)-1) {
+						a.moveServer(server, 1)
+					}
+				}
+			})
 			layout.ScrollArea(c, layout.ScrollAreaProps{}, func() {
 				if key := display.List(c, display.ListProps{Items: items, Active: server.Address, Compact: true}); key != "" {
 					a.browsedServer = key
@@ -161,6 +172,23 @@ func (a *desktop) network(c *ui.Context) {
 				})
 			}).Grow(1).MinHeight(0)
 		})
+	})
+}
+
+func (a *desktop) moveServer(server launcher.Server, step int) {
+	next := a.state.Clone()
+	if !next.MoveServer(server, step) {
+		return
+	}
+	previous := a.browsedServer
+	a.save(next, 0, func(err error) {
+		if err != nil {
+			a.message("保存服务器收藏顺序失败", err)
+			return
+		}
+		if a.browsedServer == previous {
+			a.browsedServer = server.Address
+		}
 	})
 }
 
