@@ -11,6 +11,7 @@ import (
 
 	"github.com/CAUCraft/LXMCL/internal/launcher"
 	launcherlog "github.com/CAUCraft/LXMCL/internal/log"
+	"github.com/CAUCraft/LXMCL/internal/playtime"
 	"github.com/CAUCraft/LXMCL/internal/tasks"
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
@@ -102,6 +103,8 @@ type editor struct {
 
 type desktop struct {
 	journal          tasks.Journal
+	playtimes        map[int]playtime.Entry
+	playtimeErr      error
 	historyReadErr   string
 	historyReloading bool
 	historyRetried   bool

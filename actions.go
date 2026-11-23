@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"maps"
 	"os"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/CAUCraft/LXMCL/internal/launcher"
+	"github.com/CAUCraft/LXMCL/internal/playtime"
 	"github.com/egoist/mygo"
 )
 
@@ -40,6 +42,7 @@ func (a *desktop) load() {
 			a.post(func() { a.loading, a.loadErr = false, err.Error() })
 			return
 		}
+		played, playErr := playtime.Load(a.store.Root)
 		account, accountErr := a.store.LoadMicrosoftAccount()
 		history, historyErr := a.journal.Load(a.store.Root)
 		pending, queueErr := readDownloadQueue(a.store.Root, history)
@@ -48,6 +51,7 @@ func (a *desktop) load() {
 		a.post(func() {
 			a.loading = false
 			a.state, a.draft, a.installed, a.ready = s, s.Settings, installed, true
+			a.playtimes, a.playtimeErr = played, playErr
 			a.libraryGroup = s.LibraryGroup
 			a.modpacks.key = curseForgeKey
 			a.memory = strconv.Itoa(s.Settings.Memory)
@@ -515,6 +519,11 @@ func (a *desktop) playOnServer(i launcher.Instance, installOnly bool, server str
 		}
 		result, err := g.Execute(ctx, a.store, request, report)
 		run := result.Running
+		var started map[int]playtime.Entry
+		var startErr error
+		if run.Done != nil {
+			started, startErr = playtime.Record(a.store.Root, i.ID, run.StartedAt, 0)
+		}
 		account, session, stationSession, stationState := result.Account, result.Session, result.StationSession, result.State
 		refreshed, stationStateChanged, authFailed := result.CredentialsChanged, result.StateChanged, result.AuthFailed
 		installed := readInstallStatus(g, instances, i.Version)
@@ -556,24 +565,30 @@ func (a *desktop) playOnServer(i launcher.Instance, installOnly bool, server str
 				a.message("已校验游戏文件 · "+i.Name, nil)
 			default:
 				a.running, a.runningID, a.lastLog = &run, i.ID, run.Log
+				a.playtimes, a.playtimeErr = started, startErr
 				a.message(fmt.Sprintf("已启动 Java 进程 · PID %d", run.PID), nil)
 			}
 		})
 		if run.Done == nil {
 			return
 		}
-		select {
-		case err := <-run.Done:
-			record.Status = taskExited
-			if err != nil {
-				record.Status, record.Detail = taskFailed, err.Error()
+		exit, finished := run.Observe(a.ctx)
+		played, playErr := playtime.Record(a.store.Root, i.ID, run.StartedAt, exit.At.Sub(run.StartedAt))
+		if !finished {
+			// Closing the launcher leaves the child running. Only the observed interval is known.
+			if playErr != nil {
+				log.Printf("save playtime for instance %d: %v", i.ID, playErr)
 			}
-			a.saveTask(record, func() {
-				a.running, a.runningID = nil, 0
-				a.message("游戏已退出 · "+i.Name, err)
-			})
-		case <-a.ctx.Done():
-			// Closing the launcher does not stop an already launched game.
+			return
 		}
+		record.Status = taskExited
+		if exit.Err != nil {
+			record.Status, record.Detail = taskFailed, exit.Err.Error()
+		}
+		a.saveTask(record, func() {
+			a.playtimes, a.playtimeErr = played, playErr
+			a.running, a.runningID = nil, 0
+			a.message("游戏已退出 · "+i.Name, exit.Err)
+		})
 	})
 }

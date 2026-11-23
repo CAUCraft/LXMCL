@@ -15,6 +15,7 @@
 | `catalog` | Modrinth / CurseForge 项目、版本、依赖和图标查询 |
 | `distribution` / `content` | 平台文件下载与摘要缓存；实例资源校验、导入、启停和发布 |
 | `modpack` | 清单解析、不可变安装预览、路径规划和安装事务 |
+| `playtime` | 按实例 ID 持久化本地游戏进程的已观察时长 |
 | `tasks` | 任务执行与进度生命周期、最近任务记录和历史持久化 |
 | `server` / `saves` | Java 服务器状态查询；世界备份与恢复 |
 | `transfer` / `storage` | 有界传输与摘要校验；路径检查、临时文件和最终发布 |

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os/exec"
+	"time"
 
 	"github.com/CAUCraft/LXMCL/internal/i18n"
 	"github.com/CAUCraft/LXMCL/internal/instance"
@@ -32,10 +33,12 @@ func startProcess(ctx context.Context, i instance.Instance, j javaruntime.Runtim
 		log.Close()
 		return Running{}, i18n.Error("launch.process_start_failed", err)
 	}
-	done := make(chan error, 1)
+	started := time.Now()
+	done := make(chan ProcessExit, 1)
 	go func() {
-		done <- errors.Join(cmd.Wait(), log.Close())
+		err := cmd.Wait()
+		done <- ProcessExit{At: time.Now(), Err: errors.Join(err, log.Close())}
 		close(done)
 	}()
-	return Running{PID: cmd.Process.Pid, Log: log.Name(), Done: done}, nil
+	return Running{PID: cmd.Process.Pid, Log: log.Name(), StartedAt: started, Done: done}, nil
 }

@@ -2,6 +2,7 @@ package minecraft
 
 import (
 	"context"
+	"time"
 
 	"github.com/CAUCraft/LXMCL/internal/account"
 	"github.com/CAUCraft/LXMCL/internal/i18n"
@@ -19,9 +20,30 @@ type LaunchOptions struct {
 }
 
 type Running struct {
-	PID  int
-	Log  string
-	Done <-chan error
+	PID       int
+	Log       string
+	StartedAt time.Time
+	Done      <-chan ProcessExit
+}
+
+type ProcessExit struct {
+	At  time.Time
+	Err error
+}
+
+// Observe returns when the child exits or the launcher stops watching it.
+func (r Running) Observe(ctx context.Context) (ProcessExit, bool) {
+	select {
+	case exit := <-r.Done:
+		return exit, true
+	case <-ctx.Done():
+		select {
+		case exit := <-r.Done:
+			return exit, true
+		default:
+			return ProcessExit{At: time.Now()}, false
+		}
+	}
 }
 
 // Start verifies the installation before preparing authentication JVM arguments.
