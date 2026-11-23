@@ -13,6 +13,14 @@ type ModDependency = catalog.ModDependency
 type PackFile = catalog.PackFile
 type PackSearch = catalog.PackSearch
 
+var ErrCurseForgeAccessDenied = catalog.ErrCurseForgeAccessDenied
+
+const CurseForgeMods = "curseforge"
+
+func (g Game) CurseMods(key string) catalog.CurseMods {
+	return (catalog.Client{Transport: g.Transport}).CurseMods(key)
+}
+
 const PackPageSize = catalog.PackPageSize
 
 func SearchModrinth(ctx context.Context, i Instance, kind ContentKind, query, order string, page int) (PackSearch, error) {
@@ -32,5 +40,9 @@ func ResourceCatalogVersions(ctx context.Context, project string, f ResourceFilt
 }
 
 func ModrinthVersion(ctx context.Context, project, id string) (PackVersion, error) {
-	return (catalog.Client{}).ModrinthVersion(ctx, project, id)
+	return (Game{}).ModrinthVersion(ctx, project, id)
+}
+
+func (g Game) ModrinthVersion(ctx context.Context, project, id string) (PackVersion, error) {
+	return (catalog.Client{Transport: g.Transport}).ModrinthVersion(ctx, project, id)
 }

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/CAUCraft/LXMCL/internal/content"
+	"github.com/CAUCraft/LXMCL/internal/distribution"
 	"github.com/CAUCraft/LXMCL/internal/instance"
 )
 
@@ -20,12 +21,13 @@ const (
 var modrinthID = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 
 type PackProject struct {
-	ID          string `json:"project_id"`
-	Title       string `json:"title"`
-	Author      string `json:"author"`
-	Description string `json:"description"`
-	Downloads   int    `json:"downloads"`
-	IconURL     string `json:"icon_url"`
+	cursePageURL string
+	ID           string `json:"project_id"`
+	Title        string `json:"title"`
+	Author       string `json:"author"`
+	Description  string `json:"description"`
+	Downloads    int    `json:"downloads"`
+	IconURL      string `json:"icon_url"`
 }
 
 // ResourceFilter describes a catalog query independently of an installation.
@@ -50,6 +52,9 @@ func instanceResourceFilter(i instance.Instance, kind content.Kind) ResourceFilt
 }
 
 func (p PackProject) PageURL(kind content.Kind) string {
+	if p.cursePageURL != "" {
+		return p.cursePageURL
+	}
 	if !modrinthID.MatchString(p.ID) {
 		return ""
 	}
@@ -60,6 +65,7 @@ func (p PackProject) PageURL(kind content.Kind) string {
 }
 
 type PackVersion struct {
+	curseAsset   distribution.Asset
 	ID           string    `json:"id"`
 	ProjectID    string    `json:"project_id"`
 	Number       string    `json:"version_number"`

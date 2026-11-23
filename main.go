@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/CAUCraft/LXMCL/internal/launcher"
+	launcherlog "github.com/CAUCraft/LXMCL/internal/log"
 	"github.com/CAUCraft/LXMCL/internal/tasks"
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
@@ -93,6 +94,7 @@ type editor struct {
 	focus       bool
 	copyContent bool
 	loaders     *loaderSelection
+	files       launcher.PortableFiles
 }
 
 type desktop struct {
@@ -137,6 +139,7 @@ type desktop struct {
 	launchDrafts                     map[int]*instanceLaunchDraft
 	content                          contentView
 	contentRequest                   uint64
+	contentCancel                    context.CancelFunc
 	install                          installView
 	modpacks                         modpackView
 	packs                            map[launcher.ContentKind]*packBrowser
@@ -156,6 +159,9 @@ type desktop struct {
 	form                             editor
 	installed                        map[int]bool
 	releases                         []launcher.Version
+	queue                            resourceQueue
+	release                          releaseView
+	logDiagnosis                     launcherlog.Diagnosis
 	catalogBusy                      bool
 	catalogErr                       string
 	javaInfo                         string

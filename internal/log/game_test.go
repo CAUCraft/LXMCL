@@ -196,3 +196,11 @@ func TestInstallerLogPreservesLocationAndOutput(t *testing.T) {
 		t.Fatalf("installer log contains %q, %v", b, err)
 	}
 }
+
+func TestDiagnosePreservesDependencyEvidence(t *testing.T) {
+	const evidence = "Mod 'A' requires version 2 of B, which is missing!"
+	d := Diagnose("Incompatible mods found!\n" + evidence + "\nmore output")
+	if d.Cause != "dependency" || d.Evidence != evidence || Diagnose("Ready to play").Cause != "" {
+		t.Fatalf("unexpected diagnosis: %+v", d)
+	}
+}

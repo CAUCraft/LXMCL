@@ -31,6 +31,7 @@ func (a *desktop) openNoticeTask() {
 
 func (a *desktop) tasks(c *ui.Context) {
 	ui.Column(c).Grow(1).Basis(0).MinHeight(0).Gap(8).Children(func() {
+		a.queuePanel(c)
 		if a.task.Stage != "" {
 			sectionPane(c).Padding(10, 14).Gap(6).Children(func() {
 				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
@@ -107,7 +108,7 @@ func (a *desktop) tasks(c *ui.Context) {
 					a.showLog(a.lastLog)
 				}
 			})
-		} else if a.task.Stage == "" && a.running == nil {
+		} else if a.task.Stage == "" && a.running == nil && len(a.queue.pending) == 0 && a.queue.loadError == nil && a.queue.saveError == nil {
 			emptyPanel(c, lucide.Activity(), "暂无任务")
 		}
 	})
@@ -223,7 +224,11 @@ func (a *desktop) taskRow(c *ui.Context, row taskRecord) {
 			muted(c, "服务器 · "+row.Server).FontSize(13).Selectable()
 		}
 		if row.Resource != nil && row.Resource.Title != "" {
-			muted(c, "资源 · "+row.Resource.Title).FontSize(13).Selectable()
+			label := "资源"
+			if row.Resource.Source == launcher.CurseForgeMods {
+				label = "CurseForge"
+			}
+			muted(c, label+" · "+row.Resource.Title).FontSize(13).Selectable()
 		}
 		if row.Detail != "" {
 			if row.Status == taskFailed {
@@ -232,7 +237,7 @@ func (a *desktop) taskRow(c *ui.Context, row taskRecord) {
 				muted(c, row.Detail).FontSize(13).Selectable()
 			}
 		}
-		if failed && !retry && !folderRetry {
+		if failed && !retry && !folderRetry && row.Pack.Archive == "" {
 			reason := "此任务不支持直接重试，请从原入口重新发起。"
 			if row.InstanceID != 0 {
 				if i, exists := a.state.Find(row.InstanceID); !exists {
@@ -252,7 +257,23 @@ func (a *desktop) taskRow(c *ui.Context, row taskRecord) {
 			muted(c, reason).FontSize(12)
 		}
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-			if (retry || folderRetry) && button(c, "重试", action.Primary, a.busy || a.running != nil) {
+			if row.Pack.Archive != "" {
+				if launcher.CanOpenPackBackup(row.Pack) && button(c, "打开回滚备份", action.Default, false) {
+					a.openPackBackup(row)
+				}
+				if _, ok := launcher.PackRetryTarget(row, a.state); ok {
+					if button(c, "重新预览更新", action.Primary, a.busy || a.pickerBusy || a.running != nil) {
+						a.openPackRetry(row)
+					}
+				} else {
+					muted(c, "原实例已变更，请重新选择更新目标。").FontSize(12)
+				}
+			}
+			needsKey := row.Resource != nil && a.needsResourceKey(*row.Resource)
+			if (retry || folderRetry) && needsKey && button(c, "设置 API Key…", action.Primary, false) {
+				a.modpacks.keyOpen = true
+			}
+			if (retry || folderRetry) && !needsKey && button(c, "重试", action.Primary, a.busy || a.running != nil) {
 				if folderRetry {
 					a.saveResourceFile(row.Folder, *row.Resource, launcher.PackVersion{})
 				} else if row.Action == taskBackup {
@@ -414,6 +435,10 @@ func (a *desktop) logDialog(c *ui.Context) {
 			}
 			_, height := c.Size()
 			reserved := float32(340)
+			if a.logDiagnosis.Cause != "" && detail == "" {
+				layout.ScrollArea(c.Key("log-diagnosis"), layout.ScrollAreaProps{}, func() { a.diagnosisPanel(c) }).MaxHeight(92)
+				reserved += 102
+			}
 			if a.logLibrary != nil {
 				reserved += 42
 			}
@@ -483,4 +508,44 @@ func (a *desktop) logProblem() (string, string) {
 		return "部分日志目录无法读取", a.logLibrary.err
 	}
 	return "", ""
+}
+
+func (a *desktop) diagnosisPanel(c *ui.Context) {
+	d := a.logDiagnosis
+	var title, label string
+	page := detailLaunch
+	switch d.Cause {
+	case "java":
+		title, label = "当前 Java 无法读取这个版本的类文件。请核对实例使用的 Java 版本。", "查看 Java 设置"
+	case "heap":
+		title, label = "Java 堆内存已耗尽。请核对实例的内存上限和模组需求。", "查看内存设置"
+	case "dependency":
+		title, label, page = "加载器报告缺少必需的模组。下方原文列出了依赖要求。", "管理实例模组", detailContent
+	case "mod-version":
+		title, label, page = "加载器报告模组版本不兼容。请核对游戏、加载器和模组版本。", "管理实例模组", detailContent
+	default:
+		return
+	}
+	feedback.Alert(c, title, feedback.AlertProps{Type: feedback.Warning})
+	display.Text(c, d.Evidence, display.TextProps{Code: true, FontSize: 12, Rows: 2}).Selectable()
+	for _, i := range a.state.Instances {
+		if filepath.Join(i.GameDir, launcherlog.GameDirectory) != filepath.Dir(a.logPath) && (a.logLibrary == nil || a.logLibrary.instance.ID != i.ID) {
+			continue
+		}
+		if page == detailContent && !launcher.Mods.Supports(i) {
+			return
+		}
+		ui.Row(c).Children(func() {
+			if button(c, label, action.Default, false) {
+				a.logOpen = false
+				a.inspect(i)
+				a.detailPage = page
+				if page == detailContent {
+					a.content = contentView{id: i.ID, revision: i.Revision, tab: 1}
+					a.refreshContent(i)
+				}
+			}
+		})
+		return
+	}
 }

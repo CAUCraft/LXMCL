@@ -46,6 +46,12 @@ func (v PackVersion) DownloadAsset(kind content.Kind) (PackFile, distribution.As
 	if !ok {
 		return PackFile{}, distribution.Asset{}, i18n.Error("modrinth.version_file_missing")
 	}
+	if v.curseAsset.Algorithm != "" {
+		if kind != content.Mods || !v.curseAsset.Valid(content.MaxSize) {
+			return PackFile{}, distribution.Asset{}, i18n.Error("curseforge.file_unavailable")
+		}
+		return file, v.curseAsset, nil
+	}
 	u, err := url.Parse(file.URL)
 	if err != nil || u.Hostname() != "cdn.modrinth.com" || !distribution.AllowedURL(u) {
 		return PackFile{}, distribution.Asset{}, i18n.Error("modrinth.download_source_invalid")

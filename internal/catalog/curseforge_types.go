@@ -12,6 +12,7 @@ const (
 type curseProject struct {
 	ID, GameID, ClassID  int
 	Name, Summary, Slug  string
+	DownloadCount        int
 	IsAvailable          bool
 	AllowModDistribution *bool
 	Logo                 struct{ ThumbnailURL, URL string }
@@ -25,6 +26,7 @@ type curseFile struct {
 	IsAvailable, IsServerPack, IsEarlyAccessContent bool
 	FileDate                                        time.Time
 	GameVersions                                    []string
+	Dependencies                                    []struct{ ModID, RelationType int }
 	Hashes                                          []struct {
 		Algo  int
 		Value string

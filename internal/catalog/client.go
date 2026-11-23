@@ -62,7 +62,7 @@ func (c Client) json(ctx context.Context, raw, key string, payload, dst any) err
 		}
 		defer resp.Body.Close()
 		if u.Hostname() == "api.curseforge.com" && (resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden) {
-			return i18n.Error("curseforge.access_denied")
+			return ErrCurseForgeAccessDenied
 		}
 		if resp.StatusCode != http.StatusOK {
 			failure := &transfer.HTTPError{Status: resp.StatusCode, Source: u.Hostname()}

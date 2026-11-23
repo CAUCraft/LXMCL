@@ -39,7 +39,15 @@ func OpenDirectory(i instance.Instance, kind Kind, create bool) (*os.Root, error
 }
 
 func List(i instance.Instance, kind Kind) ([]File, error) {
-	ext, _, err := kind.Format(i)
+	return list(context.Background(), i, kind, false)
+}
+
+func Inventory(ctx context.Context, i instance.Instance, kind Kind) ([]File, error) {
+	return list(ctx, i, kind, true)
+}
+
+func list(ctx context.Context, i instance.Instance, kind Kind, identify bool) ([]File, error) {
+	ext, markers, err := kind.Format(i)
 	if err != nil {
 		return nil, err
 	}
@@ -57,6 +65,9 @@ func List(i instance.Instance, kind Kind) ([]File, error) {
 	}
 	var result []File
 	for _, entry := range entries {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		name, disabled := strings.CutSuffix(entry.Name(), ".disabled")
 		if !entry.Type().IsRegular() || !strings.EqualFold(filepath.Ext(name), ext) {
 			continue
@@ -65,7 +76,11 @@ func List(i instance.Instance, kind Kind) ([]File, error) {
 		if err != nil {
 			return nil, err
 		}
-		result = append(result, File{Name: name, Size: info.Size(), Enabled: !disabled, Modified: info.ModTime()})
+		file := File{Name: name, Size: info.Size(), Enabled: !disabled, Modified: info.ModTime()}
+		if identify && kind == Mods {
+			file.ModTitle, file.ModIDs = ReadModMetadata(root, entry.Name(), markers)
+		}
+		result = append(result, file)
 	}
 	return result, nil
 }

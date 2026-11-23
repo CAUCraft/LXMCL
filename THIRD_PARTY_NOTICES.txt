@@ -30,6 +30,10 @@ Ebitengine Kage compiler in MyGo — Apache-2.0
   https://github.com/egoist/mygo/tree/9233663736ca/internal/shader
   licenses/mygo-kage-apache.txt
 
+go-toml v2.4.3 — MIT
+  https://github.com/pelletier/go-toml/blob/v2.4.3/LICENSE
+  licenses/go-toml-mit.txt
+
 Purego v0.11.1 — Apache-2.0
   https://github.com/ebitengine/purego/blob/v0.11.1/LICENSE
   licenses/purego-apache.txt

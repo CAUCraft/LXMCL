@@ -112,3 +112,42 @@ func TestInstallValidatesDescriptorBeforeReusingResource(t *testing.T) {
 		t.Fatalf("existing resource changed: %v", err)
 	}
 }
+
+func TestInventoryReadsDisabledModManifests(t *testing.T) {
+	for _, tc := range []struct{ loader, marker, manifest, title, ids string }{
+		{"Fabric", "fabric.mod.json", `{"id":"core","name":"Core","version":"1.0"}`, "Core · 1.0", "core"},
+		{"Quilt", "quilt.mod.json", `{"quilt_loader":{"id":"core","version":"2","metadata":{"name":"Quilt Core"}}}`, "Quilt Core · 2", "core"},
+		{"Forge", "META-INF/mods.toml", "[[mods]]\nmodId='core'\ndisplayName='Core'\nversion='${file.jarVersion}'\n[[mods]]\nmodId='extra'", "Core · 3.1 / extra", "core, extra"},
+		{"NeoForge", "META-INF/neoforge.mods.toml", "[[mods]]\nmodId='core'\nversion='4'", "core · 4", "core"},
+		{"Fabric", "fabric.mod.json", "{", "", ""},
+	} {
+		t.Run(tc.loader, func(t *testing.T) {
+			i := instance.Instance{GameDir: t.TempDir(), Loader: tc.loader, Version: "1.21.1"}
+			dir := filepath.Join(i.GameDir, "mods")
+			if err := os.Mkdir(dir, 0755); err != nil {
+				t.Fatal(err)
+			}
+			var buf bytes.Buffer
+			w := zip.NewWriter(&buf)
+			for name, data := range map[string]string{tc.marker: tc.manifest, "META-INF/MANIFEST.MF": "Manifest-Version: 1.0\r\nImplementation-Version: 3.\r\n 1\r\n\r\n"} {
+				entry, err := w.Create(name)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := io.WriteString(entry, data); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := w.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, "renamed.jar.disabled"), buf.Bytes(), 0644); err != nil {
+				t.Fatal(err)
+			}
+			files, err := content.Inventory(t.Context(), i, content.Mods)
+			if err != nil || len(files) != 1 || files[0].Enabled || files[0].ModTitle != tc.title || files[0].ModIDs != tc.ids {
+				t.Fatalf("inventory = %+v, %v", files, err)
+			}
+		})
+	}
+}

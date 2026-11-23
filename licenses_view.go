@@ -25,6 +25,7 @@ var licenseOptions = []field.SelectOption{
 	{Value: "licenses/mygo-kage-apache.txt", Label: "Ebitengine Kage · Apache-2.0"},
 	{Value: "licenses/purego-apache.txt", Label: "Purego · Apache-2.0"},
 	{Value: "licenses/go-text-typesetting.txt", Label: "Go Text Typesetting"},
+	{Value: "licenses/go-toml-mit.txt", Label: "go-toml · MIT"},
 	{Value: "licenses/go-bsd.txt", Label: "Go 标准库 · BSD-3-Clause"},
 	{Value: "licenses/go-x-bsd.txt", Label: "Go 扩展包 · BSD-3-Clause"},
 	{Value: "licenses/go-patents.txt", Label: "Go · PATENTS"},

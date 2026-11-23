@@ -247,6 +247,36 @@ func TestResourceDownloadsKeepInstallTargetSeparate(t *testing.T) {
 	if p.target.ID != 2 || a.state.Selected != 1 || p.project.ID != "" {
 		t.Fatal("instance download did not reset the standalone catalog and capture the instance")
 	}
+	for _, label := range []string{"模组下载来源", "CurseForge", "设置 API Key…"} {
+		if err := tt.Click(label); err != nil {
+			t.Fatalf("open CurseForge key settings via %s: %v", label, err)
+		}
+	}
+	if p.target.ID != 2 || a.state.Selected != 1 || !a.modpacks.keyOpen {
+		t.Fatal("source change lost target or key prompt")
+	}
+	a.modpacks.keyDraft = "test-key"
+	if err := tt.Click("应用"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.Click("搜索排序"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.Click("热门"); err != nil || p.order != "popularity" {
+		t.Fatalf("select CurseForge popularity: %v", err)
+	}
+	project = launcher.PackProject{ID: "248787", Title: "AppleSkin", Author: "squeek502", Description: "在 HUD 中显示食物的饱和度与回复效果。"}
+	p.searched, p.project, p.result = true, project, launcher.PackSearch{Hits: []launcher.PackProject{project}, Total: 1}
+	const modFile = "appleskin-neoforge-mc1.21.3-3.0.8.jar"
+	p.version, p.versions = "7517384", []launcher.PackVersion{{ID: "7517384", ProjectID: project.ID, Number: modFile, Type: "release", Files: []launcher.PackFile{{Filename: modFile, Size: 79857}}}}
+	tt.Advance(300 * time.Millisecond)
+	capture(t, tt, "curseforge-mod-compact")
+	tt.SetDark(true)
+	tt.Advance(300 * time.Millisecond)
+	capture(t, tt, "curseforge-mod-dark")
+	if _, ok := tt.Find("加入队列"); !ok {
+		t.Fatal("CurseForge queue action missing")
+	}
 	if err := tt.Click("管理已安装"); err != nil {
 		t.Fatal(err)
 	}

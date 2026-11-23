@@ -7,6 +7,7 @@ import (
 	"maps"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -26,9 +27,15 @@ const (
 	modpackModrinth = iota
 	modpackCurseForge
 	modpackLocal
+	modpackFeed
 )
 
 type modpackView struct {
+	retry                                 *packRetry
+	feedURL, feedStatus                   string
+	target                                string
+	update                                *launcher.PackUpdate
+	changePage                            int
 	mode                                  int
 	key, keyDraft                         string
 	keyOpen                               bool
@@ -74,6 +81,9 @@ func (p *modpackView) begin(parent context.Context, timeout time.Duration) (cont
 }
 
 func (p *modpackView) clearPreview() {
+	p.target, p.update, p.changePage = "", nil, 0
+	p.feedStatus = ""
+	p.retry = nil
 	p.prepared = launcher.PreparedModpack{}
 	p.archive, p.name, p.prepareErr, p.installErr = "", "", "", ""
 }
@@ -208,7 +218,7 @@ func (a *desktop) modpackPage(c *ui.Context) {
 	p := &a.modpacks
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 		before := p.mode
-		action.Segmented(c, &p.mode, []string{"Modrinth", "CurseForge", "本地导入"},
+		action.Segmented(c, &p.mode, []string{"Modrinth", "CurseForge", "本地导入", "服主订阅"},
 			action.SegmentedProps{Size: theme.Small}).Label("整合包来源")
 		if p.mode != before {
 			p.stop()
@@ -221,7 +231,11 @@ func (a *desktop) modpackPage(c *ui.Context) {
 			p.keyOpen = true
 		}
 	})
-	if p.mode != modpackLocal && (p.mode != modpackCurseForge || p.key != "") {
+	if p.mode == modpackFeed {
+		a.packFeedPane(c, p)
+		return
+	}
+	if p.mode < modpackLocal && (p.mode != modpackCurseForge || p.key != "") {
 		if !p.searched {
 			p.applied = strings.TrimSpace(p.query)
 			a.searchModpackProjects(0)
@@ -253,6 +267,8 @@ func (a *desktop) modpackPage(c *ui.Context) {
 			}
 		case p.prepared.Info().Source != "":
 			a.modpackConfirmation(right, p)
+		case p.retry != nil:
+			a.packRetryInput(right, p)
 		case p.mode == modpackLocal:
 			if p.prepareErr != "" {
 				feedback.Alert(right, p.prepareErr, feedback.AlertProps{Type: feedback.Error})
@@ -421,7 +437,7 @@ func (a *desktop) modpackConfirmation(c *ui.Context, p *modpackView) {
 		name = p.archive
 	}
 	heading(c, name, func() {
-		if p.mode != modpackLocal && button(c, "返回版本列表", action.Text, false) {
+		if p.mode < modpackLocal && button(c, "返回版本列表", action.Text, false) {
 			p.clearPreview()
 			c.Invalidate()
 		}
@@ -429,12 +445,34 @@ func (a *desktop) modpackConfirmation(c *ui.Context, p *modpackView) {
 	if p.prepared.Info().Source == "" {
 		return
 	}
+	if p.retry != nil {
+		if _, ok := launcher.PackRetryTarget(p.retry.row, a.state); !ok {
+			feedback.Alert(c, "原实例已变更，请重新选择更新目标。", feedback.AlertProps{Type: feedback.Warning})
+			return
+		}
+	}
 	loader := (launcher.Instance{Loader: info.Loader, LoaderVersion: info.LoaderVersion}).LoaderName()
 	subtitle := string(info.Source)
 	if info.Version != "" {
 		subtitle += " · " + info.Version
 	}
 	muted(c, subtitle).FontSize(13).SingleLine().Ellipsis("…")
+	options := []field.SelectOption{{Value: "", Label: "创建新实例"}}
+	for _, i := range a.state.Instances {
+		options = append(options, field.SelectOption{Value: strconv.Itoa(i.ID), Label: i.Name})
+	}
+	before := p.target
+	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+		display.Text(c, "安装到", display.TextProps{Strong: true})
+		catalogPicker(c.Key("pack-target"), &p.target, options, "整合包安装目标", "", a.busy || p.retry != nil).Grow(1).MinWidth(0).MaxWidth(300)
+	})
+	id, _ := strconv.Atoi(p.target)
+	target, exists := a.state.Find(id)
+	if before != p.target || p.update != nil && !p.update.Matches(p.prepared, target) {
+		p.update = nil
+		p.changePage = 0
+		p.installErr = ""
+	}
 	needsKey := info.Source == launcher.CurseForgeModpacks && info.Downloads > 0 && p.key == ""
 	layout.Divider(c, layout.DividerProps{})
 	layout.ScrollArea(c.Key("modpack-install-config"), layout.ScrollAreaProps{}, func() {
@@ -444,9 +482,13 @@ func (a *desktop) modpackConfirmation(c *ui.Context, p *modpackView) {
 			if info.Loader == launcher.LoaderForge || info.Loader == launcher.LoaderNeoForge {
 				muted(c, "首次安装加载器需要兼容的 Java。").FontSize(12)
 			}
-			muted(c, "实例名称").FontSize(12)
-			field.Input(c.Key("modpack-instance-name"), &p.name, field.InputProps{Placeholder: "输入新实例名称"}).
-				Label("整合包实例名称").Disabled(a.busy)
+			if p.target == "" {
+				muted(c, "实例名称").FontSize(12)
+				field.Input(c.Key("modpack-instance-name"), &p.name, field.InputProps{Placeholder: "输入新实例名称"}).
+					Label("整合包实例名称").Disabled(a.busy)
+			} else {
+				a.packChangeList(c, p, target)
+			}
 			if needsKey {
 				muted(c, "下载 CurseForge 依赖需要 API Key。").FontSize(12)
 				if button(c, "设置 API Key…", action.Default, false) {
@@ -460,6 +502,18 @@ func (a *desktop) modpackConfirmation(c *ui.Context, p *modpackView) {
 	}).Grow(1).MinHeight(0)
 	layout.Divider(c, layout.DividerProps{})
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+		if p.target != "" {
+			ui.Spacer(c).Grow(1)
+			locked := !exists || a.busy || a.running != nil || needsKey
+			if p.update == nil {
+				if button(c, "预览实例更新", action.Primary, locked) {
+					a.previewPackUpdate(p, target)
+				}
+			} else if button(c, "应用更新", action.Primary, locked) {
+				a.applyPackUpdate(p, target)
+			}
+			return
+		}
 		muted(c, "安装到新实例，使用独立游戏目录").FontSize(12).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 		if button(c, "安装整合包", action.Primary, a.busy || a.running != nil || needsKey || strings.TrimSpace(p.name) == "") {
 			a.installModpack()
@@ -488,7 +542,11 @@ func (a *desktop) curseKeyDialog(c *ui.Context) {
 				key := strings.TrimSpace(p.keyDraft)
 				if (button(c, "应用", action.Primary, key == "") || submit) && key != "" {
 					p.key, p.keyOpen, p.keyDraft = key, false, ""
-					if p.mode == modpackCurseForge && p.prepared.Info().Source == "" {
+					a.queue.keyRejected = false
+					if mods := a.packs[launcher.Mods]; mods != nil && mods.source == launcher.CurseForgeMods {
+						mods.resetCatalog()
+					}
+					if a.page == pageDownloads && a.downloadPage == downloadModpacks && p.mode == modpackCurseForge && p.prepared.Info().Source == "" {
 						p.applied = strings.TrimSpace(p.query)
 						a.searchModpackProjects(0)
 					}
@@ -510,6 +568,13 @@ func (a *desktop) installModpack() {
 	if err != nil {
 		p.installErr = err.Error()
 		return
+	}
+	i.PackFeed, i.PackDigest = pack.Feed()
+	for n := range next.Instances {
+		if next.Instances[n].ID == i.ID {
+			next.Instances[n] = i
+			break
+		}
 	}
 	p.installErr = ""
 	ctx, cancel := context.WithCancel(a.ctx)
@@ -569,4 +634,84 @@ func (a *desktop) installModpack() {
 			}
 		})
 	})
+}
+
+func (a *desktop) readPackFeed(i launcher.Instance) {
+	if a.ctx == nil || a.busy {
+		return
+	}
+	p := &a.modpacks
+	url, digest := strings.TrimSpace(p.feedURL), ""
+	if i.ID != 0 {
+		url, digest = i.PackFeed, i.PackDigest
+		p.mode, p.feedURL = modpackFeed, url
+		a.page, a.downloadPage = pageDownloads, downloadModpacks
+	}
+	ctx, cancel, req := p.begin(a.ctx, 6*time.Minute)
+	p.clearPreview()
+	p.preparing, p.archive = true, "服主整合包"
+	game := a.game
+	go func() {
+		defer cancel()
+		pack, current, err := game.PreparePackFeed(ctx, url, digest)
+		a.post(func() {
+			if p.request != req {
+				return
+			}
+			p.preparing = false
+			if err != nil {
+				p.prepareErr = err.Error()
+				return
+			}
+			if i.ID != 0 {
+				live, ok := a.state.Find(i.ID)
+				if !ok || live.Revision != i.Revision {
+					p.prepareErr = "原实例已变更，请重新检查"
+					return
+				}
+			}
+			if current {
+				p.feedStatus = i.Name + " 已是服主发布的版本"
+				return
+			}
+			p.prepared = pack
+			p.name = availableInstanceName(a.state, pack.Info().Name, "整合包")
+			if i.ID != 0 {
+				p.target = strconv.Itoa(i.ID)
+			}
+		})
+	}()
+}
+
+func (a *desktop) packFeedPane(c *ui.Context, p *modpackView) {
+	w, _ := c.Size()
+
+	display.Text(c, "服主订阅地址", display.TextProps{Strong: true})
+	ui.Row(c).MaxWidth(680).Gap(8).AlignItems(ui.Center).Children(func() {
+		before := p.feedURL
+		submit := field.Input(c, &p.feedURL, field.InputProps{Placeholder: "https://play.example.org/pack.json"}).Width(max(180, min(520, w-330))).MinWidth(0).Label("订阅清单 URL").Disabled(p.preparing || a.busy).Submitted()
+		if p.feedURL != before {
+			p.clearPreview()
+		}
+		if (button(c, "读取订阅", action.Primary, p.preparing || a.busy || strings.TrimSpace(p.feedURL) == "") || submit) && !p.preparing && !a.busy {
+			a.readPackFeed(launcher.Instance{})
+		}
+	})
+	switch {
+	case p.preparing:
+		flightLoading(c, "正在读取订阅并校验整合包…")
+		ui.Row(c).Children(func() {
+			if button(c, "取消读取", action.Default, false) {
+				p.stop()
+				p.clearPreview()
+			}
+		})
+	case p.prepared.Info().Source != "":
+		layout.Divider(c, layout.DividerProps{})
+		a.modpackConfirmation(c, p)
+	case p.prepareErr != "":
+		feedback.Alert(c, p.prepareErr, feedback.AlertProps{Type: feedback.Error})
+	case p.feedStatus != "":
+		muted(c, p.feedStatus)
+	}
 }

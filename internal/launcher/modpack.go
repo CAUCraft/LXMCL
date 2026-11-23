@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 
-	"github.com/CAUCraft/LXMCL/internal/distribution"
 	"github.com/CAUCraft/LXMCL/internal/i18n"
 	"github.com/CAUCraft/LXMCL/internal/modpack"
 )
@@ -20,7 +19,7 @@ func (g Game) PrepareOnlineModpack(ctx context.Context, r ModpackRelease) (Prepa
 	if !ok {
 		return PreparedModpack{}, i18n.Error("modpack.online_file_unavailable")
 	}
-	filename, err := (distribution.Cache{Root: g.Cache}).Ensure(ctx, a)
+	filename, err := g.downloads().Ensure(ctx, a)
 	if err != nil {
 		return PreparedModpack{}, err
 	}
@@ -29,4 +28,17 @@ func (g Game) PrepareOnlineModpack(ctx context.Context, r ModpackRelease) (Prepa
 
 func PrepareLocalModpack(ctx context.Context, filename string) (PreparedModpack, error) {
 	return modpack.PrepareLocal(ctx, filename)
+}
+
+func (g Game) PreparePackFeed(ctx context.Context, url, installed string) (PreparedModpack, bool, error) {
+	return modpack.PrepareFeed(ctx, url, g.Cache, installed, g.Transport)
+}
+
+type PortableFiles = modpack.Selection
+
+func ExportInstance(ctx context.Context, i Instance, folder, version string, selection PortableFiles) (string, error) {
+	return modpack.Export(ctx, i, folder, version, selection)
+}
+func DuplicateFiles(ctx context.Context, source, target Instance, selection PortableFiles, store Store, next State) error {
+	return modpack.Duplicate(ctx, source, target, selection, func() error { return store.Save(next) })
 }

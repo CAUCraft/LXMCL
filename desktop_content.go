@@ -3,6 +3,7 @@ package main
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"slices"
@@ -24,17 +25,20 @@ import (
 )
 
 type contentView struct {
-	id, tab  int
-	revision uint64
-	files    []launcher.ContentFile
-	reading  bool
-	err      string
-	query    string
-	filter   int
-	order    string
-	selected map[string]bool // physical filename → enabled state
-	scroll   ui.ListState
-	listing  *resourceListing
+	mods       map[string]launcher.InstalledMod
+	checking   bool
+	checkError string
+	id, tab    int
+	revision   uint64
+	files      []launcher.ContentFile
+	reading    bool
+	err        string
+	query      string
+	filter     int
+	order      string
+	selected   map[string]bool // physical filename → enabled state
+	scroll     ui.ListState
+	listing    *resourceListing
 }
 
 type resourceListing struct {
@@ -78,15 +82,22 @@ func (v contentView) kind() launcher.ContentKind {
 }
 
 func (a *desktop) refreshContent(i launcher.Instance) {
-	a.content.selected, a.content.listing = nil, nil
+	a.content.listing = nil
 	if a.ctx == nil {
 		return
 	}
+	if a.contentCancel != nil {
+		a.contentCancel()
+	}
+	ctx, cancel := context.WithCancel(a.ctx)
+	a.contentCancel = cancel
 	a.contentRequest++
+	a.content.mods, a.content.selected, a.content.checking, a.content.checkError = nil, nil, false, ""
 	request, kind := a.contentRequest, a.content.kind()
 	a.content.reading, a.content.err, a.content.files = true, "", nil
 	go func() {
-		files, err := launcher.ListContent(i, kind)
+		defer cancel()
+		files, err := launcher.ContentInventory(ctx, i, kind)
 		a.post(func() {
 			if request == a.contentRequest {
 				a.content.reading, a.content.files = false, files
@@ -139,6 +150,9 @@ func (a *desktop) instanceContent(c *ui.Context, i launcher.Instance) {
 		}
 		ui.Spacer(c).Grow(1)
 		kind := v.kind()
+		if kind == launcher.Mods && len(v.files) > 0 && button(c, "检查更新", action.Default, disabled || v.checking || v.reading) {
+			a.checkModUpdates(i)
+		}
 		if button(c, "添加"+contentLabel(kind)+"…", action.Primary, false) {
 			a.openResourceDownloads(i, kind)
 		}
@@ -226,7 +240,7 @@ func (v *contentView) visibleFiles() []launcher.ContentFile {
 	}
 	var files []launcher.ContentFile
 	for _, file := range v.files {
-		if query != "" && !strings.Contains(strings.ToLower(file.Name), query) ||
+		if query != "" && !strings.Contains(strings.ToLower(file.Name+"\n"+file.ModTitle+"\n"+file.ModIDs+"\n"+v.mods[contentKey(file)].Title), query) ||
 			v.filter == 1 && !file.Enabled || v.filter == 2 && file.Enabled {
 			continue
 		}
@@ -276,9 +290,16 @@ func (v *contentView) selection(files []launcher.ContentFile) []launcher.Content
 
 func (a *desktop) contentList(c *ui.Context, i launcher.Instance, disabled bool) {
 	v := &a.content
+	if v.kind() == launcher.Mods && (v.checking || v.mods != nil || v.checkError != "") {
+		a.modControls(c, i, disabled)
+	}
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 		oldQuery, oldFilter := v.query, v.filter
-		field.SearchBar(c, &v.query, field.SearchBarProps{Placeholder: "搜索本地文件"}).Label("搜索本地资源").Grow(1).MinWidth(0)
+		placeholder := "搜索本地文件"
+		if v.kind() == launcher.Mods {
+			placeholder = "搜索名称、模组 ID 或文件名"
+		}
+		field.SearchBar(c, &v.query, field.SearchBarProps{Placeholder: placeholder}).Label("搜索本地资源").Grow(1).MinWidth(0)
 		action.Segmented(c, &v.filter, []string{"全部资源", "已启用", "已停用"}, action.SegmentedProps{Size: theme.Small}).Label("本地资源筛选")
 		if oldQuery != v.query || oldFilter != v.filter {
 			v.selected, v.scroll = nil, ui.ListState{}
@@ -345,7 +366,7 @@ func (a *desktop) contentList(c *ui.Context, i launcher.Instance, disabled bool)
 				}
 			}
 			leadIcon(c, downloadTabs[downloadTab(v.kind())].Icon, 26)
-			display.Text(c, file.Name, display.TextProps{Strong: true, Rows: 1}).Grow(1).MinWidth(0).Ellipsis("…")
+			a.contentFileTitle(c, i, file)
 			detail := fileSizeLabel(file.Size)
 			if v.order == "modified" && !file.Modified.IsZero() {
 				detail = file.Modified.Local().Format("01-02 15:04") + " · " + detail
@@ -415,7 +436,7 @@ func (a *desktop) runContentTask(i launcher.Instance, label string, resource *re
 		return
 	}
 	row := taskRecord{InstanceID: i.ID, Revision: i.Revision, Name: i.Name, Version: i.Version, Action: label, At: time.Now(), Resource: resource}
-	a.runFileTask(row, work, func() {
+	a.runFileTask(row, work, func(error) {
 		if label == taskBackup && a.backups != nil && a.backups.instanceID == i.ID {
 			a.refreshBackups(i.ID)
 		}
@@ -433,7 +454,8 @@ func (a *desktop) runFolderDownload(folder, action, name string, resource *resou
 	a.runFileTask(row, work, nil)
 }
 
-func (a *desktop) runFileTask(row taskRecord, work func(context.Context, func(launcher.Progress)) error, refresh func()) {
+func (a *desktop) runFileTask(row taskRecord, work func(context.Context, func(launcher.Progress)) error, refresh func(error)) {
+	queuedCurseMod := row.ID != "" && row.Resource != nil && row.Resource.Source == launcher.CurseForgeMods
 	row = row.Submitted()
 	ctx, cancel := context.WithCancel(a.ctx)
 	a.busy, a.taskName, a.cancelTask = true, row.Name, cancel
@@ -443,15 +465,23 @@ func (a *desktop) runFileTask(row taskRecord, work func(context.Context, func(la
 		defer cancel()
 		err := tasks.Run(ctx, work, func(p launcher.Progress) { a.post(func() { a.task = p }) })
 		row.Status = tasks.Outcome(err)
+		if queuedCurseMod && errors.Is(err, launcher.ErrCurseForgeAccessDenied) {
+			row.Status = tasks.WaitingForKey
+		}
 		if err != nil {
 			row.Detail = err.Error()
+			if row.Pack.Archive != "" {
+				row.Pack.BackupDir = launcher.RollbackDirectory(err)
+			}
+		} else {
+			row.Pack = tasks.PackUpdate{}
 		}
 		a.saveTask(row, func() {
 			a.busy, a.cancelTask, a.task = false, nil, launcher.Progress{}
 			a.taskCanceling = false
 			a.message(row.Action+" · "+row.Status, err)
 			if refresh != nil {
-				refresh()
+				refresh(err)
 			}
 		})
 	})
@@ -467,5 +497,115 @@ func fileSizeLabel(bytes int64) string {
 		return fmt.Sprintf("%.1f KiB", float64(bytes)/(1<<10))
 	default:
 		return fmt.Sprintf("%d B", bytes)
+	}
+}
+
+func (a *desktop) contentFileTitle(c *ui.Context, i launcher.Instance, f launcher.ContentFile) {
+	v := &a.content
+	key := contentKey(f)
+	m, found := v.mods[key]
+	if (!found || m.Current.ID == "") && f.ModTitle == "" {
+		display.Text(c, f.Name, display.TextProps{Strong: true, Rows: 1}).Grow(1).MinWidth(0).Ellipsis("…")
+		return
+	}
+	title, detail := f.ModTitle, f.Name
+	if m.Current.ID != "" {
+		title = m.Title
+		if title == "" {
+			title = f.Name
+		}
+		if m.Current.Number != "" {
+			title += " · " + m.Current.Number
+		}
+		if m.Update.ID != "" {
+			title += " → " + m.Update.Number
+		}
+		detail = "Modrinth · " + detail
+	}
+	ui.Column(c).Grow(1).MinWidth(0).Children(func() {
+		display.Text(c, title, display.TextProps{Strong: true, Rows: 1}).Ellipsis("…")
+		muted(c, detail).FontSize(11).SingleLine().Ellipsis("…")
+	})
+	if len(m.Unconfirmed) > 0 && button(c, fmt.Sprintf("核对前置 (%d)", len(m.Unconfirmed)), action.Default, false) {
+		a.openResourceDownloads(i, launcher.Mods)
+		p := a.browserFor(launcher.Mods)
+		if p.source != "" {
+			p.source = ""
+			p.resetCatalog()
+		}
+		p.abort()
+		p.clearProject()
+		p.searched, p.searchBusy, p.err = true, false, ""
+		v := m.Current
+		if m.Update.ID != "" {
+			v = m.Update
+		}
+		p.packSelection = packSelection{project: launcher.PackProject{ID: v.ProjectID, Title: title}, versions: []launcher.PackVersion{v}, version: v.ID}
+	}
+}
+
+func (a *desktop) checkModUpdates(i launcher.Instance) {
+	v := &a.content
+	req, g, ctx := a.contentRequest, a.game, a.ctx
+	v.checking, v.checkError = true, ""
+	go func() {
+		mods, err := g.CheckMods(ctx, i)
+		a.post(func() {
+			if a.contentRequest != req {
+				return
+			}
+			v.checking = false
+			if err != nil {
+				v.checkError = err.Error()
+				return
+			}
+			v.mods, v.listing = mods, nil
+		})
+	}()
+}
+
+func (a *desktop) modControls(c *ui.Context, i launcher.Instance, disabled bool) {
+	v := &a.content
+	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+		switch {
+		case v.checking:
+			muted(c, "正在识别模组并检查兼容版本…")
+		case v.mods != nil:
+			var selected []launcher.InstalledMod
+			known, updates := 0, 0
+			for _, f := range v.files {
+				key := contentKey(f)
+				m := v.mods[key]
+				if m.Current.ID != "" {
+					known++
+				}
+				if m.Update.ID != "" {
+					updates++
+					if _, checked := v.selected[key]; checked {
+						selected = append(selected, m)
+					}
+				}
+			}
+			muted(c, fmt.Sprintf("已识别 %d/%d · 可更新 %d", known, len(v.files), updates))
+			if updates > 0 && button(c, fmt.Sprintf("更新选中 (%d)", len(selected)), action.Primary, len(selected) == 0 || disabled) {
+				game := a.game
+				a.runContentTask(i, "更新模组", nil, func(ctx context.Context, report func(launcher.Progress)) error {
+					var failures []error
+					for n, m := range selected {
+						if err := ctx.Err(); err != nil {
+							return errors.Join(append(failures, err)...)
+						}
+						report(launcher.Progress{Stage: "更新 " + m.DiskName(), Done: n, Total: len(selected)})
+						if err := game.UpdateMod(ctx, i, m); err != nil {
+							failures = append(failures, fmt.Errorf("%s: %w", m.DiskName(), err))
+						}
+					}
+					return errors.Join(failures...)
+				})
+			}
+		}
+	})
+	if v.checkError != "" {
+		feedback.Alert(c, v.checkError, feedback.AlertProps{Type: feedback.Error})
 	}
 }

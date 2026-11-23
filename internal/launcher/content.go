@@ -19,6 +19,10 @@ func ListContent(i Instance, kind ContentKind) ([]ContentFile, error) {
 	return content.List(i, kind)
 }
 
+func ContentInventory(ctx context.Context, i Instance, kind ContentKind) ([]ContentFile, error) {
+	return content.Inventory(ctx, i, kind)
+}
+
 func SetContentEnabled(i Instance, kind ContentKind, name string, enabled bool) error {
 	return content.SetEnabled(i, kind, name, enabled)
 }

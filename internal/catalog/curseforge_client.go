@@ -8,6 +8,8 @@ import (
 	"github.com/CAUCraft/LXMCL/internal/modpack"
 )
 
+var ErrCurseForgeAccessDenied = i18n.Error("curseforge.access_denied")
+
 type curseForge struct {
 	key    string
 	client Client

@@ -18,6 +18,7 @@ import (
 )
 
 type packBrowser struct {
+	source                string
 	kind                  launcher.ContentKind
 	target                launcher.Instance
 	filter                launcher.ResourceFilter
@@ -35,6 +36,8 @@ type packBrowser struct {
 }
 
 type packSelection struct {
+	filePage            int
+	moreFiles           bool
 	project             launcher.PackProject
 	versions            []launcher.PackVersion
 	version, versionErr string
@@ -53,6 +56,20 @@ func (a *desktop) browserFor(kind launcher.ContentKind) *packBrowser {
 		a.packs[kind] = p
 	}
 	return p
+}
+
+func (p *packBrowser) sourceLabel() string {
+	if p.source == launcher.CurseForgeMods {
+		return "CurseForge"
+	}
+	return "Modrinth"
+}
+
+func (p *packBrowser) effectiveFilter() launcher.ResourceFilter {
+	if p.target.ID != 0 {
+		return launcher.ResourceFilter{Game: p.target.Version, Loader: strings.ToLower(p.target.Loader)}
+	}
+	return p.filter
 }
 
 func (p *packBrowser) setTarget(i launcher.Instance) {
@@ -102,12 +119,15 @@ func (a *desktop) searchPacks(p *packBrowser, page int) {
 	p.clearProject()
 	p.searched, p.searchBusy, p.err, p.page = true, true, "", page
 	p.result, p.scroll.Y = launcher.PackSearch{}, 0
+	source, curse, cfFilter := p.source, a.game.CurseMods(a.modpacks.key), p.effectiveFilter()
 	request, target, filter, kind, query, order := p.request, p.target, p.filter, p.kind, p.applied, p.order
 	go func() {
 		defer cancel()
 		var result launcher.PackSearch
 		var err error
-		if target.ID != 0 {
+		if source == launcher.CurseForgeMods {
+			result, err = curse.Search(ctx, cfFilter, query, order, page)
+		} else if target.ID != 0 {
 			result, err = launcher.SearchModrinth(ctx, target, kind, query, order, page)
 		} else {
 			result, err = launcher.SearchResourceCatalog(ctx, filter, kind, query, order, page)
@@ -133,17 +153,33 @@ func (a *desktop) browsePack(p *packBrowser, project launcher.PackProject) {
 	if a.ctx == nil || p.target.ID != 0 && !p.kind.Supports(p.target) {
 		return
 	}
-	p.abort()
 	p.clearProject()
+	p.project = project
+	a.loadResourceFiles(p, 0)
+}
+
+func (a *desktop) loadResourceFiles(p *packBrowser, page int) {
+	if a.ctx == nil {
+		return
+	}
+	p.abort()
+	p.stopDependencyNames()
+	p.filePage, p.moreFiles = page, false
+	project := p.project
 	ctx, cancel := context.WithTimeout(a.ctx, 15*time.Second)
 	p.cancel = cancel
-	p.project, p.version, p.versions, p.versionErr, p.versionBusy = project, "", nil, "", true
+	p.version, p.versions, p.versionErr, p.versionBusy = "", nil, "", true
 	request, target, filter, kind := p.request, p.target, p.filter, p.kind
+	source, curse, cfFilter := p.source, a.game.CurseMods(a.modpacks.key), p.effectiveFilter()
 	go func() {
 		defer cancel()
 		var versions []launcher.PackVersion
 		var err error
-		if target.ID != 0 {
+		more := false
+		var detail launcher.PackProject
+		if source == launcher.CurseForgeMods {
+			detail, versions, more, err = curse.Files(ctx, project.ID, cfFilter, page)
+		} else if target.ID != 0 {
 			versions, err = launcher.ModrinthVersions(ctx, project.ID, target, kind)
 		} else {
 			versions, err = launcher.ResourceCatalogVersions(ctx, project.ID, filter, kind)
@@ -152,7 +188,10 @@ func (a *desktop) browsePack(p *packBrowser, project launcher.PackProject) {
 			if p.request != request {
 				return
 			}
-			p.versionBusy, p.versions = false, versions
+			p.versionBusy, p.versions, p.moreFiles = false, versions, more
+			if detail.ID != "" {
+				p.project, p.detailKind = detail, launcher.Mods
+			}
 			if err != nil {
 				p.versionErr = err.Error()
 			} else {
@@ -198,11 +237,24 @@ func (a *desktop) resourceDownloads(c *ui.Context, p *packBrowser) {
 	}
 	label := contentLabel(p.kind)
 	a.resourceTargetBar(c, p)
+	if n := len(a.queue.pending); n > 0 && button(c, fmt.Sprintf("查看下载队列 (%d)", n), action.Text, false) {
+		a.openTasks()
+	}
 	layout.Divider(c, layout.DividerProps{})
+	a.packSearchBar(c, p, label)
+	if p.source == launcher.CurseForgeMods && a.modpacks.key == "" {
+		ui.Column(c).Grow(1).Center().Children(func() {
+			display.Empty(c, display.EmptyProps{Icon: lucide.KeyRound(), Title: "需要 CurseForge API Key", Description: "填写密钥后可搜索模组和下载兼容版本。", Action: func() {
+				if button(c, "设置 API Key…", action.Primary, false) {
+					a.modpacks.keyOpen = true
+				}
+			}})
+		})
+		return
+	}
 	if !p.searched {
 		a.applyPackSearch(p)
 	}
-	a.packSearchBar(c, p, label)
 	w, _ := c.Size()
 	splitWorkspace(c, catalogListWidth(w), func() {
 		a.packResults(c, p)
@@ -256,12 +308,34 @@ func (a *desktop) resourceTargetBar(c *ui.Context, p *packBrowser) {
 			c.Invalidate()
 		}
 		ui.Spacer(c).Grow(1)
-		muted(c, "Modrinth").FontSize(12)
+		if p.kind != launcher.Mods {
+			muted(c, "Modrinth").FontSize(12)
+		}
 	})
 }
 
 func (a *desktop) packSearchBar(c *ui.Context, p *packBrowser, label string) {
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+		if p.kind == launcher.Mods {
+			before := p.source
+			ui.Column(c).Width(126).Shrink(0).Children(func() {
+				field.Select(c, &p.source, field.SelectProps{Options: []field.SelectOption{{Value: "", Label: "Modrinth"}, {Value: launcher.CurseForgeMods, Label: "CurseForge"}}}).Label("模组下载来源")
+			})
+			if p.source != before {
+				p.resetCatalog()
+				c.Invalidate()
+			}
+			if p.source == launcher.CurseForgeMods && a.modpacks.key == "" {
+				return
+			}
+		}
+		providerSort := field.SelectOption{Value: "relevance", Label: "相关性"}
+		if p.source == launcher.CurseForgeMods {
+			providerSort = field.SelectOption{Value: "popularity", Label: "热门"}
+		}
+		if p.order == "relevance" || p.order == "popularity" {
+			p.order = providerSort.Value
+		}
 		submit := false
 		ui.Column(c).Grow(1).MinWidth(0).Children(func() {
 			submit = field.Input(c, &p.query, field.InputProps{Placeholder: "搜索" + label, Prefix: lucide.Search()}).
@@ -274,10 +348,13 @@ func (a *desktop) packSearchBar(c *ui.Context, p *packBrowser, label string) {
 		ui.Column(c).Width(116).Shrink(0).Children(func() {
 			field.Select(c, &p.order, field.SelectProps{Options: []field.SelectOption{
 				{Value: "downloads", Label: "下载量"},
-				{Value: "relevance", Label: "相关性"},
+				providerSort,
 				{Value: "updated", Label: "最近更新"},
 			}}).Label("搜索排序")
 		})
+		if p.source == launcher.CurseForgeMods && icon(c, lucide.KeyRound(), "更换 CurseForge API Key", false) {
+			a.modpacks.keyOpen = true
+		}
 		if p.order != before {
 			a.applyPackSearch(p)
 		}
@@ -350,7 +427,7 @@ func (a *desktop) packDetails(c *ui.Context, p *packBrowser) {
 			back = true
 		}
 		if site := p.project.PageURL(kind); site != "" && (p.dependency == nil || p.detailKind != "") &&
-			icon(c, lucide.ExternalLink(), "在 Modrinth 查看项目", false) {
+			icon(c, lucide.ExternalLink(), "在 "+p.sourceLabel()+" 查看项目", false) {
 			c.OpenURL(site)
 		}
 	})
@@ -379,20 +456,28 @@ func (a *desktop) packDetails(c *ui.Context, p *packBrowser) {
 		flightLoading(c, "读取可下载版本…")
 	case p.versionErr != "":
 		if catalogRetry(c, "读取版本失败", p.versionErr, "重试读取版本", "复制版本错误") {
-			if p.dependency != nil {
+			if p.dependency != nil && p.source != launcher.CurseForgeMods {
 				a.loadPackDependency(p)
 			} else {
-				a.browsePack(p, p.project)
+				a.loadResourceFiles(p, p.filePage)
 			}
 		}
 	case len(p.versions) == 0:
+		a.filePager(c, p)
 		muted(c, "没有符合当前筛选条件的文件")
 	default:
 		a.packVersions(c, p, kind)
 	}
 }
 
+func (a *desktop) filePager(c *ui.Context, p *packBrowser) {
+	if p.filePage > 0 || p.moreFiles {
+		modpackPager(c.Key("resource-file-page"), p.filePage, p.moreFiles, func(page int) { a.loadResourceFiles(p, page) })
+	}
+}
+
 func (a *desktop) packVersions(c *ui.Context, p *packBrowser, kind launcher.ContentKind) {
+	a.filePager(c, p)
 	display.Text(c, "文件版本", display.TextProps{Strong: true, FontSize: 13})
 	items := make([]display.ListItem, 0, len(p.versions))
 	for _, v := range p.versions {
@@ -401,7 +486,10 @@ func (a *desktop) packVersions(c *ui.Context, p *packBrowser, kind launcher.Cont
 		if !v.Published.IsZero() {
 			description = append(description, v.Published.Local().Format("2006-01-02"))
 		}
-		description = append(description, fileSizeLabel(file.Size), file.Filename)
+		description = append(description, fileSizeLabel(file.Size))
+		if file.Filename != v.Number {
+			description = append(description, file.Filename)
+		}
 		if p.target.ID == 0 {
 			if len(v.GameVersions) > 0 {
 				description = append([]string{strings.Join(v.GameVersions[:min(3, len(v.GameVersions))], " / ")}, description...)
@@ -437,8 +525,16 @@ func (a *desktop) packVersions(c *ui.Context, p *packBrowser, kind launcher.Cont
 			note, labelAction = "安装到 "+p.target.Name, "安装"+contentLabel(kind)
 		}
 		muted(c, note).FontSize(12).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+		r := resourceTask{Kind: string(kind), Source: p.source, Project: p.project.ID, Version: version.ID, Title: p.project.Title}
+		if button(c, "加入队列", action.Default, locked) {
+			item := queuedResource{target: p.target, resource: r, version: version}
+			if p.target.ID != 0 {
+				a.enqueueResource(item)
+			} else {
+				a.pickDownloadFolder(func(folder string) { item.folder = folder; a.enqueueResource(item) })
+			}
+		}
 		if button(c, labelAction, action.Primary, locked) {
-			r := resourceTask{Kind: string(kind), Project: p.project.ID, Version: version.ID, Title: p.project.Title}
 			if p.target.ID != 0 {
 				a.downloadResource(p.target, r, version)
 			} else {
@@ -451,31 +547,9 @@ func (a *desktop) packVersions(c *ui.Context, p *packBrowser, kind launcher.Cont
 	}
 }
 
-func (a *desktop) saveResourceFile(folder string, r resourceTask, version launcher.PackVersion) {
-	game := a.game
-	kind := launcher.ContentKind(r.Kind)
-	a.runFolderDownload(folder, "保存"+contentLabel(kind), r.Title, &r, func(ctx context.Context, report func(launcher.Progress)) error {
-		if version.ID == "" {
-			var err error
-			version, err = launcher.ModrinthVersion(ctx, r.Project, r.Version)
-			if err != nil {
-				return err
-			}
-		}
-		return game.DownloadResourceFile(ctx, kind, version, folder, report)
-	})
+func (a *desktop) saveResourceFile(folder string, r resourceTask, v launcher.PackVersion) {
+	a.runResource(queuedResource{folder: folder, resource: r, version: v}, nil)
 }
-
-func (a *desktop) downloadResource(i launcher.Instance, r resourceTask, version launcher.PackVersion) {
-	kind := launcher.ContentKind(r.Kind)
-	a.runContentTask(i, "安装"+contentLabel(kind), &r, func(ctx context.Context, report func(launcher.Progress)) error {
-		if version.ID == "" {
-			var err error
-			version, err = launcher.ModrinthVersion(ctx, r.Project, r.Version)
-			if err != nil {
-				return err
-			}
-		}
-		return launcher.DownloadModrinth(ctx, i, kind, version, report)
-	})
+func (a *desktop) downloadResource(i launcher.Instance, r resourceTask, v launcher.PackVersion) {
+	a.runResource(queuedResource{target: i, resource: r, version: v}, nil)
 }

@@ -11,28 +11,40 @@ import (
 // Persisted values retain the original tasks.json format. Do not translate these
 // discriminators; presentation labels belong to the caller.
 const (
-	Limit     = 24
-	Completed = "已完成"
-	Started   = "已启动"
-	Exited    = "已退出"
-	Failed    = "已失败"
-	Canceled  = "已取消"
-	Launch    = "启动游戏"
-	Verify    = "下载 / 校验"
-	Backup    = "备份存档"
+	Limit         = 24
+	Completed     = "已完成"
+	Started       = "已启动"
+	Exited        = "已退出"
+	Failed        = "已失败"
+	Canceled      = "已取消"
+	WaitingForKey = "等待 API Key"
+	Launch        = "启动游戏"
+	Verify        = "下载 / 校验"
+	Backup        = "备份存档"
 )
 
 type Resource struct {
 	// Kind preserves the resource identifier from tasks.json. The caller owns
 	// resource compatibility and download behavior, including unknown kinds.
 	Kind    string `json:"kind"`
+	Source  string `json:"source,omitempty"`
 	Project string `json:"project"`
 	Version string `json:"version"`
 	Title   string `json:"title"`
 }
 
+// PackUpdate identifies a verified archive and its original instance directory.
+type PackUpdate struct {
+	Archive   string `json:"archive"`
+	Source    string `json:"source"`
+	SHA256    string `json:"sha256"`
+	GameDir   string `json:"game_directory"`
+	FeedHash  string `json:"feed_hash,omitempty"`
+	BackupDir string `json:"backup_directory,omitempty"`
+}
 type Record struct {
-	ID string `json:"id,omitempty"`
+	Pack PackUpdate `json:"pack_update,omitzero"`
+	ID   string     `json:"id,omitempty"`
 
 	InstanceID int       `json:"instance_id,omitempty"`
 	Revision   uint64    `json:"instance_revision,omitempty"`

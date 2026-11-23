@@ -2,12 +2,10 @@ package launcher
 
 import (
 	"archive/zip"
-	"context"
 	"crypto/sha1"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -15,7 +13,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/CAUCraft/LXMCL/internal/minecraft"
 	"github.com/CAUCraft/LXMCL/internal/storage"
 )
 
@@ -135,7 +132,7 @@ func TestPatchedModpackInstallAndLaunch(t *testing.T) {
 			"net/minecraftforge/forge/1.21.1-52.1.14/forge-1.21.1-52.1.14-installer.jar"},
 		{LoaderNeoForge, "21.1.200", "manifest.json",
 			`{"manifestType":"minecraftModpack","manifestVersion":1,"name":"NeoForge Test",
-			  "minecraft":{"version":"1.21.1","modLoaders":[{"id":"neoforge-21.1.200","primary":true}]}}`,
+			  "minecraft":{"version":"1.21.1","modLoaders":[{"id":"forge-52.1.14"},{"id":"neoforge-21.1.200","primary":true}]}}`,
 			"releases/net/neoforged/neoforge/21.1.200/neoforge-21.1.200-installer.jar"},
 	} {
 		t.Run(tc.kind, func(t *testing.T) {
@@ -174,12 +171,8 @@ func TestPatchedModpackInstallAndLaunch(t *testing.T) {
 			fixture := newInstallFixture(t)
 			fixture.Files[src] = installer
 			fixture.Files[src+".sha1"] = []byte(fmt.Sprintf("%x", sha1.Sum(installer)))
-			client := &http.Client{Transport: transportFunc(fixture.RoundTrip)}
-			game := Game{Cache: t.TempDir()}
-			install := func(ctx context.Context, work Instance, report func(Progress)) error {
-				return (minecraft.Runtime{Cache: game.Cache, Client: minecraft.Client{Transport: client.Transport}}).InstallWithJava(ctx, work, next.Settings.JavaPath, report)
-			}
-			if err := game.installModpack(ctx, store, next, i, pack, nil, client, install, nil); err != nil {
+			game := Game{Cache: t.TempDir(), Transport: fixture}
+			if err := game.InstallModpack(ctx, store, next, i, pack, "", nil); err != nil {
 				t.Fatal(err)
 			}
 			state, err := store.Load()
@@ -206,7 +199,7 @@ func TestPatchedModpackInstallAndLaunch(t *testing.T) {
 			if _, err := game.Start(ctx, i, Settings{JavaPath: java, Player: "Player", Memory: 2048}); !errors.Is(err, ErrRepairRequired) {
 				t.Fatalf("damaged loader library was not detected: %v", err)
 			}
-			if err := install(ctx, i, nil); err != nil {
+			if err := game.InstallWithJava(ctx, i, next.Settings.JavaPath, nil); err != nil {
 				t.Fatalf("unable to repair loader: %v", err)
 			}
 			if b, err := os.ReadFile(path); err != nil || string(b) != shimOutput {
