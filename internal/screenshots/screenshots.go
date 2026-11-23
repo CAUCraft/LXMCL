@@ -2,8 +2,10 @@
 package screenshots
 
 import (
+	"bytes"
 	"cmp"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"image"
 	"image/png"
@@ -76,54 +78,81 @@ func List(ctx context.Context, gameDir string) ([]Entry, error) {
 	return entries, nil
 }
 
-// Preview keeps at most a 1600-pixel image in the gallery and reports the original dimensions.
-func Preview(ctx context.Context, gameDir, name string) (image.Image, image.Point, error) {
-	var size image.Point
+// Original identifies the full-resolution PNG that produced a gallery preview.
+type Original struct {
+	Size          image.Point
+	gameDir, name string
+	digest        [sha256.Size]byte
+}
+
+func readPNG(ctx context.Context, gameDir, name string) ([]byte, error) {
 	if !filepath.IsLocal(name) || filepath.Base(name) != name || !strings.EqualFold(filepath.Ext(name), ".png") {
-		return nil, size, fs.ErrInvalid
+		return nil, fs.ErrInvalid
 	}
 	root, err := open(gameDir)
 	if err != nil {
-		return nil, size, err
+		return nil, err
 	}
 	defer root.Close()
 	f, err := root.Open(name)
 	if err != nil {
-		return nil, size, err
+		return nil, err
 	}
 	defer f.Close()
 	info, err := f.Stat()
 	if err != nil {
-		return nil, size, err
+		return nil, err
 	}
 	if !info.Mode().IsRegular() {
-		return nil, size, fs.ErrInvalid
+		return nil, fs.ErrInvalid
 	}
 	const maxBytes = 128 << 20
 	if info.Size() > maxBytes {
-		return nil, size, i18n.Error("screenshot.too_large")
+		return nil, i18n.Error("screenshot.too_large")
 	}
-	cfg, err := png.DecodeConfig(transfer.Reader(ctx, f))
+	data, err := io.ReadAll(transfer.Reader(ctx, io.LimitReader(f, info.Size()+1)))
+	if err == nil && int64(len(data)) != info.Size() {
+		return nil, i18n.Error("screenshot.changed")
+	}
+	return data, err
+}
+
+// PNG rereads the selected original without retaining full-size images while browsing.
+func (o *Original) PNG(ctx context.Context) ([]byte, error) {
+	data, err := readPNG(ctx, o.gameDir, o.name)
 	if err != nil {
-		return nil, size, err
+		return nil, err
+	}
+	if sha256.Sum256(data) != o.digest {
+		return nil, i18n.Error("screenshot.changed")
+	}
+	return data, ctx.Err()
+}
+
+// Preview limits the displayed image to 1600 pixels and binds it to its original.
+func Preview(ctx context.Context, gameDir, name string) (image.Image, *Original, error) {
+	data, err := readPNG(ctx, gameDir, name)
+	if err != nil {
+		return nil, nil, err
+	}
+	cfg, err := png.DecodeConfig(bytes.NewReader(data))
+	if err != nil {
+		return nil, nil, err
 	}
 	if cfg.Width <= 0 || cfg.Height <= 0 || cfg.Width > (36<<20)/cfg.Height {
-		return nil, size, i18n.Error("screenshot.too_large")
+		return nil, nil, i18n.Error("screenshot.too_large")
 	}
-	if _, err = f.Seek(0, io.SeekStart); err != nil {
-		return nil, size, err
-	}
-	src, err := png.Decode(transfer.Reader(ctx, io.LimitReader(f, maxBytes)))
+	img, err := png.Decode(transfer.Reader(ctx, bytes.NewReader(data)))
 	if err != nil {
-		return nil, size, err
+		return nil, nil, err
 	}
-	size = image.Pt(cfg.Width, cfg.Height)
+	size := img.Bounds().Size()
 	const side = 1600
 	if den := max(size.X, size.Y); den > side {
 		w, h := max(1, size.X*side/den), max(1, size.Y*side/den)
 		scaled := image.NewRGBA(image.Rect(0, 0, w, h))
-		draw.ApproxBiLinear.Scale(scaled, scaled.Bounds(), src, src.Bounds(), draw.Src, nil)
-		return scaled, size, ctx.Err()
+		draw.ApproxBiLinear.Scale(scaled, scaled.Bounds(), img, img.Bounds(), draw.Src, nil)
+		img = scaled
 	}
-	return src, size, ctx.Err()
+	return img, &Original{Size: size, gameDir: gameDir, name: name, digest: sha256.Sum256(data)}, ctx.Err()
 }

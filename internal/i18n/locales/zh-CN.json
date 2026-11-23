@@ -311,7 +311,7 @@
   "resource.not_regular": "资源不是普通文件",
   "resource.regular_file_required": "请选择普通资源文件",
   "resource.size_or_sha512_invalid": "资源文件缺少有效的大小或 SHA-512",
-  "screenshot.changed": "导出时截图发生变化，请刷新图库后重试。",
+  "screenshot.changed": "截图已变化，请刷新图库后重试。",
   "screenshot.export_conflict": "所选目录已有 %s，请换一个目录导出原图。",
   "screenshot.too_large": "这张截图太大，无法预览。请打开文件夹查看原图。",
   "saves.archive_changed": "归档内容在预览后已更改，请重新选择 ZIP",

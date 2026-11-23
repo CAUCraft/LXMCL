@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/CAUCraft/LXMCL/internal/screenshots"
 	"github.com/egoist/mygo/ui"
 	"github.com/lobehub/lobe-mygo/pkg/display"
 )
@@ -51,7 +52,7 @@ func TestScreenshotPageKeepsInstanceSelection(t *testing.T) {
 		}
 	}
 	p.rows = []display.ListItem{{Key: "河谷.png", Label: "河谷.png", Description: "2026-11-21 14:30"}, {Key: "林地.png", Label: "林地.png", Description: "2026-11-19 11:07"}}
-	p.folder, p.selected, p.picture, p.dimensions = true, p.rows[0].Key, ui.NewBitmap(img), img.Bounds().Size()
+	p.folder, p.selected, p.picture, p.original = true, p.rows[0].Key, ui.NewBitmap(img), &screenshots.Original{Size: img.Bounds().Size()}
 	for _, dark := range []bool{false, true} {
 		tt.SetDark(dark)
 		tt.Frame()
@@ -61,6 +62,10 @@ func TestScreenshotPageKeepsInstanceSelection(t *testing.T) {
 		if !ok || r.W < 180 || r.H < 100 || r.X+r.W > 821 || r.Y+r.H > 531 || !tt.HasText("320 × 180") {
 			t.Fatal("preview outside window", r, tt.Texts())
 		}
+		copyButton, ok := tt.Find("复制图片")
+		if !ok || copyButton.X < 0 || copyButton.X+copyButton.W > 820 || copyButton.Y+copyButton.H > 530 {
+			t.Fatal("copy button outside window", copyButton)
+		}
 		if dark {
 			capture(t, tt, "screenshots-dark")
 		} else {
@@ -68,7 +73,7 @@ func TestScreenshotPageKeepsInstanceSelection(t *testing.T) {
 		}
 	}
 	click("林地.png")
-	if p.selected != "林地.png" || p.picture != nil {
+	if p.selected != "林地.png" || p.picture != nil || p.original != nil {
 		t.Fatal("old preview remains selected")
 	}
 	click("生存世界")
