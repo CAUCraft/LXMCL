@@ -21,11 +21,21 @@ type InstalledMod struct {
 	File   ContentFile
 	Digest string
 	catalog.ModMatch
-	Unconfirmed []ModDependency
+	// Unconfirmed refers to the update when one is available, otherwise to Current.
+	Unconfirmed        []ModDependency
+	CurrentUnconfirmed []ModDependency
 }
 
 func (m InstalledMod) DiskName() string {
 	return m.File.DiskName()
+}
+
+// UpdateKey identifies the matched Modrinth candidate independently of the JAR filename or display version.
+func (m InstalledMod) UpdateKey() string {
+	if m.Update.ID == "" {
+		return ""
+	}
+	return m.Update.ProjectID + "/" + m.Update.ID
 }
 
 func modDigest(ctx context.Context, root *os.Root, name string) (string, error) {
@@ -92,15 +102,20 @@ func (g Game) CheckMods(ctx context.Context, i Instance) (map[string]InstalledMo
 			versions[m.Current.ID] = true
 		}
 	}
-	for k, m := range result {
-		v := m.Current
-		if m.Update.ID != "" {
-			v = m.Update
-		}
+	unconfirmed := func(v PackVersion) []ModDependency {
+		var missing []ModDependency
 		for _, dep := range v.RequiredDependencies() {
 			if dep.VersionID != "" && !versions[dep.VersionID] || dep.VersionID == "" && !projects[dep.ProjectID] {
-				m.Unconfirmed = append(m.Unconfirmed, dep)
+				missing = append(missing, dep)
 			}
+		}
+		return missing
+	}
+	for k, m := range result {
+		m.CurrentUnconfirmed = unconfirmed(m.Current)
+		m.Unconfirmed = m.CurrentUnconfirmed
+		if m.Update.ID != "" {
+			m.Unconfirmed = unconfirmed(m.Update)
 		}
 		result[k] = m
 	}

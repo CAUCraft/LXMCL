@@ -29,6 +29,9 @@ type State struct {
 	OfflinePlayers   []string                 `json:"offline_players,omitempty"`
 	Selected         int                      `json:"selected"`
 	NextID           int                      `json:"next_id"`
+
+	// Modrinth project/version pairs skipped by each instance.
+	SkippedModUpdates map[int]map[string]bool `json:"skipped_mod_updates,omitempty"`
 }
 
 func (s State) Clone() State {
@@ -36,6 +39,10 @@ func (s State) Clone() State {
 	s.InstanceNotes = maps.Clone(s.InstanceNotes)
 	s.PinnedInstances = maps.Clone(s.PinnedInstances)
 	s.InstanceGroups = maps.Clone(s.InstanceGroups)
+	s.SkippedModUpdates = maps.Clone(s.SkippedModUpdates)
+	for id, versions := range s.SkippedModUpdates {
+		s.SkippedModUpdates[id] = maps.Clone(versions)
+	}
 	s.InstanceIcons = maps.Clone(s.InstanceIcons)
 	if s.LibraryGroup != nil {
 		group := *s.LibraryGroup
