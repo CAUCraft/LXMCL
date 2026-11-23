@@ -84,15 +84,30 @@ func TestMoveServerRetainsRecordAndStopsAtListEnds(t *testing.T) {
 		}
 	}
 	a, b, c := state.Servers[0], state.Servers[1], state.Servers[2]
-	if !state.MoveServer(b, -1) || state.MoveServer(b, -1) || state.MoveServer(c, 1) ||
+	if !state.MoveServer(b, -1, "") || state.MoveServer(b, -1, "") || state.MoveServer(c, 1, "") ||
 		state.Servers[0] != b || state.Servers[1] != a || state.Servers[2] != c {
 		t.Fatal(state.Servers)
 	}
 	if err := state.EditServer(b, "Renamed", b.Address); err != nil {
 		t.Fatal(err)
 	}
-	if state.MoveServer(b, 1) || !state.MoveServer(a, 1) || state.Servers[1] != c || state.Servers[2] != a {
+	if state.MoveServer(b, 1, "") || !state.MoveServer(a, 1, "") || state.Servers[1] != c || state.Servers[2] != a {
 		t.Fatal("stale or downward move", state.Servers)
+	}
+}
+
+func TestMoveServerWithinSearchKeepsHiddenPositions(t *testing.T) {
+	state := config.State{Servers: []server.Server{
+		{Name: "河谷", Address: "north.example.invalid:25565"},
+		{Name: "保留", Address: "middle.example.invalid:25565"},
+		{Name: "North", Address: "[2001:db8::1]:25570"},
+	}}
+	a, hidden, b := state.Servers[0], state.Servers[1], state.Servers[2]
+	const query = " NORTH "
+	if !slices.Equal(state.MatchingServers(query), []server.Server{a, b}) ||
+		state.MoveServer(hidden, 1, query) || state.MoveServer(a, -1, query) || !state.MoveServer(b, -1, query) ||
+		!slices.Equal(state.Servers, []server.Server{b, hidden, a}) {
+		t.Fatal(state.Servers)
 	}
 }
 
