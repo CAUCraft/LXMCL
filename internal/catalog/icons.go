@@ -1,7 +1,6 @@
 package catalog
 
 import (
-	"bytes"
 	"context"
 	"image"
 	_ "image/gif"
@@ -48,7 +47,7 @@ func (c Client) LoadIcon(ctx context.Context, raw string) (image.Image, error) {
 		return nil, err
 	}
 	defer res.Body.Close()
-	const limit = 2 << 20
+	const limit = iconimage.MaxPreviewBytes
 	if res.StatusCode != http.StatusOK || res.ContentLength > limit {
 		return nil, i18n.Error("icon.unavailable")
 	}
@@ -59,13 +58,5 @@ func (c Client) LoadIcon(ctx context.Context, raw string) (image.Image, error) {
 	if len(data) > limit {
 		return nil, i18n.Error("icon.read_failed")
 	}
-	config, _, err := image.DecodeConfig(bytes.NewReader(data))
-	if err != nil || config.Width <= 0 || config.Height <= 0 || config.Width > 2048 || config.Height > 2048 {
-		return nil, i18n.Error("icon.format_invalid")
-	}
-	src, _, err := image.Decode(bytes.NewReader(data))
-	if err != nil {
-		return nil, err
-	}
-	return iconimage.Fit(src), ctx.Err()
+	return iconimage.Preview(ctx, data, "")
 }

@@ -1,4 +1,5 @@
-package server
+// Package mctext renders local Minecraft text components as plain text.
+package mctext
 
 import (
 	"regexp"
@@ -6,9 +7,8 @@ import (
 	"unicode"
 )
 
-// Server descriptions may be plain strings, component arrays or styled text
-// with nested extras. Keep line breaks and visible text for the native widget.
-func descriptionText(value any) string {
+// Component keeps literal text, nested extras and line breaks for native widgets.
+func Component(value any, limit int) string {
 	var text strings.Builder
 	var appendText func(any, int)
 	appendText = func(value any, depth int) {
@@ -30,12 +30,12 @@ func descriptionText(value any) string {
 		}
 	}
 	appendText(value, 0)
-	return plainStatusText(text.String(), 256)
+	return Plain(text.String(), limit)
 }
 
 var formattingCode = regexp.MustCompile(`(?i)§[0-9a-fk-orx]`)
 
-func plainStatusText(s string, limit int) string {
+func Plain(s string, limit int) string {
 	s = formattingCode.ReplaceAllString(s, "")
 	s = strings.ReplaceAll(s, "\r\n", "\n")
 	s = strings.Map(func(r rune) rune {

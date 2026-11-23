@@ -189,6 +189,9 @@ func (a *desktop) configureLoader(i launcher.Instance) {
 }
 
 func (a *desktop) inspect(i launcher.Instance) {
+	if a.content.packPreview != nil {
+		a.closePackPreview()
+	}
 	if !matchesInstanceSearch(i, strings.ToLower(strings.TrimSpace(a.query))) {
 		a.query, a.scroll.Y = "", 0
 	}

@@ -21,6 +21,7 @@ type File struct {
 	ModTitle, ModIDs string
 	mods             []manifestMod
 	Size             int64
+	Directory        bool
 	Enabled          bool
 	Modified         time.Time
 }

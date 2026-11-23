@@ -69,14 +69,24 @@ func list(ctx context.Context, i instance.Instance, kind Kind, identify bool) ([
 			return nil, err
 		}
 		name, disabled := strings.CutSuffix(entry.Name(), ".disabled")
-		if !entry.Type().IsRegular() || !strings.EqualFold(filepath.Ext(name), ext) {
+		directory := identify && kind == ResourcePacks && entry.IsDir()
+		if directory {
+			name, disabled = entry.Name(), false
+			marker, err := root.Lstat(filepath.Join(name, "pack.mcmeta"))
+			if err != nil || !marker.Mode().IsRegular() {
+				continue
+			}
+		} else if !entry.Type().IsRegular() || !strings.EqualFold(filepath.Ext(name), ext) {
 			continue
 		}
 		info, err := entry.Info()
 		if err != nil {
 			return nil, err
 		}
-		file := File{Name: name, Size: info.Size(), Enabled: !disabled, Modified: info.ModTime()}
+		file := File{Name: name, Directory: directory, Size: info.Size(), Enabled: !disabled, Modified: info.ModTime()}
+		if directory {
+			file.Size = 0
+		}
 		if identify && kind == Mods {
 			file.mods = readManifestMods(root, entry.Name(), markers)
 			file.ModTitle, file.ModIDs = modLabels(file.mods)
