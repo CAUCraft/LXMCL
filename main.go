@@ -212,6 +212,7 @@ type desktop struct {
 	logLibrary    *instanceLogView
 	restore       *restoreView
 	backups       *backupView
+	localBackups  *localBackupView
 	logText       string
 	logPath       string
 	logRequest    uint64

@@ -491,9 +491,6 @@ func (a *desktop) runContentTask(i launcher.Instance, label string, resource *re
 	}
 	row := taskRecord{InstanceID: i.ID, Revision: i.Revision, Name: i.Name, Version: i.Version, Action: label, At: time.Now(), Resource: resource}
 	a.runFileTask(row, work, func(error) {
-		if label == taskBackup && a.backups != nil && a.backups.instanceID == i.ID {
-			a.refreshBackups(i.ID)
-		}
 		if a.content.id == i.ID && a.content.revision == i.Revision {
 			a.refreshContent(i)
 		}
@@ -509,6 +506,10 @@ func (a *desktop) runFolderDownload(folder, action, name string, resource *resou
 }
 
 func (a *desktop) runFileTask(row taskRecord, work func(context.Context, func(launcher.Progress)) error, refresh func(error)) {
+	a.runFileTaskWithResult(row, work, nil, refresh)
+}
+
+func (a *desktop) runFileTaskWithResult(row taskRecord, work func(context.Context, func(launcher.Progress)) error, result func(*taskRecord), refresh func(error)) {
 	queuedCurseMod := row.ID != "" && row.Resource != nil && row.Resource.Source == launcher.CurseForgeMods
 	row = row.Submitted()
 	ctx, cancel := context.WithCancel(a.ctx)
@@ -529,6 +530,9 @@ func (a *desktop) runFileTask(row taskRecord, work func(context.Context, func(la
 			}
 		} else {
 			row.Pack = tasks.PackUpdate{}
+			if result != nil {
+				result(&row)
+			}
 		}
 		noticeErr := err
 		if plainTaskCancellation(row) {

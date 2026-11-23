@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/CAUCraft/LXMCL/internal/instance"
 	"github.com/CAUCraft/LXMCL/internal/launcher"
@@ -68,15 +67,8 @@ func (a *desktop) browseWorlds(i launcher.Instance, retry *taskRecord) {
 }
 
 func (a *desktop) backupWorld(i launcher.Instance, world saves.World) {
-	root := a.store.Root
-	record := taskRecord{Action: taskBackup, InstanceID: i.ID, Revision: i.Revision, Name: i.Name, Version: i.Version, World: world.Folder(), At: time.Now()}
-	a.runFileTask(record, func(ctx context.Context, _ func(launcher.Progress)) error {
-		_, err := saves.BackupWorld(ctx, i.GameDir, root, i.ID, world)
-		return err
-	}, func(err error) {
-		if err == nil && a.backups != nil && a.backups.instanceID == i.ID {
-			a.refreshBackups(i.ID)
-		}
+	a.runSaveBackup(i, world.Folder(), func(ctx context.Context, root string) (string, error) {
+		return saves.BackupWorld(ctx, i.GameDir, root, i.ID, world)
 	})
 }
 
