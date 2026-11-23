@@ -31,30 +31,31 @@ const (
 )
 
 type modpackView struct {
-	retry                                 *packRetry
-	feedURL, feedStatus                   string
-	target                                string
-	update                                *launcher.PackUpdate
-	changePage                            int
-	mode                                  int
-	key, keyDraft                         string
-	keyOpen                               bool
-	query, applied, game                  string
-	searched, searching                   bool
-	results                               launcher.ModpackResults
-	page                                  int
-	searchErr                             string
-	project                               launcher.ModpackProject
-	releases                              []launcher.ModpackRelease
-	releasePage                           int
-	releaseMore, listing                  bool
-	releaseID, releaseErr                 string
-	preparing                             bool
-	archive, name, prepareErr, installErr string
-	prepared                              launcher.PreparedModpack
-	request                               uint64
-	cancel                                context.CancelFunc
-	projectsScroll, releasesScroll        ui.ScrollState
+	retry                          *packRetry
+	feedURL, feedStatus            string
+	target                         string
+	update                         *launcher.PackUpdate
+	changePage                     int
+	mode                           int
+	key, keyDraft                  string
+	keyOpen                        bool
+	query, applied, game           string
+	searched, searching            bool
+	results                        launcher.ModpackResults
+	page                           int
+	searchErr                      string
+	project                        launcher.ModpackProject
+	releases                       []launcher.ModpackRelease
+	releasePage                    int
+	releaseMore, listing           bool
+	releaseID, releaseErr          string
+	preparing                      bool
+	archive, name, prepareErr      string
+	installErr                     error
+	prepared                       launcher.PreparedModpack
+	request                        uint64
+	cancel                         context.CancelFunc
+	projectsScroll, releasesScroll ui.ScrollState
 }
 
 func (p *modpackView) source() launcher.ModpackSource {
@@ -85,7 +86,16 @@ func (p *modpackView) clearPreview() {
 	p.feedStatus = ""
 	p.retry = nil
 	p.prepared = launcher.PreparedModpack{}
-	p.archive, p.name, p.prepareErr, p.installErr = "", "", "", ""
+	p.archive, p.name, p.prepareErr, p.installErr = "", "", "", nil
+}
+
+// A denial from an earlier request must not invalidate a newly entered key.
+func (p *modpackView) setInstallError(err error, submittedKey string) {
+	if submittedKey != p.key && errors.Is(err, launcher.ErrCurseForgeAccessDenied) {
+		p.installErr = nil
+		return
+	}
+	p.installErr = err
 }
 
 func (a *desktop) searchModpackProjects(page int) {
@@ -471,7 +481,7 @@ func (a *desktop) modpackConfirmation(c *ui.Context, p *modpackView) {
 	if before != p.target || p.update != nil && !p.update.Matches(p.prepared, target) {
 		p.update = nil
 		p.changePage = 0
-		p.installErr = ""
+		p.installErr = nil
 	}
 	needsKey := info.Source == launcher.CurseForgeModpacks && info.Downloads > 0 && p.key == ""
 	layout.Divider(c, layout.DividerProps{})
@@ -495,13 +505,20 @@ func (a *desktop) modpackConfirmation(c *ui.Context, p *modpackView) {
 					p.keyOpen = true
 				}
 			}
-			if p.installErr != "" {
-				feedback.Alert(c, p.installErr, feedback.AlertProps{Type: feedback.Error})
+			if p.installErr != nil {
+				feedback.Alert(c, p.installErr.Error(), feedback.AlertProps{Type: feedback.Error})
 			}
 		})
 	}).Grow(1).MinHeight(0)
 	layout.Divider(c, layout.DividerProps{})
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+		if errors.Is(p.installErr, launcher.ErrCurseForgeAccessDenied) {
+			ui.Spacer(c).Grow(1)
+			if button(c, "更换 API Key…", action.Primary, a.busy) {
+				p.keyOpen = true
+			}
+			return
+		}
 		if p.target != "" {
 			ui.Spacer(c).Grow(1)
 			locked := !exists || a.busy || a.running != nil || needsKey
@@ -542,6 +559,9 @@ func (a *desktop) curseKeyDialog(c *ui.Context) {
 				key := strings.TrimSpace(p.keyDraft)
 				if (button(c, "应用", action.Primary, key == "") || submit) && key != "" {
 					p.key, p.keyOpen, p.keyDraft = key, false, ""
+					if errors.Is(p.installErr, launcher.ErrCurseForgeAccessDenied) {
+						p.installErr = nil
+					}
 					a.queue.keyRejected = false
 					if mods := a.packs[launcher.Mods]; mods != nil && mods.source == launcher.CurseForgeMods {
 						mods.resetCatalog()
@@ -566,7 +586,7 @@ func (a *desktop) installModpack() {
 	}
 	next, i, err := newLoaderInstallation(a.state, p.name, info.Minecraft, info.Loader, info.LoaderVersion)
 	if err != nil {
-		p.installErr = err.Error()
+		p.installErr = err
 		return
 	}
 	i.PackFeed, i.PackDigest = pack.Feed()
@@ -576,7 +596,7 @@ func (a *desktop) installModpack() {
 			break
 		}
 	}
-	p.installErr = ""
+	p.installErr = nil
 	ctx, cancel := context.WithCancel(a.ctx)
 	a.busy, a.taskName, a.cancelTask = true, i.Name, cancel
 	a.taskCanceling = false
@@ -627,7 +647,7 @@ func (a *desktop) installModpack() {
 				a.message("整合包安装已取消", nil)
 			} else {
 				if p.prepared == pack {
-					p.installErr = err.Error()
+					p.setInstallError(err, key)
 				}
 				a.message("整合包安装失败 · "+i.Name, err)
 				a.noticeJava = errors.Is(err, launcher.ErrJavaRequired)

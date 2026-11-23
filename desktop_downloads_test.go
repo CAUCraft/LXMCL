@@ -2,6 +2,7 @@ package main
 
 import (
 	"archive/zip"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -53,35 +54,13 @@ func TestModpackWorkspaceShowsSourcesAndNewInstanceConfirmation(t *testing.T) {
 	if err := tt.Click("本地导入"); err != nil {
 		t.Fatal(err)
 	}
-	file := filepath.Join(t.TempDir(), "flight.mrpack")
-	f, err := os.Create(file)
-	if err != nil {
-		t.Fatal(err)
-	}
-	w := zip.NewWriter(f)
-	entry, err := w.Create("modrinth.index.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = entry.Write([]byte(`{"formatVersion":1,"game":"minecraft","name":"飞行测试包","versionId":"1.0","dependencies":{"minecraft":"1.21.1","forge":"52.1.14"}}`)); err != nil {
-		t.Fatal(err)
-	}
-	if err := w.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := f.Close(); err != nil {
-		t.Fatal(err)
-	}
-	p.prepared, err = launcher.PrepareLocalModpack(t.Context(), file)
-	if err != nil {
-		t.Fatal(err)
-	}
+	p.prepared = prepareDesktopTestPack(t, "flight.mrpack", "modrinth.index.json", `{"formatVersion":1,"game":"minecraft","name":"飞行测试包","versionId":"1.0","dependencies":{"minecraft":"1.21.1","forge":"52.1.14"}}`)
 	next, inst, err := newLoaderInstallation(a.state, p.prepared.Info().Name, p.prepared.Info().Minecraft,
 		p.prepared.Info().Loader, p.prepared.Info().LoaderVersion)
 	if err != nil || !inst.Forge() || inst.LoaderVersion != "52.1.14" || next.Selected != a.state.Selected {
 		t.Fatalf("wrong Forge instance or selection: %+v, %v", inst, err)
 	}
-	p.name, p.archive = p.prepared.Info().Name, filepath.Base(file)
+	p.name, p.archive = p.prepared.Info().Name, "flight.mrpack"
 	tt.Frame()
 	tt.Advance(300 * time.Millisecond)
 	picker, hasPicker := tt.Find("选择整合包文件…")
@@ -90,6 +69,70 @@ func TestModpackWorkspaceShowsSourcesAndNewInstanceConfirmation(t *testing.T) {
 		t.Fatalf("import controls don't fit or changed the launch selection: %+v %+v", picker, install)
 	}
 	capture(t, tt, "download-modpacks-import")
+}
+
+func prepareDesktopTestPack(t *testing.T, filename, entryName, manifest string) launcher.PreparedModpack {
+	t.Helper()
+	file := filepath.Join(t.TempDir(), filename)
+	f, err := os.Create(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := zip.NewWriter(f)
+	entry, err := w.Create(entryName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = entry.Write([]byte(manifest)); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	pack, err := launcher.PrepareLocalModpack(t.Context(), file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return pack
+}
+
+func TestRejectedKeyCanBeReplacedFromModpackHistory(t *testing.T) {
+	a, tt := testDesktop(t)
+	tt.SetSize(820, 530)
+	p := &a.modpacks
+	a.page, a.downloadPage, p.mode = pageDownloads, downloadModpacks, modpackLocal
+	p.prepared = prepareDesktopTestPack(t, "history.zip", "manifest.json",
+		`{"manifestType":"minecraftModpack","manifestVersion":1,"name":"History","version":"1","minecraft":{"version":"1.21.1"},"files":[{"projectID":30,"fileID":40,"required":true}]}`)
+	i := a.state.Instances[1]
+	row := taskRecord{ID: "history-retry", InstanceID: i.ID, Revision: i.Revision, Version: i.Version, Status: taskCanceled, Pack: launcher.PackUpdateReference(i, p.prepared)}
+	p.retry, p.target, p.key = &packRetry{row: row}, fmt.Sprint(i.ID), "old-test-key"
+	denial := fmt.Errorf("metadata: %w", launcher.ErrCurseForgeAccessDenied)
+	p.setInstallError(denial, p.key)
+	tt.Frame()
+	if _, ok := tt.Find("预览实例更新"); ok {
+		t.Fatal("rejected key can still submit the preview")
+	}
+	if err := tt.Click("更换 API Key…"); err != nil || !p.keyOpen {
+		t.Fatal("key editor not reachable", err)
+	}
+	p.keyDraft = "replacement-test-key"
+	tt.Frame()
+	if err := tt.Click("应用"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Advance(300 * time.Millisecond)
+	tt.Frame()
+	if n, ok := tt.Access("预览实例更新"); !ok || n.Disabled || p.installErr != nil || p.key != "replacement-test-key" ||
+		p.retry == nil || p.retry.row.ID != row.ID || p.target != fmt.Sprint(i.ID) || p.update != nil || a.busy {
+		t.Fatal("replacing the key must return to the original target for an explicit preview")
+	}
+	p.setInstallError(denial, "old-test-key")
+	if p.installErr != nil {
+		t.Fatal("a late denial for the old key invalidated its replacement")
+	}
 }
 
 func TestCompactModpackRetryKeepsActionsAboveFailureNotice(t *testing.T) {

@@ -63,10 +63,10 @@ func (a *desktop) previewPackUpdate(p *modpackView, i launcher.Instance) {
 			return
 		}
 		if err != nil {
-			p.installErr = err.Error()
+			p.setInstallError(err, key)
 			return
 		}
-		p.changePage, p.update, p.installErr = 0, &preview, ""
+		p.changePage, p.update, p.installErr = 0, &preview, nil
 	})
 }
 func (a *desktop) applyPackUpdate(p *modpackView, i launcher.Instance) {
@@ -90,7 +90,7 @@ func (a *desktop) applyPackUpdate(p *modpackView, i launcher.Instance) {
 		}
 		p.update = nil
 		if err != nil {
-			p.installErr = err.Error()
+			p.setInstallError(err, key)
 			return
 		}
 		p.clearPreview()
