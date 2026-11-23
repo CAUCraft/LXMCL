@@ -801,6 +801,10 @@ func (a *desktop) editor(c *ui.Context) {
 	if p := a.form.loaders; !a.form.open && p != nil && p.loaderCancel != nil {
 		p.cancelLoaders()
 	}
+	if p := a.form.worlds; !a.form.open && p != nil && p.cancel != nil {
+		p.cancel()
+		p.cancel = nil
+	}
 }
 
 func (a *desktop) loaderForm(c *ui.Context) {
