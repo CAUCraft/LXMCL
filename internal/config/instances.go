@@ -92,6 +92,7 @@ func (s *State) Remove(id int) {
 	delete(s.InstanceIcons, id)
 	delete(s.InstanceGroups, id)
 	delete(s.PinnedInstances, id)
+	delete(s.SkippedModUpdates, id)
 	s.clearMissingGroupFilter()
 	s.Instances = slices.DeleteFunc(s.Instances, func(i instance.Instance) bool { return i.ID == id })
 	if s.Selected == id {

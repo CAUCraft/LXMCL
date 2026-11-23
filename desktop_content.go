@@ -523,7 +523,10 @@ func (a *desktop) contentFileTitle(c *ui.Context, i launcher.Instance, f launche
 		display.Text(c, f.Name, display.TextProps{Strong: true, Rows: 1}).Grow(1).MinWidth(0).Ellipsis("…")
 		return
 	}
+	updateKey := m.UpdateKey()
+	skipped := a.state.SkippedModUpdates[i.ID][updateKey]
 	title, detail := f.ModTitle, f.Name
+	version, missing := m.Current, m.Unconfirmed
 	if m.Current.ID != "" {
 		title = m.Title
 		if title == "" {
@@ -532,16 +535,32 @@ func (a *desktop) contentFileTitle(c *ui.Context, i launcher.Instance, f launche
 		if m.Current.Number != "" {
 			title += " · " + m.Current.Number
 		}
-		if m.Update.ID != "" {
-			title += " → " + m.Update.Number
-		}
 		detail = "Modrinth · " + detail
+		if updateKey != "" {
+			number := cmp.Or(m.Update.Number, m.Update.ID)
+			if skipped {
+				detail = "已跳过 " + number + " · " + detail
+				missing = m.CurrentUnconfirmed
+			} else {
+				title += " → " + number
+				version = m.Update
+			}
+		}
 	}
 	ui.Column(c).Grow(1).MinWidth(0).Children(func() {
 		display.Text(c, title, display.TextProps{Strong: true, Rows: 1}).Ellipsis("…")
 		muted(c, detail).FontSize(11).SingleLine().Ellipsis("…")
 	})
-	if len(m.Unconfirmed) > 0 && button(c, fmt.Sprintf("核对前置 (%d)", len(m.Unconfirmed)), action.Default, false) {
+	if updateKey != "" {
+		label := "跳过此版本"
+		if skipped {
+			label = "恢复提示"
+		}
+		if button(c.Key(updateKey), label, action.Text, a.busy || v.checking) {
+			a.setModUpdateSkipped(i, updateKey, !skipped)
+		}
+	}
+	if len(missing) > 0 && button(c, fmt.Sprintf("核对前置 (%d)", len(missing)), action.Default, false) {
 		a.openResourceDownloads(i, launcher.Mods)
 		p := a.browserFor(launcher.Mods)
 		if p.source != "" {
@@ -551,12 +570,21 @@ func (a *desktop) contentFileTitle(c *ui.Context, i launcher.Instance, f launche
 		p.abort()
 		p.clearProject()
 		p.searched, p.searchBusy, p.err = true, false, ""
-		v := m.Current
-		if m.Update.ID != "" {
-			v = m.Update
-		}
-		p.packSelection = packSelection{project: launcher.PackProject{ID: v.ProjectID, Title: title}, versions: []launcher.PackVersion{v}, version: v.ID}
+		p.packSelection = packSelection{project: launcher.PackProject{ID: version.ProjectID, Title: title}, versions: []launcher.PackVersion{version}, version: version.ID}
 	}
+}
+
+func (a *desktop) setModUpdateSkipped(i launcher.Instance, candidate string, skip bool) {
+	next := a.state.Clone()
+	if err := next.SetModUpdateSkipped(i.ID, i.Revision, candidate, skip); err != nil {
+		a.message("无法保存更新提示", err)
+		return
+	}
+	a.save(next, 0, func(err error) {
+		if err != nil {
+			a.message("无法保存更新提示", err)
+		}
+	})
 }
 
 func (a *desktop) checkModUpdates(i launcher.Instance) {
@@ -594,7 +622,7 @@ func (a *desktop) modControls(c *ui.Context, i launcher.Instance, disabled bool)
 				if m.Current.ID != "" {
 					known++
 				}
-				if m.Update.ID != "" {
+				if candidate := m.UpdateKey(); candidate != "" && !a.state.SkippedModUpdates[i.ID][candidate] {
 					updates++
 					if _, checked := v.selected[key]; checked {
 						selected = append(selected, m)
