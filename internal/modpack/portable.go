@@ -224,5 +224,8 @@ func Export(ctx context.Context, i instance.Instance, folder, version string, se
 		_, err = readPlan(f, st.Size(), Modrinth)
 		return err
 	})
+	if errors.Is(err, fs.ErrExist) {
+		err = i18n.Error("modpack.export_name_conflict", err)
+	}
 	return filepath.Join(folder, name), err
 }
