@@ -80,6 +80,14 @@ func (a *desktop) libraryGroupPicker(c *ui.Context) {
 	}
 }
 
+func groupDestinationPicker(c *ui.Context, value *string, groups []string, label string, disabled bool) {
+	options := []field.SelectOption{{Value: "", Label: "未分组"}}
+	for _, g := range groups {
+		options = append(options, field.SelectOption{Value: g, Label: groupLabel(g)})
+	}
+	catalogPicker(c, value, options, label, "", disabled)
+}
+
 func (a *desktop) editGroup(i launcher.Instance) {
 	group := a.state.InstanceGroups[i.ID]
 	a.form = editor{mode: "group", open: true, target: i, name: group, originalGroup: group, focus: true}

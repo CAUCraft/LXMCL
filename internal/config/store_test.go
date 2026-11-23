@@ -113,7 +113,11 @@ func TestInstanceLaunchOverridesAndDuplicatePersist(t *testing.T) {
 	if err := state.ConfigureLaunch(source.ID, source.Revision, instance.LaunchOptions{}); err == nil {
 		t.Fatal("stale draft replaced the saved overrides")
 	}
-	duplicate, err := state.Duplicate(source.ID, source.Revision+1, "独立副本")
+	state.InstanceGroups = map[int]string{source.ID: "原组", selected: "建筑组"}
+	if _, err := state.Duplicate(source.ID, source.Revision+1, "独立副本", "失效分组"); err == nil || len(state.Instances) != 2 {
+		t.Fatal("accepted a missing group or created a partial copy")
+	}
+	duplicate, err := state.Duplicate(source.ID, source.Revision+1, "独立副本", "建筑组")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,6 +131,9 @@ func TestInstanceLaunchOverridesAndDuplicatePersist(t *testing.T) {
 	original, _ := saved.Find(source.ID)
 	copied, _ := saved.Find(duplicate.ID)
 	unchanged, _ := saved.Find(selected)
+	if saved.InstanceGroups[source.ID] != "原组" || saved.InstanceGroups[copied.ID] != "建筑组" {
+		t.Fatal("copy did not retain its chosen group", saved.InstanceGroups)
+	}
 	if original.Launch != opts || copied.Launch != opts || copied.GameDir == original.GameDir ||
 		copied.Version != original.Version || saved.Selected != selected {
 		t.Fatalf("copy changed the selected instance or shared its data directory: %+v", saved)
