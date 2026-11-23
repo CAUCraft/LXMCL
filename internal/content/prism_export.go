@@ -4,13 +4,11 @@ import (
 	"archive/zip"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"os"
 	"path"
-	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -43,19 +41,7 @@ func ExportPrismZIP(ctx context.Context, i instance.Instance, filename string, w
 	if strings.TrimSpace(i.Name) == "" || strings.ContainsAny(i.Name, "\x00\r") {
 		return i18n.Error("prism.export_name")
 	}
-	parent, name := filepath.Dir(filename), filepath.Base(filename)
-	if !filepath.IsAbs(filename) || !storage.ValidFilename(name) || !strings.EqualFold(filepath.Ext(name), ".zip") {
-		return i18n.Error("prism.export_target")
-	}
-	if err := CheckSeparateDirectory(i.GameDir, parent); err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return err
-	}
-	out, err := os.OpenRoot(parent)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-	err = storage.PublishNew(ctx, out, name, 0600, func(f *os.File) error {
+	return publishInstanceZIP(ctx, i.GameDir, filename, func(f *os.File) error {
 		z := zip.NewWriter(&prismZIPWriter{file: f, remaining: storage.MaxPackSize})
 		total, err := writePrismMetadata(z, i)
 		if err != nil {
@@ -103,10 +89,6 @@ func ExportPrismZIP(ctx context.Context, i instance.Instance, filename string, w
 		}
 		return ctx.Err()
 	})
-	if errors.Is(err, fs.ErrExist) {
-		return i18n.Error("prism.export_exists", err)
-	}
-	return err
 }
 
 func writePrismMetadata(z *zip.Writer, i instance.Instance) (int64, error) {

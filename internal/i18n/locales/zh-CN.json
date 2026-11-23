@@ -1,6 +1,6 @@
 {
-  "prism.export_target": "请在源实例以外选择一个新的 .zip 文件。",
-  "prism.export_exists": "已有同名文件，请更换 ZIP 文件名或位置。%w",
+  "archive.export_target": "请在源实例以外选择一个新的 .zip 文件。",
+  "archive.export_exists": "已有同名文件，请更换 ZIP 文件名或位置。%w",
   "prism.export_name": "请使用非空且不含回车或空字符的实例名称后重试。",
   "prism.select_root": "请选择包含 instance.cfg 和 mmc-pack.json 的 Prism 或 MultiMC 实例目录",
   "prism.zip_layout": "请选择只含一个原版实例的 ZIP，instance.cfg 和 mmc-pack.json 应位于顶层或同一个一级目录内",
@@ -303,6 +303,8 @@
   "resource.copy_target": "请选择游戏版本及加载器相同的其他模组实例",
   "resource.copy_name_conflict": "同名文件：%s",
   "resource.copy_id_conflict": "重复模组 ID：%s",
+  "resource.backup_select": "请至少勾选一个已装模组。",
+  "resource.backup_changed": "文件 %s 已变化，请刷新后重新勾选。",
   "resource.copy_changed": "来源或目标已变化，请刷新模组列表并重新预览。",
   "resource.checksum_failed": "资源文件大小或哈希校验失败",
   "resource.disabled_conflict": "已有同名停用资源",

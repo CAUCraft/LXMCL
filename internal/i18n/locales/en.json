@@ -1,6 +1,6 @@
 {
-  "prism.export_target": "Choose a new .zip file outside the source instance.",
-  "prism.export_exists": "A file with this name already exists. Choose a different ZIP filename. %w",
+  "archive.export_target": "Choose a new .zip file outside the source instance.",
+  "archive.export_exists": "A file with this name already exists. Choose a different ZIP filename. %w",
   "prism.export_name": "Rename the instance using a non-empty name without carriage returns or NUL characters.",
   "prism.select_root": "Choose a Prism or MultiMC instance folder containing instance.cfg and mmc-pack.json",
   "prism.zip_layout": "Choose a ZIP containing one vanilla instance, with instance.cfg and mmc-pack.json at the root or in the same top-level folder",
@@ -303,6 +303,8 @@
   "resource.copy_target": "Select another modded instance with the same Minecraft version and loader",
   "resource.copy_name_conflict": "Filename conflict: %s",
   "resource.copy_id_conflict": "Duplicate mod ID: %s",
+  "resource.backup_select": "Select at least one installed mod.",
+  "resource.backup_changed": "%s has changed. Refresh the mod list and select it again.",
   "resource.copy_changed": "The source or target changed. Refresh the mod list and preview again.",
   "resource.checksum_failed": "The resource size or hash did not match",
   "resource.disabled_conflict": "A disabled resource with the same name already exists",
