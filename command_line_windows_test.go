@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
@@ -116,18 +117,33 @@ $item = $shell.NameSpace([string]$file.DirectoryName).ParseName([string]$file.Na
 if (!$item.IsLink) { throw "Explorer did not recognize the saved shortcut" }
 $link = $item.GetLink
 Start-Process -FilePath $file.FullName -Wait
-if ($link.Path -ne $env:LXMCL_TEST_TARGET -or $link.WorkingDirectory -ne (Split-Path $env:LXMCL_TEST_TARGET) -or $link.Arguments -cne $env:LXMCL_TEST_ARGS) {
-    throw "Unexpected Explorer properties ($($file.Length) bytes): $($link.Path) | $($link.WorkingDirectory) | $($link.Arguments)"
-}`
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+@{Path=$link.Path; WorkingDirectory=$link.WorkingDirectory; Arguments=$link.Arguments} | ConvertTo-Json -Compress`
 	powershell := filepath.Join(os.Getenv("SystemRoot"), "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
 	invoke := exec.CommandContext(ctx, powershell, "-NoProfile", "-NonInteractive", "-Command", openLink)
-	invoke.Env = append(os.Environ(), "LXMCL_TEST_LINK="+path, "LXMCL_TEST_TARGET="+executable,
-		"LXMCL_TEST_ARGS=--data-dir "+syscall.EscapeArg(store.Root)+" --launch "+strconv.Itoa(target.ID))
-	if out, err := invoke.CombinedOutput(); err != nil {
+	invoke.Env = append(os.Environ(), "LXMCL_TEST_LINK="+path)
+	out, err := invoke.CombinedOutput()
+	if err != nil {
 		rows, _ := tasks.Load(store.Root)
 		t.Fatalf("open saved shortcut (%d journal entries): %v, %s", len(rows), err, out)
 	}
 	waitRecords(3)
+	var link struct{ Path, WorkingDirectory, Arguments string }
+	if err := json.Unmarshal(out, &link); err != nil {
+		t.Fatal(err, string(out))
+	}
+	// Explorer may expand an 8.3 path (such as RUNNER~1) to its long name.
+	for _, pair := range [][2]string{{link.Path, executable}, {link.WorkingDirectory, filepath.Dir(executable)}} {
+		actual, want := pair[0], pair[1]
+		got, err := os.Stat(actual)
+		expected, wantErr := os.Stat(want)
+		if err != nil || wantErr != nil || !os.SameFile(got, expected) {
+			t.Fatalf("shortcut path %q does not identify %q", actual, want)
+		}
+	}
+	if link.Arguments != "--data-dir "+syscall.EscapeArg(store.Root)+" --launch "+strconv.Itoa(target.ID) {
+		t.Fatal("unexpected shortcut arguments", link.Arguments)
+	}
 	if saved, err := store.Load(); err != nil || saved.Selected != state.Selected {
 		t.Fatal("command changed home selection", err, saved.Selected)
 	}
