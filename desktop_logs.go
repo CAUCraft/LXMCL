@@ -42,9 +42,15 @@ func (a *desktop) showInstanceLogs(i launcher.Instance) {
 	a.logLibrary = &instanceLogView{instance: i}
 	a.stopLogRead()
 	a.logOpen = true
-	a.logPath, a.logText, a.logError, a.logExportErr = "", "", "", ""
-	a.logQuery, a.logFilter, a.logScroll.Y, a.logExported = "", 0, 0, false
+	a.resetLogPreview("")
 	a.refreshLogFiles()
+}
+
+func (a *desktop) resetLogPreview(path string) {
+	a.logPath, a.logText, a.logError = path, "", ""
+	a.logQuery, a.logFilter, a.logScroll.Y = "", 0, 0
+	a.logDiagnosis = launcherlog.Diagnosis{}
+	a.logExported, a.logExportErr = false, ""
 }
 
 func (a *desktop) refreshLogFiles() {
@@ -75,8 +81,7 @@ func (a *desktop) refreshLogFiles() {
 			}
 			if path == "" {
 				a.stopLogRead()
-				a.logPath, a.logText, a.logError = "", "", ""
-				a.logExported, a.logExportErr = false, ""
+				a.resetLogPreview("")
 			} else {
 				a.selectLog(path)
 			}

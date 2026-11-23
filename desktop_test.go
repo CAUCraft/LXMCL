@@ -954,8 +954,12 @@ func TestInstanceLogSelectionKeepsTargetAndResetsPreview(t *testing.T) {
 	if err := tt.Click("关闭"); err != nil || a.logOpen {
 		t.Fatalf("close action is not reachable with multiple errors: %v", err)
 	}
-	a.showInstanceLogs(i)
+	a.logDiagnosis = launcherlog.Diagnosis{Cause: "heap", Evidence: "OutOfMemoryError: Java heap space"}
+	a.showInstanceLogs(a.state.Instances[0])
 	tt.Frame()
+	if _, ok := tt.Find("查看内存设置"); ok || a.logDiagnosis.Cause != "" {
+		t.Fatal("an empty instance inherited the previous log diagnosis")
+	}
 	tt.Key(0, ui.KeyEscape)
 	if a.logOpen {
 		t.Fatal("Escape did not close instance logs")

@@ -97,10 +97,9 @@ func (a *desktop) selectLog(path string) {
 		return
 	}
 	if a.logPath != path || !a.logOpen {
-		a.logQuery, a.logFilter, a.logScroll.Y, a.logText = "", 0, 0, ""
-		a.logExported, a.logExportErr = false, ""
+		a.resetLogPreview(path)
 	}
-	a.logPath, a.logOpen = path, true
+	a.logOpen = true
 	a.reloadLog()
 }
 
