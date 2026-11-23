@@ -1,5 +1,7 @@
 package launcher
 
+import "github.com/CAUCraft/LXMCL/internal/saves"
+
 // LaunchRequest is captured on submission. Browsing another instance or account
 // does not alter this operation. Use Snapshot before handing it to a worker.
 type LaunchRequest struct {
@@ -9,6 +11,7 @@ type LaunchRequest struct {
 	Session        MinecraftSession
 	StationSession StationSession
 	Server         string
+	World          *saves.World
 	InstallOnly    bool
 }
 

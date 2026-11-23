@@ -16,6 +16,7 @@ import (
 
 	"github.com/CAUCraft/LXMCL/internal/launcher"
 	"github.com/CAUCraft/LXMCL/internal/playtime"
+	"github.com/CAUCraft/LXMCL/internal/saves"
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 )
@@ -499,6 +500,10 @@ func (a *desktop) play(i launcher.Instance, installOnly bool) {
 }
 
 func (a *desktop) playOnServer(i launcher.Instance, installOnly bool, server string) {
+	a.startGame(i, installOnly, server, nil)
+}
+
+func (a *desktop) startGame(i launcher.Instance, installOnly bool, server string, world *saves.World) {
 	if a.busy || a.running != nil {
 		return
 	}
@@ -509,9 +514,12 @@ func (a *desktop) playOnServer(i launcher.Instance, installOnly bool, server str
 	a.cancelTask = cancel
 	a.taskCanceling = false
 	g := a.game
-	request := (launcher.LaunchRequest{Instance: i, State: a.state, Account: a.microsoftAccount, Session: a.minecraftSession, StationSession: a.stationSessions[a.state.StationKey], Server: server, InstallOnly: installOnly}).Snapshot()
+	request := (launcher.LaunchRequest{Instance: i, State: a.state, Account: a.microsoftAccount, Session: a.minecraftSession, StationSession: a.stationSessions[a.state.StationKey], Server: server, World: world, InstallOnly: installOnly}).Snapshot()
 	instances := request.State.Instances
 	record := taskRecord{InstanceID: i.ID, Revision: i.Revision, Name: i.Name, Version: i.Version, Action: taskLaunch, Server: server, At: time.Now()}
+	if world != nil {
+		record.World = world.Folder()
+	}
 	if installOnly {
 		record.Action = taskVerify
 	} else {

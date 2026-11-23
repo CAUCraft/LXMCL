@@ -5,6 +5,7 @@ import (
 
 	"github.com/CAUCraft/LXMCL/internal/account"
 	"github.com/CAUCraft/LXMCL/internal/minecraft"
+	"github.com/CAUCraft/LXMCL/internal/saves"
 )
 
 type Running = minecraft.Running
@@ -39,7 +40,7 @@ func (g Game) StartWithStation(ctx context.Context, i Instance, settings Setting
 func stationIdentity(session StationSession) (gameIdentity, error) { return session.LaunchIdentity() }
 
 func (g Game) start(ctx context.Context, i Instance, settings Settings, server string, identity gameIdentity, station *StationSession) (Running, error) {
-	return g.startProgress(ctx, i, settings, server, identity, station, nil)
+	return g.startProgress(ctx, i, settings, server, nil, identity, station, nil)
 }
 
 type gameIdentity = account.LaunchIdentity
@@ -51,8 +52,8 @@ func launchIdentity(offline string, session *MinecraftSession) (gameIdentity, er
 	return account.OfflineIdentity(offline)
 }
 
-func (g Game) startProgress(ctx context.Context, i Instance, settings Settings, server string, identity gameIdentity, station *StationSession, report func(Progress)) (Running, error) {
-	options := minecraft.LaunchOptions{Settings: settings, Server: server, Identity: identity}
+func (g Game) startProgress(ctx context.Context, i Instance, settings Settings, server string, world *saves.World, identity gameIdentity, station *StationSession, report func(Progress)) (Running, error) {
+	options := minecraft.LaunchOptions{Settings: settings, Server: server, World: world, Identity: identity}
 	if station != nil {
 		options.PrepareJVM = func(ctx context.Context) ([]string, error) {
 			return (account.Client{Transport: g.Transport}).StationLaunchArgs(ctx, *station, g.Cache)

@@ -99,12 +99,19 @@ func gameArgs(raw []json.RawMessage, values map[string]string, features map[stri
 	return args, nil
 }
 
-func clientArgs(m metadata, values map[string]string, opts instance.LaunchOptions, addressText string) ([]string, error) {
+func clientArgs(m metadata, values map[string]string, opts instance.LaunchOptions, addressText, world string) ([]string, error) {
 	features := make(map[string]bool)
 	if opts.Display == instance.DisplayResolution {
 		features["has_custom_resolution"] = true
 		values["resolution_width"] = strconv.Itoa(opts.Width)
 		values["resolution_height"] = strconv.Itoa(opts.Height)
+	}
+	if world != "" {
+		if addressText != "" {
+			return nil, i18n.Error("launch.world_target_invalid")
+		}
+		features["is_quick_play_singleplayer"] = true
+		values["quickPlaySingleplayer"] = world
 	}
 	if addressText != "" {
 		address, err := server.Address(addressText)
@@ -120,6 +127,12 @@ func clientArgs(m metadata, values map[string]string, opts instance.LaunchOption
 	}
 	if opts.Display == instance.DisplayFullscreen && !slices.Contains(args, "--fullscreen") {
 		args = append(args, "--fullscreen")
+	}
+	if world != "" {
+		at := slices.Index(args, "--quickPlaySingleplayer")
+		if at < 0 || at+1 >= len(args) || args[at+1] != world {
+			return nil, i18n.Error("launch.world_unsupported")
+		}
 	}
 	if addressText != "" && !slices.Contains(args, "--quickPlayMultiplayer") {
 		return nil, i18n.Error("launch.quick_play_unsupported")

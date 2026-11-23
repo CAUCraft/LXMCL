@@ -604,6 +604,8 @@ func (a *desktop) editor(c *ui.Context) {
 	}
 	title, okText := "重命名实例", "保存"
 	switch a.form.mode {
+	case "worlds":
+		title = "本地存档"
 	case "prism":
 		title = "导入 Prism / MultiMC 实例"
 	case "icon":
@@ -625,9 +627,13 @@ func (a *desktop) editor(c *ui.Context) {
 	}
 	submit := false
 	if feedback.Modal(c, &a.form.open, feedback.ModalProps{
-		Title: title, OkText: okText, CancelText: "取消", Width: 480, NoFooter: a.form.loaders != nil || a.form.icon != nil || a.form.prism != nil,
+		Title: title, OkText: okText, CancelText: "取消", Width: 480, NoFooter: a.form.loaders != nil || a.form.icon != nil || a.form.prism != nil || a.form.worlds != nil,
 	}, func() {
 		ui.Column(c).Gap(12).Children(func() {
+			if a.form.worlds != nil {
+				a.worldEditor(c)
+				return
+			}
 			if a.form.prism != nil {
 				a.prismEditor(c)
 				return

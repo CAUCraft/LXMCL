@@ -95,7 +95,7 @@ func TestClientArgsRespectInstanceDisplayMode(t *testing.T) {
 		{instance.LaunchOptions{Display: instance.DisplayFullscreen}, []string{"--username", "Player", "--fullscreen"}},
 	}
 	for _, tc := range cases {
-		args, err := clientArgs(m, map[string]string{"auth_player_name": "Player"}, tc.opts, "")
+		args, err := clientArgs(m, map[string]string{"auth_player_name": "Player"}, tc.opts, "", "")
 		if err != nil || !slices.Equal(args, tc.want) {
 			t.Errorf("display %q: args = %v, error = %v; want %v", tc.opts.Display, args, err, tc.want)
 		}
