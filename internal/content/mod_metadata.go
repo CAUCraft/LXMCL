@@ -13,18 +13,33 @@ import (
 // ReadModMetadata returns a display title and comma-separated mod IDs from loader manifests.
 // A broken or unfamiliar JAR returns empty strings.
 func ReadModMetadata(root *os.Root, name string, markers []string) (string, string) {
+	return modLabels(readManifestMods(root, name, markers))
+}
+
+type manifestMod struct{ id, name, version string }
+
+func modLabels(entries []manifestMod) (string, string) {
+	var titles, ids []string
+	for _, m := range entries {
+		titles = append(titles, modTitle(m.id, m.name, m.version))
+		ids = append(ids, m.id)
+	}
+	return strings.Join(titles, " / "), strings.Join(ids, ", ")
+}
+
+func readManifestMods(root *os.Root, name string, markers []string) []manifestMod {
 	f, err := root.Open(name)
 	if err != nil {
-		return "", ""
+		return nil
 	}
 	defer f.Close()
 	st, err := f.Stat()
 	if err != nil || !st.Mode().IsRegular() || st.Size() > MaxSize {
-		return "", ""
+		return nil
 	}
 	z, err := zip.NewReader(f, st.Size())
 	if err != nil {
-		return "", ""
+		return nil
 	}
 	for _, marker := range markers {
 		data := manifestBytes(z, marker)
@@ -35,7 +50,7 @@ func ReadModMetadata(root *os.Root, name string, markers []string) (string, stri
 		case "fabric.mod.json":
 			var m struct{ ID, Name, Version string }
 			if json.Unmarshal(data, &m) == nil && m.ID != "" {
-				return modTitle(m.ID, m.Name, m.Version), m.ID
+				return []manifestMod{{m.ID, m.Name, m.Version}}
 			}
 		case "quilt.mod.json":
 			var m struct {
@@ -45,7 +60,7 @@ func ReadModMetadata(root *os.Root, name string, markers []string) (string, stri
 				} `json:"quilt_loader"`
 			}
 			if json.Unmarshal(data, &m) == nil && m.Loader.ID != "" {
-				return modTitle(m.Loader.ID, m.Loader.Metadata.Name, m.Loader.Version), m.Loader.ID
+				return []manifestMod{{m.Loader.ID, m.Loader.Metadata.Name, m.Loader.Version}}
 			}
 		default:
 			var m struct {
@@ -54,7 +69,7 @@ func ReadModMetadata(root *os.Root, name string, markers []string) (string, stri
 			if err := toml.Unmarshal(data, &m); err != nil {
 				continue
 			}
-			var titles, ids []string
+			var entries []manifestMod
 			var jarVersion string
 			var readJarVersion bool
 			for _, mod := range m.Mods {
@@ -69,15 +84,14 @@ func ReadModMetadata(root *os.Root, name string, markers []string) (string, stri
 					}
 					version = jarVersion
 				}
-				titles = append(titles, modTitle(mod.ModID, mod.DisplayName, version))
-				ids = append(ids, mod.ModID)
+				entries = append(entries, manifestMod{mod.ModID, mod.DisplayName, version})
 			}
-			if len(ids) > 0 {
-				return strings.Join(titles, " / "), strings.Join(ids, ", ")
+			if len(entries) > 0 {
+				return entries
 			}
 		}
 	}
-	return "", ""
+	return nil
 }
 
 func modTitle(id, name, version string) string {

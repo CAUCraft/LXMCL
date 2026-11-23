@@ -25,6 +25,7 @@ import (
 )
 
 type contentView struct {
+	comparison *modComparisonView
 	mods       map[string]launcher.InstalledMod
 	checking   bool
 	checkError string
@@ -82,6 +83,7 @@ func (v contentView) kind() launcher.ContentKind {
 }
 
 func (a *desktop) refreshContent(i launcher.Instance) {
+	a.content.comparison = nil
 	a.content.listing = nil
 	if a.ctx == nil {
 		return
@@ -132,6 +134,10 @@ func (a *desktop) instanceContent(c *ui.Context, i launcher.Instance) {
 		*v = contentView{id: i.ID, revision: i.Revision}
 		a.refreshContent(i)
 	}
+	if v.comparison != nil {
+		a.modComparison(c, i, v.comparison)
+		return
+	}
 	disabled := a.busy || a.pickerBusy || a.running != nil
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 		if launcher.Mods.Supports(i) {
@@ -150,6 +156,9 @@ func (a *desktop) instanceContent(c *ui.Context, i launcher.Instance) {
 		}
 		ui.Spacer(c).Grow(1)
 		kind := v.kind()
+		if kind == launcher.Mods && icon(c, lucide.GitCompareArrows(), "比对实例模组", v.reading) {
+			v.comparison = &modComparisonView{}
+		}
 		if kind == launcher.Mods && len(v.files) > 0 && button(c, "检查更新", action.Default, disabled || v.checking || v.reading) {
 			a.checkModUpdates(i)
 		}
