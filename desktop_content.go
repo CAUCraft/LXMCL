@@ -25,6 +25,7 @@ import (
 )
 
 type contentView struct {
+	savedPacks  *savedPacksView
 	packPreview *resourcePackView
 	comparison  *modComparisonView
 	restoreMods *modRestoreView
@@ -92,6 +93,7 @@ func (v contentView) kind() launcher.ContentKind {
 }
 
 func (a *desktop) refreshContent(i launcher.Instance) {
+	a.content.savedPacks = nil
 	a.content.restoreMods = nil
 	a.content.packPreview = nil
 	a.content.copyMods = nil
@@ -154,6 +156,10 @@ func (a *desktop) instanceContent(c *ui.Context, i launcher.Instance) {
 		a.resourcePackPreview(c, i, v.packPreview)
 		return
 	}
+	if v.savedPacks != nil {
+		a.savedPackOrder(c, i, v.savedPacks)
+		return
+	}
 	if v.copyMods != nil {
 		a.modCopy(c, i, v.copyMods)
 		return
@@ -180,6 +186,9 @@ func (a *desktop) instanceContent(c *ui.Context, i launcher.Instance) {
 		}
 		ui.Spacer(c).Grow(1)
 		kind := v.kind()
+		if kind == launcher.ResourcePacks && button(c, "游戏上次选择", action.Default, v.reading) {
+			a.openSavedPacks(i)
+		}
 		if kind == launcher.Mods && icon(c, lucide.GitCompareArrows(), "比对实例模组", v.reading) {
 			v.comparison = &modComparisonView{}
 		}
