@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/CAUCraft/LXMCL/internal/i18n"
 )
@@ -15,9 +16,17 @@ import (
 type World struct {
 	folder           string
 	directory, level fs.FileInfo
+	levelName        string
+	lastPlayed       time.Time
 }
 
 func (w World) Folder() string { return w.folder }
+
+// LevelName is the saved in-game name, or empty when unavailable.
+func (w World) LevelName() string { return w.levelName }
+
+// LastPlayed is the timestamp saved by the game, or zero when unavailable.
+func (w World) LastPlayed() time.Time { return w.lastPlayed }
 
 // Worlds lists immediate world directories without creating an absent saves folder.
 func Worlds(ctx context.Context, gameDir string) ([]World, error) {
@@ -48,6 +57,10 @@ func Worlds(ctx context.Context, gameDir string) ([]World, error) {
 		if err != nil {
 			return nil, err
 		}
+		world.levelName, world.lastPlayed = readWorldMetadata(ctx, root, world)
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		out = append(out, world)
 	}
 	return out, nil
@@ -68,7 +81,7 @@ func readWorld(root *os.Root, name string) (World, error) {
 	if !level.Mode().IsRegular() {
 		return World{}, fs.ErrNotExist
 	}
-	return World{name, dir, level}, nil
+	return World{folder: name, directory: dir, level: level}, nil
 }
 
 func (w World) Check(gameDir string) error {

@@ -25,6 +25,7 @@ type worldBrowser struct {
 	list     ui.ListState
 	selected int
 	loading  bool
+	cancel   context.CancelFunc
 	opening  bool
 	openErr  string
 	retry    *taskRecord
@@ -34,10 +35,15 @@ func (a *desktop) browseWorlds(i launcher.Instance, retry *taskRecord) {
 	if a.ctx == nil || !a.ready || a.busy || a.running != nil {
 		return
 	}
-	p := &worldBrowser{loading: true, selected: -1, retry: retry}
+	if old := a.form.worlds; old != nil && old.cancel != nil {
+		old.cancel()
+	}
+	ctx, cancel := context.WithCancel(a.ctx)
+	p := &worldBrowser{loading: true, cancel: cancel, selected: -1, retry: retry}
 	a.form = editor{mode: "worlds", open: true, target: i, worlds: p}
 	go func() {
-		entries, err := saves.Worlds(a.ctx, i.GameDir)
+		defer cancel()
+		entries, err := saves.Worlds(ctx, i.GameDir)
 		a.post(func() {
 			if !a.form.open || a.form.worlds != p {
 				return
@@ -169,14 +175,32 @@ func (a *desktop) worldEditor(c *ui.Context) {
 			if p.openErr != "" {
 				maxRows = 4
 			}
-			ui.List(c, &p.list, len(p.visible)).Height(float32(min(maxRows, len(p.visible))) * 36).FillWidth().Rows(func(r ui.ListRow) {
+			const rowHeight = 40
+			ui.List(c, &p.list, len(p.visible)).Height(float32(min(maxRows, len(p.visible)) * rowHeight)).FillWidth().Rows(func(r ui.ListRow) {
+				world := p.visible[r.Index]
+				name := world.LevelName()
+				if name == "" {
+					name = world.Folder()
+				}
+				played := "未知"
+				if t := world.LastPlayed(); !t.IsZero() {
+					played = t.Local().Format("2006-01-02 15:04")
+				}
 				rc := r.Context
-				ui.Row(rc).Height(36).AlignItems(ui.Center).Gap(8).Padding(0, 10).Children(func() {
+				ui.Row(rc).Height(rowHeight).AlignItems(ui.Center).Gap(8).Padding(0, 10).Children(func() {
 					ui.Icon(rc, lucide.Folder()).FontSize(16)
-					ui.Text(rc, p.visible[r.Index].Folder()).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-					if r.Selected() {
-						ui.Icon(rc, lucide.Check()).FontSize(15)
-					}
+					ui.Column(rc).Grow(1).MinWidth(0).Children(func() {
+						ui.Text(rc, name).SingleLine().Ellipsis("…")
+						if name != world.Folder() {
+							ui.Text(rc, "目录 · "+world.Folder()).FontSize(12).Opacity(0.8).SingleLine().Ellipsis("…")
+						}
+					})
+					ui.Text(rc, "上次游玩 · "+played).FontSize(12).Opacity(0.8).Shrink(0).SingleLine()
+					ui.Box(rc).Size(15, 15).Shrink(0).Children(func() {
+						if r.Selected() {
+							ui.Icon(rc, lucide.Check()).FontSize(15)
+						}
+					})
 				})
 			})
 		}
