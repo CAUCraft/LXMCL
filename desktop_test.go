@@ -600,6 +600,23 @@ func TestInstanceLaunchModesRetainCustomDraft(t *testing.T) {
 	}
 }
 
+func TestInheritedJavaOpensGlobalSettings(t *testing.T) {
+	a, tt := testDesktop(t)
+	a.state.Settings.JavaPath = filepath.Join(t.TempDir(), "java")
+	a.draft = a.state.Settings
+	i := a.state.Instances[1]
+	a.inspect(i)
+	a.detailPage = detailLaunch
+	tt.SetSize(820, 530)
+	tt.Frame()
+	if err := tt.Click("修改全局 Java"); err != nil {
+		t.Fatal(err)
+	}
+	if a.page != pageSettings || a.settingsPage != 1 || a.state.Selected != 1 || a.state.Instances[1] != i {
+		t.Fatal("opening inherited Java settings changed the instance or launch target")
+	}
+}
+
 func TestInstanceSettingsKeepDraftAndLaunchTargetSeparate(t *testing.T) {
 	a, tt := testDesktop(t)
 	tt.SetSize(820, 530)
