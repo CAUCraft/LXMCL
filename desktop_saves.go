@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"path/filepath"
 	"slices"
 
@@ -25,6 +27,7 @@ type restoreView struct {
 	selected int // 0 restores all worlds, other rows use worlds[selected-1].
 	list     ui.ListState
 	loading  bool
+	readOnly bool // Task history previews do not offer restore or archive selection.
 	err      string
 	cancel   context.CancelFunc
 }
@@ -69,17 +72,17 @@ func (a *desktop) pickSaveArchive(i launcher.Instance) {
 }
 
 func (a *desktop) previewSaveArchive(i launcher.Instance, path string) {
-	a.readSavePreview(i, filepath.Base(path), func(ctx context.Context) (launcher.SavePreview, error) {
+	a.readSavePreview(&restoreView{target: i, filename: filepath.Base(path)}, func(ctx context.Context) (launcher.SavePreview, error) {
 		return launcher.InspectSaveArchive(ctx, path)
 	})
 }
 
-func (a *desktop) readSavePreview(i launcher.Instance, filename string, inspect func(context.Context) (launcher.SavePreview, error)) {
+func (a *desktop) readSavePreview(p *restoreView, inspect func(context.Context) (launcher.SavePreview, error)) {
 	if a.restore != nil && a.restore.cancel != nil {
 		a.restore.cancel()
 	}
 	ctx, cancel := context.WithCancel(a.ctx)
-	p := &restoreView{target: i, filename: filename, loading: true, cancel: cancel}
+	p.loading, p.cancel = true, cancel
 	a.restore = p
 	go func() {
 		defer cancel()
@@ -91,9 +94,15 @@ func (a *desktop) readSavePreview(i launcher.Instance, filename string, inspect 
 			p.loading = false
 			if err != nil {
 				p.err = err.Error()
+				if p.readOnly && errors.Is(err, fs.ErrNotExist) {
+					p.err = "备份文件已丢失，请检查原实例的备份目录。"
+				}
 				return
 			}
-			p.preview, p.worlds = preview, preview.Worlds()
+			p.worlds = preview.Worlds()
+			if !p.readOnly {
+				p.preview = preview
+			}
 		})
 	}()
 }
@@ -104,29 +113,44 @@ func (a *desktop) restoreDialog(c *ui.Context) {
 		return
 	}
 	current, exists := a.state.Find(p.target.ID)
-	stale := !exists || current.Revision != p.target.Revision
+	stale := !p.readOnly && (!exists || current.Revision != p.target.Revision)
+	title, source, errorTitle := "恢复存档", "目标实例 · "+p.target.Name, "无法恢复此归档"
+	if p.readOnly {
+		title, source, errorTitle = "备份预览", fmt.Sprintf("原实例 · %s · #%d", p.target.Name, p.target.ID), "无法预览此归档"
+	}
 	open := true
-	feedback.Modal(c, &open, feedback.ModalProps{Title: "恢复存档", Width: 480, NoFooter: true}, func() {
+	feedback.Modal(c, &open, feedback.ModalProps{Title: title, Width: 480, NoFooter: true}, func() {
 		ui.Column(c).Gap(10).Children(func() {
-			panelHeading(c, lucide.Archive(), p.filename, "目标实例 · "+p.target.Name)
+			panelHeading(c, lucide.Archive(), p.filename, source)
 			switch {
 			case stale:
 				feedback.Alert(c, "实例已更改", feedback.AlertProps{Type: feedback.Warning, Description: "请返回游戏文件页，重新选择恢复目标。"})
 			case p.loading:
 				flightLoading(c, "正在检查 ZIP 中的世界…")
 			case p.err != "":
-				feedback.Alert(c, "无法恢复此归档", feedback.AlertProps{Type: feedback.Error, Description: p.err})
+				feedback.Alert(c, errorTitle, feedback.AlertProps{Type: feedback.Error, Description: p.err})
 			case len(p.worlds) == 1:
 				display.Text(c, "世界 · "+p.worlds[0], display.TextProps{Strong: true}).Selectable()
 			default:
-				display.Text(c, "恢复范围", display.TextProps{Strong: true})
-				p.worldPicker(c)
+				label := "恢复范围"
+				if p.readOnly {
+					label = "归档内的世界"
+				}
+				display.Text(c, label, display.TextProps{Strong: true})
+				p.worldList(c)
 			}
-			if !stale && len(p.worlds) > 0 {
+			if !p.readOnly && !stale && len(p.worlds) > 0 {
 				display.Text(c, "同名世界会另存为新副本，例如「生存 (2)」。", display.TextProps{FontSize: 13})
 			}
 			layout.Divider(c, layout.DividerProps{})
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+				if p.readOnly {
+					ui.Spacer(c).Grow(1)
+					if button(c, "关闭", action.Default, false) {
+						open = false
+					}
+					return
+				}
 				if !stale && !p.loading && button(c, "重新选择 ZIP…", action.Text, a.pickerBusy || a.busy) {
 					a.pickSaveArchive(p.target)
 				}
@@ -167,7 +191,7 @@ func (a *desktop) restoreDialog(c *ui.Context) {
 }
 
 func (a *desktop) startRestore(p *restoreView) bool {
-	if a.ctx == nil || a.busy || a.pickerBusy || a.running != nil || len(p.worlds) == 0 || p.selected < 0 || p.selected > len(p.worlds) {
+	if p.readOnly || a.ctx == nil || a.busy || a.pickerBusy || a.running != nil || len(p.worlds) == 0 || p.selected < 0 || p.selected > len(p.worlds) {
 		return false
 	}
 	world := ""
@@ -186,19 +210,25 @@ func (a *desktop) startRestore(p *restoreView) bool {
 	return true
 }
 
-func (p *restoreView) worldPicker(c *ui.Context) {
-	label := func(row int) string {
-		if row == 0 {
-			return fmt.Sprintf("全部世界（%d 个）", len(p.worlds))
+func (p *restoreView) worldList(c *ui.Context) {
+	count := len(p.worlds)
+	label := func(row int) string { return p.worlds[row] }
+	if !p.readOnly {
+		count++
+		label = func(row int) string {
+			if row == 0 {
+				return fmt.Sprintf("全部世界（%d 个）", len(p.worlds))
+			}
+			return p.worlds[row-1]
 		}
-		return p.worlds[row-1]
+		p.list.Selected = &p.selected
 	}
-	p.list.Label, p.list.Selected = label, &p.selected
-	ui.List(c, &p.list, len(p.worlds)+1).Height(float32(min(4, len(p.worlds)+1)) * 34).FillWidth().Rows(func(row ui.ListRow) {
+	p.list.Label = label
+	ui.List(c, &p.list, count).Height(float32(min(4, count)) * 34).FillWidth().Rows(func(row ui.ListRow) {
 		rc := row.Context
 		ui.Row(rc).Height(34).Padding(0, 10).Gap(8).AlignItems(ui.Center).Children(func() {
 			glyph := lucide.Folder()
-			if row.Index == 0 {
+			if row.Index == 0 && !p.readOnly {
 				glyph = lucide.Layers()
 			}
 			ui.Icon(rc, glyph).FontSize(15)

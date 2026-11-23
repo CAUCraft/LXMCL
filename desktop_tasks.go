@@ -220,6 +220,7 @@ func (a *desktop) taskRow(c *ui.Context, row taskRecord) {
 	case taskStarted:
 		tone = display.TagProcessing
 	}
+	backup := row.Action == taskBackup && row.Status == taskCompleted && row.InstanceID > 0
 	failed := failedOrCanceled(row)
 	target, retry := launcher.RetryTarget(row, a.state)
 	folderRetry := failed && row.Folder != "" && row.Resource != nil &&
@@ -243,6 +244,9 @@ func (a *desktop) taskRow(c *ui.Context, row taskRecord) {
 		}
 		if row.World != "" {
 			muted(c, "单人世界 · "+row.World).FontSize(13).Selectable()
+		}
+		if backup && row.SaveArchive == "" {
+			muted(c, "此任务没有记录备份 ZIP 文件名。").FontSize(12)
 		}
 		if row.Server != "" {
 			muted(c, "服务器 · "+row.Server).FontSize(13).Selectable()
@@ -334,7 +338,10 @@ func (a *desktop) taskRow(c *ui.Context, row taskRecord) {
 					a.openPath(filepath.Dir(row.Log), false)
 				}
 			}
-			if row.Action == taskBackup && row.Status == taskCompleted && row.InstanceID > 0 && button(c, "打开备份目录", action.Default, false) {
+			if backup && row.SaveArchive != "" && button(c, "预览备份…", action.Default, a.ctx == nil) {
+				a.previewBackupTask(row)
+			}
+			if backup && button(c, "打开备份目录", action.Default, false) {
 				a.openPath(launcher.BackupsDir(a.store.Root, row.InstanceID), false)
 			}
 			if row.Folder != "" && button(c, "打开文件夹", action.Default, false) {
