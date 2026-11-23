@@ -224,6 +224,10 @@ func (a *desktop) noticeBar(c *ui.Context) {
 }
 
 func (a *desktop) backFromDetail() {
+	if a.detailPage == detailContent && a.content.restoreMods != nil {
+		a.closeModRestore()
+		return
+	}
 	if a.detailPage == detailContent && a.content.packPreview != nil {
 		a.closePackPreview()
 		return

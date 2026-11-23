@@ -42,7 +42,7 @@ func ExportPrismZIP(ctx context.Context, i instance.Instance, filename string, w
 		return i18n.Error("prism.export_name")
 	}
 	return publishInstanceZIP(ctx, i.GameDir, filename, func(f *os.File) error {
-		z := zip.NewWriter(&prismZIPWriter{file: f, remaining: storage.MaxPackSize})
+		z := zip.NewWriter(&limitedZIPWriter{file: f, remaining: storage.MaxPackSize})
 		total, err := writePrismMetadata(z, i)
 		if err != nil {
 			return err
@@ -132,20 +132,6 @@ func addPrismOptions(gameDir string, add func(*os.Root, string, string, fs.FileI
 		return err
 	}
 	return add(root, "options.txt", "options.txt", info)
-}
-
-type prismZIPWriter struct {
-	file      *os.File
-	remaining int64
-}
-
-func (w *prismZIPWriter) Write(p []byte) (int, error) {
-	if int64(len(p)) > w.remaining {
-		return 0, i18n.Error("modpack.archive_invalid")
-	}
-	n, err := w.file.Write(p)
-	w.remaining -= int64(n)
-	return n, err
 }
 
 var playerProgressFile = regexp.MustCompile(`(?i)^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}[.]json$`)

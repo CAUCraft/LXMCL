@@ -27,6 +27,7 @@ import (
 type contentView struct {
 	packPreview *resourcePackView
 	comparison  *modComparisonView
+	restoreMods *modRestoreView
 	copyMods    *modCopyView
 	mods        map[string]launcher.InstalledMod
 	checking    bool
@@ -91,6 +92,7 @@ func (v contentView) kind() launcher.ContentKind {
 }
 
 func (a *desktop) refreshContent(i launcher.Instance) {
+	a.content.restoreMods = nil
 	a.content.packPreview = nil
 	a.content.copyMods = nil
 	a.content.comparison = nil
@@ -143,6 +145,10 @@ func (a *desktop) instanceContent(c *ui.Context, i launcher.Instance) {
 	if v.id != i.ID || v.revision != i.Revision || v.tab != 0 && !v.kind().Supports(i) {
 		*v = contentView{id: i.ID, revision: i.Revision}
 		a.refreshContent(i)
+	}
+	if v.restoreMods != nil {
+		a.modRestore(c, i, v.restoreMods)
+		return
 	}
 	if v.packPreview != nil {
 		a.resourcePackPreview(c, i, v.packPreview)
@@ -234,6 +240,7 @@ func (a *desktop) instanceContent(c *ui.Context, i launcher.Instance) {
 			}
 			ui.Column(c).Grow(1).Center().Children(func() {
 				display.Empty(c, display.EmptyProps{Icon: lucide.PackageOpen(), Title: "暂无本地" + contentLabel(kind), Description: hint})
+				a.modRestoreButton(c, i, disabled)
 			})
 		default:
 			a.contentList(c, i, disabled)
@@ -342,6 +349,7 @@ func (a *desktop) contentList(c *ui.Context, i launcher.Instance, disabled bool)
 			}
 		}
 		muted(c, fmt.Sprintf("%d / %d 项", len(files), len(v.files))).FontSize(12).Grow(1)
+		a.modRestoreButton(c, i, disabled)
 		order := v.order
 		ui.Column(c).Width(124).Shrink(0).Children(func() {
 			field.Select(c, &v.order, field.SelectProps{Options: []field.SelectOption{
