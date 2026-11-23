@@ -70,7 +70,7 @@ func (a *desktop) serverDialog(c *ui.Context) {
 				}
 				submit = input.Submitted()
 				if p.mode == serverDirect {
-					_, selected := a.serverInstancePicker(c.Key("direct-instance"))
+					_, selected := a.serverInstancePicker(c.Key("direct-instance"), "加入时使用")
 					disabled = disabled || !selected || a.running != nil
 				} else {
 					display.Text(c, "名称（可选）", display.TextProps{Strong: true})
