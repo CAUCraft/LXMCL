@@ -25,6 +25,7 @@ go tool mygo build -platform windows/amd64
 | --- | --- |
 | `launcher.json` | 设置、实例、账号选择和服务器收藏 |
 | `tasks.json` | 最近 24 条任务 |
+| `playtime.json` | 按实例 ID 保存的本地游玩记录，从首次实际启动游戏进程开始 |
 | `cache/` | 游戏、加载器、资源及 Java 缓存 |
 | `cache/installer-logs/` | Forge / NeoForge 安装器日志 |
 | `backups/instance-<id>/` | 存档备份 |

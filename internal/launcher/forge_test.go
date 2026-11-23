@@ -183,8 +183,8 @@ func TestPatchedModpackInstallAndLaunch(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := <-run.Done; err != nil {
-				t.Fatal(err)
+			if exit := <-run.Done; exit.Err != nil {
+				t.Fatal(exit.Err)
 			}
 			log, err := os.ReadFile(run.Log)
 			if err != nil || !strings.Contains(string(log), "shim loader and inherited Minecraft started") {

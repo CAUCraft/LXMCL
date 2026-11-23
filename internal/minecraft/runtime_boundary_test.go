@@ -91,9 +91,9 @@ func TestPublicRuntimeKeepsAuthenticationPreparationLazyAndProcessIndependent(t 
 		t.Fatal(err)
 	}
 	select {
-	case err := <-run.Done:
-		if err != nil {
-			t.Fatal(err)
+	case exit := <-run.Done:
+		if exit.Err != nil || exit.At.Before(run.StartedAt) || run.StartedAt.IsZero() {
+			t.Fatal(exit)
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("child process did not complete")
