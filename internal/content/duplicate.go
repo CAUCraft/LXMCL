@@ -15,10 +15,12 @@ import (
 	"github.com/CAUCraft/LXMCL/internal/transfer"
 )
 
-var setupPaths = []struct {
+type setupPath struct {
 	name      string
 	directory bool
-}{
+}
+
+var setupPaths = []setupPath{
 	{"mods", true}, {"resourcepacks", true}, {"shaderpacks", true}, {"config", true},
 	{"defaultconfigs", true}, {"kubejs", true}, {"scripts", true},
 	{"options.txt", false}, {"optionsof.txt", false}, {"optionsshaders.txt", false}, {"servers.dat", false},
@@ -29,6 +31,10 @@ var setupPaths = []struct {
 // Callers stop game writes and serialize configuration commits. A failed commit
 // rolls the new directory back; it never removes or modifies the source.
 func DuplicateSetup(ctx context.Context, source, destination string, includeScreenshots bool, commit func() error, report func(tasks.Progress)) error {
+	return copyNewDirectory(ctx, source, source, destination, setupPaths, includeScreenshots, commit, report)
+}
+
+func copyNewDirectory(ctx context.Context, protected, source, destination string, paths []setupPath, includeScreenshots bool, commit func() error, report func(tasks.Progress)) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -41,29 +47,8 @@ func DuplicateSetup(ctx context.Context, source, destination string, includeScre
 	}
 	defer src.Close()
 	parent, name := filepath.Dir(destination), filepath.Base(destination)
-	sourcePath, err := filepath.EvalSymlinks(source)
-	if err != nil {
+	if err := CheckSeparateDirectory(protected, parent); err != nil {
 		return err
-	}
-	// A configured game root may not exist yet. Check its nearest existing
-	// ancestor before creating directories, including through a directory link.
-	ancestor := parent
-	for {
-		_, err := os.Lstat(ancestor)
-		if err == nil {
-			break
-		}
-		if !errors.Is(err, os.ErrNotExist) || filepath.Dir(ancestor) == ancestor {
-			return err
-		}
-		ancestor = filepath.Dir(ancestor)
-	}
-	parentPath, err := filepath.EvalSymlinks(ancestor)
-	if err != nil {
-		return err
-	}
-	if relative, err := filepath.Rel(sourcePath, parentPath); err == nil && (relative == "." || filepath.IsLocal(relative)) {
-		return i18n.Error("instance.duplicate_nested_directory")
 	}
 	if err := os.MkdirAll(parent, 0755); err != nil {
 		return err
@@ -94,7 +79,7 @@ func DuplicateSetup(ctx context.Context, source, destination string, includeScre
 	if err != nil {
 		return err
 	}
-	err = copySetup(ctx, src, dst, report)
+	err = copySetup(ctx, src, dst, paths, report)
 	if err == nil && includeScreenshots {
 		err = CopyScreenshots(ctx, source, dst)
 	}
@@ -119,7 +104,36 @@ func DuplicateSetup(ctx context.Context, source, destination string, includeScre
 	return nil
 }
 
-func copySetup(ctx context.Context, source, destination *os.Root, report func(tasks.Progress)) error {
+// CheckSeparateDirectory ensures a destination and its existing ancestors are outside the source.
+func CheckSeparateDirectory(protected, parent string) error {
+	sourcePath, err := filepath.EvalSymlinks(protected)
+	if err != nil {
+		return err
+	}
+	// A configured game root may not exist yet. Check its nearest existing
+	// ancestor before creating directories, including through a directory link.
+	ancestor := parent
+	for {
+		_, err := os.Lstat(ancestor)
+		if err == nil {
+			break
+		}
+		if !errors.Is(err, os.ErrNotExist) || filepath.Dir(ancestor) == ancestor {
+			return err
+		}
+		ancestor = filepath.Dir(ancestor)
+	}
+	parentPath, err := filepath.EvalSymlinks(ancestor)
+	if err != nil {
+		return err
+	}
+	if relative, err := filepath.Rel(sourcePath, parentPath); err == nil && (relative == "." || filepath.IsLocal(relative)) {
+		return i18n.Error("instance.duplicate_nested_directory")
+	}
+	return nil
+}
+
+func copySetup(ctx context.Context, source, destination *os.Root, paths []setupPath, report func(tasks.Progress)) error {
 	count := 0
 	copyEntry := func(name string, entry fs.DirEntry, walkErr error) error {
 		if err := ctx.Err(); err != nil {
@@ -150,7 +164,7 @@ func copySetup(ctx context.Context, source, destination *os.Root, report func(ta
 	}
 	// Let the source filesystem resolve Minecraft's names (e.g. Mods on NTFS).
 	// WalkDir follows its starting path, so reject links before starting each walk.
-	for _, top := range setupPaths {
+	for _, top := range paths {
 		if err := ctx.Err(); err != nil {
 			return err
 		}

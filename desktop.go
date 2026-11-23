@@ -424,10 +424,13 @@ func (a *desktop) library(c *ui.Context) {
 		if len(a.state.Instances) == 0 {
 			ui.Column(c).Grow(1).Center().Children(func() {
 				display.Empty(c, display.EmptyProps{Icon: lucide.PackageOpen(), Title: "暂无实例",
-					Description: "安装一个 Minecraft 版本后即可启动。",
+					Description: "安装一个 Minecraft 版本，或导入本地原版实例。",
 					Action: func() {
 						if button(c, "安装实例…", action.Primary, false) {
 							a.create()
+						}
+						if button(c, "导入本地实例…", action.Default, a.busy || a.pickerBusy) {
+							a.startPrismImport()
 						}
 					}})
 			})
@@ -435,7 +438,7 @@ func (a *desktop) library(c *ui.Context) {
 		}
 		query, filter := a.query, a.instanceFilter
 		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-			ui.Column(c).Grow(1).MinWidth(0).MaxWidth(340).Children(func() {
+			ui.Column(c).Grow(1).MinWidth(0).Children(func() {
 				hotkey := searchHotkey
 				if a.form.open || a.restore != nil || a.logOpen || a.licensesOpen {
 					hotkey = ""
@@ -448,10 +451,12 @@ func (a *desktop) library(c *ui.Context) {
 					a.focusSearch = false
 				}
 			})
-			ui.Spacer(c).Grow(1)
 			a.libraryGroupPicker(c)
 			action.Segmented(c, &a.instanceFilter, []string{"全部", "已缓存", "待下载"},
 				action.SegmentedProps{Size: theme.Small}).Label("实例筛选")
+			if button(c, "导入本地实例…", action.Default, a.busy || a.pickerBusy) {
+				a.startPrismImport()
+			}
 			if button(c, "安装实例…", action.Primary, false) {
 				a.create()
 			}
@@ -599,6 +604,8 @@ func (a *desktop) editor(c *ui.Context) {
 	}
 	title, okText := "重命名实例", "保存"
 	switch a.form.mode {
+	case "prism":
+		title = "导入 Prism / MultiMC 实例"
 	case "icon":
 		title = "实例图标 · " + a.form.target.Name
 	case "group":
@@ -618,9 +625,13 @@ func (a *desktop) editor(c *ui.Context) {
 	}
 	submit := false
 	if feedback.Modal(c, &a.form.open, feedback.ModalProps{
-		Title: title, OkText: okText, CancelText: "取消", Width: 480, NoFooter: a.form.loaders != nil || a.form.icon != nil,
+		Title: title, OkText: okText, CancelText: "取消", Width: 480, NoFooter: a.form.loaders != nil || a.form.icon != nil || a.form.prism != nil,
 	}, func() {
 		ui.Column(c).Gap(12).Children(func() {
+			if a.form.prism != nil {
+				a.prismEditor(c)
+				return
+			}
 			if a.form.icon != nil {
 				submit = a.instanceIconEditor(c)
 				return

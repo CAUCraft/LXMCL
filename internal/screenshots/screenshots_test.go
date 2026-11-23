@@ -1,6 +1,7 @@
 package screenshots
 
 import (
+	"bytes"
 	"errors"
 	"image"
 	"image/png"
@@ -42,6 +43,28 @@ func TestGalleryReadsOnlyInstancePNGsInTimeOrder(t *testing.T) {
 	img, size, err := Preview(t.Context(), game, rows[0].Name)
 	if err != nil || size != image.Pt(2000, 250) || img.Bounds().Size() != image.Pt(1600, 200) {
 		t.Fatal(size, err)
+	}
+	folder := t.TempDir()
+	if err := Export(t.Context(), game, rows[0].Name, folder); err != nil {
+		t.Fatal(err)
+	}
+	read := func(path string) []byte {
+		t.Helper()
+		b, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return b
+	}
+	out := filepath.Join(folder, rows[0].Name)
+	if !bytes.Equal(read(out), read(filepath.Join(dir, rows[0].Name))) {
+		t.Fatal("export differs from original 2000-pixel PNG")
+	}
+	if err := os.WriteFile(out, []byte("previous export"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := Export(t.Context(), game, rows[0].Name, folder); err == nil || string(read(out)) != "previous export" {
+		t.Fatal("existing export replaced", err)
 	}
 	if _, _, err := Preview(t.Context(), t.TempDir(), rows[0].Name); !errors.Is(err, fs.ErrNotExist) {
 		t.Fatal(err)

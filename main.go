@@ -100,6 +100,7 @@ type editor struct {
 	note, originalNote string
 	originalGroup      string
 	icon               *instanceIconDraft
+	prism              *prismDraft
 }
 
 type desktop struct {

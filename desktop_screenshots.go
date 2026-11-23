@@ -11,6 +11,7 @@ import (
 
 	"github.com/CAUCraft/LXMCL/internal/launcher"
 	"github.com/CAUCraft/LXMCL/internal/screenshots"
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"github.com/lobehub/lobe-mygo/pkg/action"
 	"github.com/lobehub/lobe-mygo/pkg/display"
@@ -20,15 +21,15 @@ import (
 )
 
 type screenshotGallery struct {
-	instance        launcher.Instance
-	cancel          context.CancelFunc
-	rows            []display.ListItem
-	selected        string
-	loading, folder bool
-	err, previewErr string
-	picture         ui.ImageSource
-	dimensions      image.Point
-	scroll          ui.ScrollState
+	instance                   launcher.Instance
+	cancel                     context.CancelFunc
+	rows                       []display.ListItem
+	selected                   string
+	loading, folder, exporting bool
+	err, previewErr            string
+	picture                    ui.ImageSource
+	dimensions                 image.Point
+	scroll                     ui.ScrollState
 }
 
 func (a *desktop) closeScreenshots() {
@@ -103,6 +104,27 @@ func (a *desktop) selectScreenshot(p *screenshotGallery, name string) {
 	}()
 }
 
+func (a *desktop) exportScreenshot(p *screenshotGallery) {
+	name := p.selected
+	a.pickPath(mygo.OpenDialogOptions{Title: "选择截图导出目录", ButtonLabel: "导出到此处", Directory: true, CreateDirectories: true}, func(folder string) {
+		if a.screenshots != p || p.selected != name || p.exporting {
+			return
+		}
+		p.exporting = true
+		go func() {
+			err := screenshots.Export(a.ctx, p.instance.GameDir, name, folder)
+			a.post(func() {
+				p.exporting = false
+				if err != nil {
+					a.message("无法导出截图", err)
+					return
+				}
+				a.message("已导出截图 · "+filepath.Join(folder, name), nil)
+			})
+		}()
+	})
+}
+
 func (a *desktop) instanceScreenshots(c *ui.Context, i launcher.Instance) {
 	p := a.screenshots
 	if p == nil || p.instance != i {
@@ -113,6 +135,9 @@ func (a *desktop) instanceScreenshots(c *ui.Context, i launcher.Instance) {
 		display.Text(c, "游戏截图", display.TextProps{Strong: true, FontSize: 16}).Grow(1)
 		if icon(c, lucide.RefreshCw(), "刷新截图", p.loading) {
 			a.loadScreenshots(i, p.selected)
+		}
+		if button(c, "导出原图…", action.Default, p.picture == nil || p.exporting || a.pickerBusy || a.busy) {
+			a.exportScreenshot(p)
 		}
 		if button(c, "打开截图文件夹", action.Default, !p.folder) {
 			a.openPath(filepath.Join(i.GameDir, screenshots.Directory), false)
