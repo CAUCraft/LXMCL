@@ -26,6 +26,7 @@ import (
 
 type contentView struct {
 	comparison *modComparisonView
+	copyMods   *modCopyView
 	mods       map[string]launcher.InstalledMod
 	checking   bool
 	checkError string
@@ -83,6 +84,7 @@ func (v contentView) kind() launcher.ContentKind {
 }
 
 func (a *desktop) refreshContent(i launcher.Instance) {
+	a.content.copyMods = nil
 	a.content.comparison = nil
 	a.content.listing = nil
 	if a.ctx == nil {
@@ -133,6 +135,10 @@ func (a *desktop) instanceContent(c *ui.Context, i launcher.Instance) {
 	if v.id != i.ID || v.revision != i.Revision || v.tab != 0 && !v.kind().Supports(i) {
 		*v = contentView{id: i.ID, revision: i.Revision}
 		a.refreshContent(i)
+	}
+	if v.copyMods != nil {
+		a.modCopy(c, i, v.copyMods)
+		return
 	}
 	if v.comparison != nil {
 		a.modComparison(c, i, v.comparison)
@@ -235,13 +241,6 @@ func (a *desktop) importResourceFiles(i launcher.Instance, kind launcher.Content
 	})
 }
 
-func contentKey(file launcher.ContentFile) string {
-	if file.Enabled {
-		return file.Name
-	}
-	return file.Name + ".disabled"
-}
-
 func (v *contentView) visibleFiles() []launcher.ContentFile {
 	query := strings.ToLower(strings.TrimSpace(v.query))
 	if query == "" && v.filter == 0 {
@@ -249,7 +248,7 @@ func (v *contentView) visibleFiles() []launcher.ContentFile {
 	}
 	var files []launcher.ContentFile
 	for _, file := range v.files {
-		if query != "" && !strings.Contains(strings.ToLower(file.Name+"\n"+file.ModTitle+"\n"+file.ModIDs+"\n"+v.mods[contentKey(file)].Title), query) ||
+		if query != "" && !strings.Contains(strings.ToLower(file.Name+"\n"+file.ModTitle+"\n"+file.ModIDs+"\n"+v.mods[file.DiskName()].Title), query) ||
 			v.filter == 1 && !file.Enabled || v.filter == 2 && file.Enabled {
 			continue
 		}
@@ -290,7 +289,7 @@ func (v *contentView) selection(files []launcher.ContentFile) []launcher.Content
 	}
 	var selected []launcher.ContentFile
 	for _, file := range files {
-		if _, ok := v.selected[contentKey(file)]; ok {
+		if _, ok := v.selected[file.DiskName()]; ok {
 			selected = append(selected, file)
 		}
 	}
@@ -324,7 +323,7 @@ func (a *desktop) contentList(c *ui.Context, i launcher.Instance, disabled bool)
 			v.selected = make(map[string]bool, len(files))
 			if all {
 				for _, file := range files {
-					v.selected[contentKey(file)] = file.Enabled
+					v.selected[file.DiskName()] = file.Enabled
 				}
 			}
 		}
@@ -354,13 +353,13 @@ func (a *desktop) contentList(c *ui.Context, i launcher.Instance, disabled bool)
 		return
 	}
 	ui.List(c, &v.scroll, len(files)).ItemKey(func(row int) any {
-		return contentKey(files[row])
+		return files[row].DiskName()
 	}).Grow(1).MinHeight(0).Rows(func(row ui.ListRow) {
 		c, file := row.Context, files[row.Index]
 		if row.Index > 0 {
 			layout.Divider(c, layout.DividerProps{})
 		}
-		key := contentKey(file)
+		key := file.DiskName()
 		ui.Row(c).MinHeight(46).Padding(0, 12).Gap(8).AlignItems(ui.Center).Children(func() {
 			_, checked := v.selected[key]
 			if choice.Checkbox(c, &checked, "", choice.CheckboxProps{}).Label("选择资源 " + file.Name).
@@ -404,6 +403,9 @@ func (a *desktop) contentList(c *ui.Context, i launcher.Instance, disabled bool)
 		layout.Divider(c, layout.DividerProps{})
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 			muted(c, fmt.Sprintf("已选 %d 项", count)).FontSize(12).Grow(1)
+			if v.kind() == launcher.Mods && button(c, "复制到实例…", action.Default, disabled) {
+				v.copyMods = &modCopyView{selected: v.selection(files)}
+			}
 			if button(c, "取消选择", action.Text, false) {
 				v.selected = nil
 			}
@@ -515,7 +517,7 @@ func fileSizeLabel(bytes int64) string {
 
 func (a *desktop) contentFileTitle(c *ui.Context, i launcher.Instance, f launcher.ContentFile) {
 	v := &a.content
-	key := contentKey(f)
+	key := f.DiskName()
 	m, found := v.mods[key]
 	if (!found || m.Current.ID == "") && f.ModTitle == "" {
 		display.Text(c, f.Name, display.TextProps{Strong: true, Rows: 1}).Grow(1).MinWidth(0).Ellipsis("…")
@@ -587,7 +589,7 @@ func (a *desktop) modControls(c *ui.Context, i launcher.Instance, disabled bool)
 			var selected []launcher.InstalledMod
 			known, updates := 0, 0
 			for _, f := range v.files {
-				key := contentKey(f)
+				key := f.DiskName()
 				m := v.mods[key]
 				if m.Current.ID != "" {
 					known++

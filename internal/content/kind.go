@@ -25,6 +25,13 @@ type File struct {
 	Modified         time.Time
 }
 
+func (f File) DiskName() string {
+	if f.Enabled {
+		return f.Name
+	}
+	return f.Name + ".disabled"
+}
+
 func (k Kind) Format(i instance.Instance) (ext string, markers []string, err error) {
 	switch k {
 	case ResourcePacks:

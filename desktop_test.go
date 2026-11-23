@@ -848,6 +848,19 @@ func TestResourceAndServerEntrypoints(t *testing.T) {
 	tt.Advance(250 * time.Millisecond)
 	tt.Frame()
 	capture(t, tt, "resources-selected-compact")
+	if err := tt.Click("复制到实例…"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if a.content.copyMods == nil || a.content.copyMods.target.ID != 0 || !tt.HasText("没有游戏版本和加载器相同的其他实例。") {
+		t.Fatal("copy offered an incompatible instance", tt.Texts())
+	}
+	tt.Key(0, ui.KeyEscape)
+	tt.Frame()
+	if a.content.copyMods != nil || len(a.content.selected) != 3 || a.inspected != i.ID || a.state.Selected != 1 {
+		t.Fatal("canceling copy lost the selection or changed the instance")
+	}
+
 	for _, order := range []struct{ label, first string }{{"文件较大", "demo.jar"}, {"最近修改", "sodium.jar"}} {
 		if err := tt.Click("本地资源排序"); err != nil {
 			t.Fatal(err)

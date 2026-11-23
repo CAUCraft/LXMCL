@@ -17,7 +17,12 @@ import (
 // checks. Callers must serialize resource changes for the same instance; enabled
 // and disabled filenames cannot be checked atomically as a pair.
 func WriteVerified(ctx context.Context, i instance.Instance, kind Kind, name string, in io.Reader, size int64, digest hash.Hash, expected string) error {
-	return publishResource(ctx, i, kind, name, size, func(f *os.File) error {
+	return writeVerifiedFile(ctx, i, kind, File{Name: name, Size: size, Enabled: true}, in, digest, expected)
+}
+
+func writeVerifiedFile(ctx context.Context, i instance.Instance, kind Kind, file File, in io.Reader, digest hash.Hash, expected string) error {
+	size := file.Size
+	return publishResource(ctx, i, kind, file, func(f *os.File) error {
 		var out io.Writer = f
 		if digest != nil {
 			out = io.MultiWriter(f, digest)
