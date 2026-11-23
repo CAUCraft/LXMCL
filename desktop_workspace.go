@@ -64,6 +64,8 @@ func (a *desktop) details(c *ui.Context, i launcher.Instance) {
 		a.instanceLaunchSettings(c.Key(i.ID), i)
 	case detailContent:
 		a.instanceContent(c.Key(i.ID), i)
+	case detailScreenshots:
+		a.instanceScreenshots(c.Key(i.ID), i)
 	case detailFiles:
 		a.instanceFiles(c.Key(i.ID), i)
 	default:
@@ -111,6 +113,21 @@ func (a *desktop) instanceOverview(c *ui.Context, i launcher.Instance) {
 					a.openPath(i.GameDir, true)
 				}
 			})
+			layout.Divider(c, layout.DividerProps{})
+			note := a.state.InstanceNotes[i.ID]
+			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+				muted(c, "实例备注").Grow(1)
+				label := "添加备注…"
+				if note != "" {
+					label = "编辑备注…"
+				}
+				if button(c, label, action.Default, a.busy) {
+					a.form = editor{mode: "note", open: true, target: i, note: note, originalNote: note, focus: true}
+				}
+			})
+			if note != "" {
+				display.Text(c, note, display.TextProps{Rows: 4}).Ellipsis("…").Selectable()
+			}
 		})
 	}).Grow(1).MinHeight(0)
 }

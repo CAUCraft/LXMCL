@@ -189,6 +189,8 @@ func (a *desktop) submitEditor() {
 	var err error
 	checkID := 0
 	switch form.mode {
+	case "note":
+		err = next.SetInstanceNote(form.target.ID, form.target.Revision, form.originalNote, form.note)
 	case "rename":
 		err = next.Rename(form.target.ID, form.target.Revision, form.name)
 	case "export":

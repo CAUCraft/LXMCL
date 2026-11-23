@@ -115,6 +115,9 @@ func (a *desktop) view(c *ui.Context) {
 	}
 	ui.Column(c).Fill().Background(theme.TokensOf(c).BgContainer).Children(func() {
 		a.topBar(c)
+		if p := a.screenshots; p != nil && (a.page != pageLibrary || a.detailPage != detailScreenshots || a.inspected != p.instance.ID) {
+			a.closeScreenshots()
+		}
 		if p := a.backups; p != nil && (a.page != pageLibrary || a.detailPage != detailFiles || a.inspected != p.instanceID) {
 			if p.cancel != nil {
 				p.cancel()
@@ -585,6 +588,8 @@ func (a *desktop) editor(c *ui.Context) {
 	}
 	title, okText := "重命名实例", "保存"
 	switch a.form.mode {
+	case "note":
+		title, okText = "实例备注 · "+a.form.target.Name, "保存备注"
 	case "remove":
 		title, okText = "移除实例配置", "移除配置"
 	case "version":
@@ -601,6 +606,17 @@ func (a *desktop) editor(c *ui.Context) {
 		Title: title, OkText: okText, CancelText: "取消", Width: 480, NoFooter: a.form.loaders != nil,
 	}, func() {
 		ui.Column(c).Gap(12).Children(func() {
+			if a.form.mode == "note" {
+				area := field.TextArea(c, &a.form.note, field.TextAreaProps{MinRows: 4, MaxRows: 7, Placeholder: "记录游玩进度、坐标或下次要做的事"}).Label("备注内容").Disabled(a.busy)
+				if a.form.focus {
+					area.Focus()
+					a.form.focus = false
+				}
+				if a.form.err != "" {
+					feedback.Alert(c, a.form.err, feedback.AlertProps{Type: feedback.Error})
+				}
+				return
+			}
 			if a.form.mode == "loader" {
 				a.loaderForm(c)
 				return
