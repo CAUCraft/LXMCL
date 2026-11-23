@@ -97,17 +97,29 @@ func (a *desktop) network(c *ui.Context) {
 		} else if a.state.MicrosoftProfile != "" {
 			note = "Microsoft 账号：" + a.accountName() + "。"
 		}
-		muted(c, note).FontSize(12)
 		if len(a.state.Servers) == 0 {
+			muted(c, note).FontSize(12)
 			ui.Column(c).Grow(1).Center().Children(func() {
 				display.Empty(c, display.EmptyProps{Icon: lucide.Server(), Title: "暂无收藏的服务器", Action: func() { ui.Row(c).Gap(8).Children(controls) }})
 			})
 			return
 		}
-		server := a.state.Servers[0]
+		w, _ := c.Size()
+		ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
+			ui.Column(c).Width(listWidth(w)).Children(func() {
+				field.SearchBar(c, &a.serverQuery, field.SearchBarProps{Placeholder: "搜索名称或地址"}).Label("搜索服务器收藏")
+			})
+			muted(c, note).FontSize(12).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+		})
+		visible := a.state.MatchingServers(a.serverQuery)
+		if len(visible) == 0 {
+			emptyPanel(c, lucide.Search(), "没有匹配的服务器收藏")
+			return
+		}
+		server := visible[0]
 		index := 0
-		items := make([]display.ListItem, 0, len(a.state.Servers))
-		for n, entry := range a.state.Servers {
+		items := make([]display.ListItem, 0, len(visible))
+		for n, entry := range visible {
 			description := entry.Address
 			if entry.Name == entry.Address {
 				description = ""
@@ -120,15 +132,14 @@ func (a *desktop) network(c *ui.Context) {
 				server, index = entry, n
 			}
 		}
-		w, _ := c.Size()
 		splitWorkspace(c, listWidth(w), func() {
 			ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
 				muted(c, "收藏服务器").Padding(3, 5).Grow(1)
-				if len(a.state.Servers) > 1 {
+				if len(visible) > 1 {
 					if icon(c, lucide.ArrowUp(), "上移收藏服务器", a.busy || index == 0) {
 						a.moveServer(server, -1)
 					}
-					if icon(c, lucide.ArrowDown(), "下移收藏服务器", a.busy || index == len(a.state.Servers)-1) {
+					if icon(c, lucide.ArrowDown(), "下移收藏服务器", a.busy || index == len(visible)-1) {
 						a.moveServer(server, 1)
 					}
 				}
@@ -137,7 +148,7 @@ func (a *desktop) network(c *ui.Context) {
 				if key := display.List(c, display.ListProps{Items: items, Active: server.Address, Compact: true}); key != "" {
 					a.browsedServer = key
 					c.Invalidate()
-					for _, entry := range a.state.Servers {
+					for _, entry := range visible {
 						if entry.Address == key {
 							server = entry
 							break
@@ -184,7 +195,8 @@ func (a *desktop) network(c *ui.Context) {
 
 func (a *desktop) moveServer(server launcher.Server, step int) {
 	next := a.state.Clone()
-	if !next.MoveServer(server, step) {
+	query := a.serverQuery
+	if !next.MoveServer(server, step, query) {
 		return
 	}
 	previous := a.browsedServer
@@ -193,7 +205,7 @@ func (a *desktop) moveServer(server launcher.Server, step int) {
 			a.message("保存服务器收藏顺序失败", err)
 			return
 		}
-		if a.browsedServer == previous {
+		if a.browsedServer == previous && a.serverQuery == query {
 			a.browsedServer = server.Address
 		}
 	})

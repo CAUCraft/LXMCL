@@ -2,6 +2,7 @@ package config
 
 import (
 	"slices"
+	"strings"
 
 	"github.com/CAUCraft/LXMCL/internal/i18n"
 	"github.com/CAUCraft/LXMCL/internal/server"
@@ -68,17 +69,34 @@ func (s *State) ImportServers(rows []server.Server) int {
 	return len(s.Servers) - before
 }
 
-// MoveServer moves a captured favorite one position in the saved list.
-func (s *State) MoveServer(original server.Server, step int) bool {
+// MatchingServers returns favorites in their saved order.
+func (s *State) MatchingServers(query string) []server.Server {
+	query = strings.ToLower(strings.TrimSpace(query))
+	if query == "" {
+		return s.Servers
+	}
+	var visible []server.Server
+	for _, entry := range s.Servers {
+		if strings.Contains(strings.ToLower(entry.Name), query) || strings.Contains(strings.ToLower(entry.Address), query) {
+			visible = append(visible, entry)
+		}
+	}
+	return visible
+}
+
+// MoveServer swaps adjacent matches while leaving hidden favorites in place.
+func (s *State) MoveServer(original server.Server, step int, query string) bool {
 	if step != -1 && step != 1 {
 		return false
 	}
-	from := slices.Index(s.Servers, original)
+	visible := s.MatchingServers(query)
+	from := slices.Index(visible, original)
 	to := from + step
-	if from < 0 || to < 0 || to >= len(s.Servers) {
+	if from < 0 || to < 0 || to >= len(visible) {
 		return false
 	}
-	s.Servers[from], s.Servers[to] = s.Servers[to], s.Servers[from]
+	i, j := slices.Index(s.Servers, original), slices.Index(s.Servers, visible[to])
+	s.Servers[i], s.Servers[j] = s.Servers[j], s.Servers[i]
 	return true
 }
 
