@@ -613,6 +613,8 @@ func (a *desktop) editor(c *ui.Context) {
 		title = "导入 Prism / MultiMC 实例"
 	case "icon":
 		title = "实例图标 · " + a.form.target.Name
+	case "moveGroups":
+		title = "批量设置分组"
 	case "renameGroup":
 		title, okText = "重命名分组 · "+a.form.originalGroup, "保存名称"
 	case "group":
@@ -632,9 +634,13 @@ func (a *desktop) editor(c *ui.Context) {
 	}
 	submit := false
 	if feedback.Modal(c, &a.form.open, feedback.ModalProps{
-		Title: title, OkText: okText, CancelText: "取消", Width: 480, NoFooter: a.form.loaders != nil || a.form.icon != nil || a.form.prism != nil || a.form.worlds != nil,
+		Title: title, OkText: okText, CancelText: "取消", Width: 480, NoFooter: a.form.loaders != nil || a.form.icon != nil || a.form.prism != nil || a.form.worlds != nil || a.form.groupMove != nil,
 	}, func() {
 		ui.Column(c).Gap(12).Children(func() {
+			if p := a.form.groupMove; p != nil {
+				submit = a.groupMoveEditor(c, p)
+				return
+			}
 			if a.form.worlds != nil {
 				a.worldEditor(c)
 				return
