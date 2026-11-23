@@ -58,6 +58,29 @@ func (a *desktop) needsResourceKey(r resourceTask) bool {
 	return r.Source == launcher.CurseForgeMods && (a.modpacks.key == "" || a.queue.keyRejected)
 }
 
+func (item queuedResource) destination(state launcher.State) (launcher.Instance, error) {
+	i := item.target
+	if i.ID == 0 {
+		if !filepath.IsAbs(item.folder) {
+			return launcher.Instance{}, errors.New("请选择下载目录")
+		}
+		return launcher.Instance{}, nil
+	}
+	current, found := state.Find(i.ID)
+	if !found || current.Revision != i.Revision || current.Version != i.Version || current.GameDir != i.GameDir || !launcher.ContentKind(item.resource.Kind).Supports(current) {
+		return launcher.Instance{}, errors.New("实例已变更，请重新选择兼容文件")
+	}
+	return current, nil
+}
+
+func (a *desktop) queueWaitsForKey(item queuedResource) bool {
+	if !a.needsResourceKey(item.resource) {
+		return false
+	}
+	_, err := item.destination(a.state)
+	return err == nil
+}
+
 func (a *desktop) queuePanel(c *ui.Context) {
 	q := &a.queue
 	if q.loadError != nil {
@@ -92,7 +115,7 @@ func (a *desktop) queuePanel(c *ui.Context) {
 				if button(c, "完成当前项后暂停", action.Default, false) {
 					q.running = false
 				}
-			} else if a.needsResourceKey(pending[0].resource) {
+			} else if a.queueWaitsForKey(pending[0]) {
 				if button(c, "设置 CurseForge API Key…", action.Primary, false) {
 					a.modpacks.keyOpen = true
 				}
@@ -178,7 +201,7 @@ func (a *desktop) nextResource() {
 		return
 	}
 	item := q.pending[0]
-	if a.needsResourceKey(item.resource) {
+	if a.queueWaitsForKey(item) {
 		q.running = false
 		return
 	}
@@ -204,17 +227,14 @@ func (a *desktop) runResource(item queuedResource, done func(error)) {
 	i, r, v := item.target, item.resource, item.version
 	kind := launcher.ContentKind(r.Kind)
 	row := taskRecord{ID: item.id, Folder: item.folder, Name: r.Title, Action: "保存" + contentLabel(kind), Resource: &r}
-	current, found := a.state.Find(i.ID)
+	current, destinationErr := item.destination(a.state)
 	if i.ID != 0 {
 		row.InstanceID, row.Revision, row.Name, row.Version, row.Action = i.ID, i.Revision, i.Name, i.Version, "安装"+contentLabel(kind)
 	}
 	game, key := a.game, a.modpacks.key
 	a.runFileTask(row, func(ctx context.Context, report func(launcher.Progress)) error {
-		if i.ID != 0 && (!found || current.Revision != i.Revision || current.Version != i.Version || current.GameDir != i.GameDir || !kind.Supports(current)) {
-			return errors.New("实例已变更，请重新选择兼容文件")
-		}
-		if i.ID == 0 && !filepath.IsAbs(item.folder) {
-			return errors.New("请选择下载目录")
+		if destinationErr != nil {
+			return destinationErr
 		}
 		var err error
 		switch r.Source {

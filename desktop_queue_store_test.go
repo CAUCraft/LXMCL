@@ -123,4 +123,15 @@ func TestQueueWaitsForCurseForgeKey(t *testing.T) {
 	if _, ok := tt.Find("开始队列"); !ok || a.needsResourceKey(item.resource) || a.queue.pending[0].saved() != item.saved() || a.state.Selected != 1 || a.inspected != 1 {
 		t.Fatal("applying a key lost the waiting download")
 	}
+	a.queue.keyRejected = true
+	a.state.Remove(target.ID)
+	tt.Frame()
+	if _, ok := tt.Find("开始队列"); !ok {
+		t.Fatal("a removed instance still requires a key to process the queue")
+	}
+	a.queue.pending[0].target, a.queue.pending[0].folder = launcher.Instance{}, root
+	tt.Frame()
+	if _, ok := tt.Find("设置 CurseForge API Key…"); !ok {
+		t.Fatal("standalone CurseForge downloads must still wait for a valid key")
+	}
 }
