@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"slices"
 
 	"github.com/CAUCraft/LXMCL/internal/launcher"
 	"github.com/CAUCraft/LXMCL/internal/saves"
@@ -29,10 +30,29 @@ type restoreView struct {
 }
 
 func (a *desktop) backupSaves(i launcher.Instance) {
+	a.runSaveBackup(i, "", func(ctx context.Context, root string) (string, error) {
+		return launcher.BackupSaves(ctx, i, root)
+	})
+}
+
+func (a *desktop) runSaveBackup(i launcher.Instance, world string, backup func(context.Context, string) (string, error)) {
+	current, ok := a.state.Find(i.ID)
+	if !ok || current.Revision != i.Revision || a.busy || a.running != nil || a.ctx == nil {
+		return
+	}
 	root := a.store.Root
-	a.runInstanceTask(i, taskBackup, "", func(ctx context.Context) error {
-		_, err := launcher.BackupSaves(ctx, i, root)
+	row := taskRecord{Action: taskBackup, InstanceID: i.ID, Revision: i.Revision, Name: i.Name, Version: i.Version, World: world}
+	var archive string
+	a.runFileTaskWithResult(row, func(ctx context.Context, _ func(launcher.Progress)) error {
+		var err error
+		archive, err = backup(ctx, root)
 		return err
+	}, func(record *taskRecord) {
+		record.SaveArchive = filepath.Base(archive)
+	}, func(err error) {
+		if err == nil && a.backups != nil && a.backups.instanceID == i.ID {
+			a.refreshBackups(i.ID)
+		}
 	})
 }
 
@@ -49,15 +69,21 @@ func (a *desktop) pickSaveArchive(i launcher.Instance) {
 }
 
 func (a *desktop) previewSaveArchive(i launcher.Instance, path string) {
+	a.readSavePreview(i, filepath.Base(path), func(ctx context.Context) (launcher.SavePreview, error) {
+		return launcher.InspectSaveArchive(ctx, path)
+	})
+}
+
+func (a *desktop) readSavePreview(i launcher.Instance, filename string, inspect func(context.Context) (launcher.SavePreview, error)) {
 	if a.restore != nil && a.restore.cancel != nil {
 		a.restore.cancel()
 	}
 	ctx, cancel := context.WithCancel(a.ctx)
-	p := &restoreView{target: i, filename: filepath.Base(path), loading: true, cancel: cancel}
+	p := &restoreView{target: i, filename: filename, loading: true, cancel: cancel}
 	a.restore = p
 	go func() {
 		defer cancel()
-		preview, err := launcher.InspectSaveArchive(ctx, path)
+		preview, err := inspect(ctx)
 		a.post(func() {
 			if a.restore != p {
 				return
@@ -203,10 +229,12 @@ func (a *desktop) refreshBackups(id int) {
 	}
 	ctx, cancel := context.WithCancel(a.ctx)
 	p.loading, p.cancel = true, cancel
-	root := a.store.Root
+	root, known := a.store.Root, a.backupRecords(id)
 	go func() {
 		defer cancel()
-		entries, err := saves.Recent(ctx, root, id)
+		entries, err := saves.LocalBackups(ctx, root, id, known)
+		entries = slices.DeleteFunc(entries, func(entry saves.BackupEntry) bool { return entry.Missing })
+		entries = entries[:min(3, len(entries))]
 		a.post(func() {
 			if a.backups != p {
 				return
@@ -227,6 +255,9 @@ func (a *desktop) recentBackupList(c *ui.Context, i launcher.Instance, disabled 
 	sectionPane(c).Padding(8, 14).Gap(4).Children(func() {
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 			display.Text(c, "最近备份", display.TextProps{Strong: true}).Grow(1)
+			if button(c, "查看全部备份…", action.Default, a.ctx == nil) {
+				a.refreshLocalBackups(i)
+			}
 			if icon(c, lucide.RefreshCw(), "刷新最近备份", p.loading) {
 				a.refreshBackups(i.ID)
 			}
@@ -246,7 +277,7 @@ func (a *desktop) recentBackupList(c *ui.Context, i launcher.Instance, disabled 
 					muted(c, entry.Modified.Local().Format("2006-01-02 15:04")+" · "+fileSizeLabel(entry.Size)).FontSize(12)
 				})
 				if action.Button(c, "预览…", action.ButtonProps{Variant: action.Default}).Label("预览备份 " + entry.Name).Disabled(disabled).Clicked() {
-					a.previewSaveArchive(i, filepath.Join(launcher.BackupsDir(a.store.Root, i.ID), entry.Name))
+					a.previewLocalSaveBackup(i, entry.Name)
 				}
 			})
 		}

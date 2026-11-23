@@ -46,21 +46,22 @@ type Record struct {
 	Pack PackUpdate `json:"pack_update,omitzero"`
 	ID   string     `json:"id,omitempty"`
 
-	InstanceID int       `json:"instance_id,omitempty"`
-	Revision   uint64    `json:"instance_revision,omitempty"`
-	Name       string    `json:"name"`
-	Version    string    `json:"version"`
-	Server     string    `json:"server,omitempty"`
-	World      string    `json:"world,omitempty"`
-	Account    string    `json:"account,omitempty"`
-	Action     string    `json:"action"`
-	Status     string    `json:"status"`
-	Detail     string    `json:"detail,omitempty"`
-	Folder     string    `json:"folder,omitempty"`
-	Log        string    `json:"log,omitempty"`
-	PID        int       `json:"pid,omitempty"`
-	At         time.Time `json:"at"`
-	Resource   *Resource `json:"resource,omitempty"`
+	InstanceID  int       `json:"instance_id,omitempty"`
+	Revision    uint64    `json:"instance_revision,omitempty"`
+	Name        string    `json:"name"`
+	Version     string    `json:"version"`
+	Server      string    `json:"server,omitempty"`
+	World       string    `json:"world,omitempty"`
+	SaveArchive string    `json:"save_archive,omitempty"`
+	Account     string    `json:"account,omitempty"`
+	Action      string    `json:"action"`
+	Status      string    `json:"status"`
+	Detail      string    `json:"detail,omitempty"`
+	Folder      string    `json:"folder,omitempty"`
+	Log         string    `json:"log,omitempty"`
+	PID         int       `json:"pid,omitempty"`
+	At          time.Time `json:"at"`
+	Resource    *Resource `json:"resource,omitempty"`
 }
 
 func (r Record) Key() string {
