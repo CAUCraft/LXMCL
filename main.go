@@ -4,7 +4,9 @@ import (
 	"context"
 	_ "embed"
 	"flag"
+	"fmt"
 	"log"
+	"os"
 	"path/filepath"
 	"runtime"
 	"sync"
@@ -24,24 +26,37 @@ var logoPNG []byte
 var homePNG []byte
 
 func main() {
-	dataDir := flag.String("data-dir", "", "use a separate launcher data directory")
-	flag.Parse()
+	cmd, err := parseCommandLine(os.Args[1:])
+	if err == flag.ErrHelp {
+		fmt.Println(commandUsage)
+		return
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n%s\n", err, commandUsage)
+		os.Exit(2)
+	}
 	store, err := launcher.DefaultStore()
-	if *dataDir != "" {
-		store.Root, err = filepath.Abs(*dataDir)
+	defaultRoot := store.Root
+	if cmd.dataDir != "" {
+		store.Root, err = filepath.Abs(cmd.dataDir)
 	}
 	if err != nil {
 		log.Fatal(err)
 	}
-	if *dataDir == "" && mygo.IsDev() {
+	if cmd.dataDir == "" && mygo.IsDev() {
 		store.Root = filepath.Join(store.Root, "dev")
 	}
-	mygo.App.SetName("LXMCL")
-	// An isolated development directory may have its own window. In the normal
-	// data directory, keep a single writer for configuration and the game cache.
-	if *dataDir == "" && !mygo.App.RequestSingleInstanceLock() {
+	// Keep the installed launcher's lock name for the default profile. Independent
+	// profiles have their own window and forward launches to their own writer.
+	lockName := "LXMCL"
+	if root := profilePath(store.Root); root != profilePath(defaultRoot) {
+		lockName += ":" + root
+	}
+	mygo.App.SetName(lockName)
+	if !mygo.App.RequestSingleInstanceLock() {
 		return
 	}
+	mygo.App.SetName("LXMCL")
 	logo, err := ui.DecodeImage(logoPNG)
 	if err != nil {
 		log.Fatal(err)
@@ -57,12 +72,8 @@ func main() {
 		store: store, game: launcher.Game{Cache: filepath.Join(store.Root, "cache")},
 		ctx: ctx, logo: logo, hero: home, installed: make(map[int]bool),
 	}
-	mygo.App.OnSecondInstance(func([]string, string) {
-		if a.window != nil {
-			a.window.Restore()
-			a.window.Focus()
-		}
-	})
+	a.pendingLaunchID = cmd.launchID
+	mygo.App.OnSecondInstance(a.secondInstance)
 	mygo.App.WhenReady(func() {
 		opts := mygo.WindowOptions{
 			Title: "LXMCL", Width: 1140, Height: 720, MinWidth: 820, MinHeight: 530,
@@ -126,6 +137,7 @@ type desktop struct {
 	draft            launcher.Settings
 	memory           string
 	ready, loading   bool
+	pendingLaunchID  int
 	loadErr          string
 	notice           string
 	noticeError      bool
