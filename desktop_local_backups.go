@@ -19,6 +19,10 @@ type localBackupView struct {
 	cancel  context.CancelFunc
 	loading bool
 	err     error
+
+	exportCancel context.CancelFunc
+	exportErr    string
+	exported     string
 }
 
 func (a *desktop) backupRecords(id int) []saves.BackupRecord {
@@ -34,6 +38,9 @@ func (a *desktop) backupRecords(id int) []saves.BackupRecord {
 func (a *desktop) closeLocalBackups() {
 	if p := a.localBackups; p != nil {
 		p.cancel()
+		if p.exportCancel != nil {
+			p.exportCancel()
+		}
 		a.localBackups = nil
 	}
 }
@@ -88,12 +95,14 @@ func (a *desktop) localBackupDialog(c *ui.Context) {
 	if a.restore != nil {
 		return
 	}
+	exporting := p.exportCancel != nil
+	locked := a.busy || a.pickerBusy || a.running != nil || exporting
 	open := true
 	feedback.Modal(c, &open, feedback.ModalProps{Title: "本地备份", Width: 540, NoFooter: true}, func() {
 		ui.Column(c).Gap(10).Children(func() {
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 				display.Text(c, current.Name, display.TextProps{Strong: true, Rows: 1}).Grow(1).MinWidth(0).Ellipsis("…")
-				if icon(c, lucide.RefreshCw(), "刷新本地备份", p.loading) {
+				if icon(c, lucide.RefreshCw(), "刷新本地备份", p.loading || a.pickerBusy || exporting) {
 					a.refreshLocalBackups(current)
 				}
 			})
@@ -106,7 +115,11 @@ func (a *desktop) localBackupDialog(c *ui.Context) {
 				muted(c, "此实例还没有本地备份。")
 			default:
 				const rowHeight = 45
-				ui.List(c, &p.list, len(p.entries)).Height(float32(min(5, len(p.entries)) * rowHeight)).FillWidth().Rows(func(r ui.ListRow) {
+				rows := 5
+				if p.exportErr != "" {
+					rows = 4
+				}
+				ui.List(c, &p.list, len(p.entries)).Height(float32(min(rows, len(p.entries)) * rowHeight)).FillWidth().Rows(func(r ui.ListRow) {
 					entry := p.entries[r.Index]
 					ui.Row(r.Context).Height(rowHeight).AlignItems(ui.Center).Gap(10).Padding(0, 6).Children(func() {
 						ui.Icon(r.Context, lucide.Archive()).FontSize(16)
@@ -121,15 +134,35 @@ func (a *desktop) localBackupDialog(c *ui.Context) {
 							}
 							muted(r.Context, detail).FontSize(12)
 						})
-						if !entry.Missing && action.Button(r.Context, "预览…", action.ButtonProps{Variant: action.Default}).
-							Label("预览本地备份 "+entry.Name).Disabled(a.busy || a.pickerBusy || a.running != nil).Clicked() {
+						if entry.Missing {
+							return
+						}
+						if action.Button(r.Context, "预览…", action.ButtonProps{Variant: action.Default}).
+							Label("预览本地备份 " + entry.Name).Disabled(locked).Clicked() {
 							a.previewLocalSaveBackup(current, entry.Name)
+						}
+						if action.Button(r.Context, "导出…", action.ButtonProps{Variant: action.Default}).
+							Label("导出备份 " + entry.Name).Disabled(locked).Clicked() {
+							a.chooseLocalBackupExport(p, entry)
 						}
 					})
 				})
 			}
-			ui.Row(c).Children(func() {
+			if p.exportErr != "" {
+				feedback.Alert(c, "无法导出备份", feedback.AlertProps{Type: feedback.Error, Variant: feedback.Plain, Description: p.exportErr})
+			}
+			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+				switch {
+				case exporting:
+					muted(c, "正在导出备份…").FontSize(12)
+				case p.exported != "":
+					display.Text(c, "已导出备份", display.TextProps{Rows: 1})
+					muted(c, p.exported).FontSize(12).MinWidth(0).SingleLine().Ellipsis("…")
+				}
 				ui.Spacer(c).Grow(1)
+				if exporting && button(c, "取消导出", action.Default, false) {
+					p.exportCancel()
+				}
 				if button(c, "关闭", action.Default, false) {
 					open = false
 				}

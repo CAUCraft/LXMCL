@@ -17,6 +17,9 @@ type BackupEntry struct {
 	Modified time.Time
 	Size     int64
 	Missing  bool
+
+	path string
+	info fs.FileInfo
 }
 
 // Recent returns the three newest regular ZIPs in the instance backup directory.
@@ -34,13 +37,14 @@ func Recent(ctx context.Context, dataRoot string, id int) ([]BackupEntry, error)
 	}
 	defer dir.Close()
 	var recent []BackupEntry
-	err = visitBackupFiles(ctx, dir, func(name string, info fs.FileInfo) {
+	err = visitBackupFiles(ctx, dir, func(name string, info fs.FileInfo) error {
 		entry := BackupEntry{Name: name, Modified: info.ModTime(), Size: info.Size()}
 		at, _ := slices.BinarySearchFunc(recent, entry, compareBackups)
 		if at < 3 {
 			recent = slices.Insert(recent, at, entry)
 			recent = recent[:min(3, len(recent))]
 		}
+		return nil
 	})
 	return recent, err
 }
@@ -52,7 +56,7 @@ func compareBackups(a, b BackupEntry) int {
 	return strings.Compare(a.Name, b.Name)
 }
 
-func visitBackupFiles(ctx context.Context, dir *os.File, visit func(string, fs.FileInfo)) error {
+func visitBackupFiles(ctx context.Context, dir *os.File, visit func(string, fs.FileInfo) error) error {
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -70,7 +74,9 @@ func visitBackupFiles(ctx context.Context, dir *os.File, visit func(string, fs.F
 				return err
 			}
 			if info.Mode().IsRegular() {
-				visit(file.Name(), info)
+				if err := visit(file.Name(), info); err != nil {
+					return err
+				}
 			}
 		}
 		if errors.Is(readErr, io.EOF) {
