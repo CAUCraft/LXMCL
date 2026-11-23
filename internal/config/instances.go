@@ -83,6 +83,7 @@ func (s State) checkName(id int, name string) (string, error) {
 
 func (s *State) Remove(id int) {
 	delete(s.InstanceNotes, id)
+	delete(s.InstanceIcons, id)
 	delete(s.InstanceGroups, id)
 	s.clearMissingGroupFilter()
 	s.Instances = slices.DeleteFunc(s.Instances, func(i instance.Instance) bool { return i.ID == id })

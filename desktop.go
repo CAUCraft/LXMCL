@@ -512,12 +512,16 @@ func (a *desktop) instanceList(c *ui.Context, inspecting bool) {
 		if i.ID == a.state.Selected {
 			detail += " · 启动目标"
 		}
-		items = append(items, display.ListItem{
+		item := display.ListItem{
 			Key: strconv.Itoa(i.ID), Label: i.Name,
 			Description: detail, Icon: loaderIcon(i),
 			Actions:    func() { a.instanceMenu(c.Key("list-"+strconv.Itoa(i.ID)), i, true) },
 			ShowAction: i.ID == a.listMenuID,
-		})
+		}
+		if picture := a.instanceIcons[i.ID]; picture != nil {
+			item.Avatar = func() { instanceIcon(c, i, picture, 20, "列表图标 "+i.Name) }
+		}
+		items = append(items, item)
 	}
 	if len(items) == 0 {
 		display.Empty(c, display.EmptyProps{Icon: lucide.SearchX(), Title: "未找到实例", Action: func() {
@@ -595,6 +599,8 @@ func (a *desktop) editor(c *ui.Context) {
 	}
 	title, okText := "重命名实例", "保存"
 	switch a.form.mode {
+	case "icon":
+		title = "实例图标 · " + a.form.target.Name
 	case "group":
 		title, okText = "设置分组 · "+a.form.target.Name, "保存分组"
 	case "note":
@@ -612,9 +618,13 @@ func (a *desktop) editor(c *ui.Context) {
 	}
 	submit := false
 	if feedback.Modal(c, &a.form.open, feedback.ModalProps{
-		Title: title, OkText: okText, CancelText: "取消", Width: 480, NoFooter: a.form.loaders != nil,
+		Title: title, OkText: okText, CancelText: "取消", Width: 480, NoFooter: a.form.loaders != nil || a.form.icon != nil,
 	}, func() {
 		ui.Column(c).Gap(12).Children(func() {
+			if a.form.icon != nil {
+				submit = a.instanceIconEditor(c)
+				return
+			}
 			if a.form.mode == "group" {
 				submit = a.groupEditor(c)
 				return

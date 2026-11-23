@@ -35,6 +35,7 @@ func (a *desktop) details(c *ui.Context, i launcher.Instance) {
 		if icon(c, lucide.ArrowLeft(), "返回实例列表", false) {
 			a.inspected = 0
 		}
+		instanceIcon(c, i, a.instanceIcons[i.ID], 26, "当前实例图标")
 		display.Text(c, i.Name, display.TextProps{Strong: true, FontSize: 19, Rows: 1}).Grow(1).MinWidth(0).Ellipsis("…")
 		if a.state.Selected != i.ID && button(c, "设为启动目标", action.Default, a.busy) {
 			a.choose(i.ID)
@@ -155,6 +156,7 @@ func (a *desktop) instanceMenu(c *ui.Context, i launcher.Instance, inList bool) 
 			{Key: "verify", Label: install, Icon: lucide.Download(), Disabled: a.busy || a.running != nil},
 			{Key: "folder", Label: "打开游戏目录", Icon: lucide.FolderOpen()},
 			{Divider: true},
+			{Key: "icon", Label: "更换图标…", Icon: lucide.Image(), Disabled: a.busy},
 			{Key: "group", Label: "设置分组…", Icon: lucide.Folder(), Disabled: a.busy},
 			{Key: "rename", Label: "重命名", Icon: lucide.Pencil(), Hotkey: renameKey, Disabled: a.busy},
 			{Key: "export", Label: "导出整合包…", Icon: lucide.FileArchive(), Disabled: a.busy || a.running != nil},
@@ -178,6 +180,8 @@ func (a *desktop) instanceMenu(c *ui.Context, i launcher.Instance, inList bool) 
 			a.play(i, true)
 		case "folder":
 			a.openPath(i.GameDir, true)
+		case "icon":
+			a.editInstanceIcon(i)
 		case "group":
 			a.editGroup(i)
 		case "rename":
