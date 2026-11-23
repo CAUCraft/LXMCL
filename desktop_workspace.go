@@ -147,6 +147,11 @@ func (a *desktop) instanceMenu(c *ui.Context, i launcher.Instance, inList bool) 
 		if a.installed[i.ID] {
 			install = "校验游戏文件"
 		}
+		pinned := a.state.PinnedInstances[i.ID]
+		pinLabel, pinIcon := "置顶实例", lucide.Pin()
+		if pinned {
+			pinLabel, pinIcon = "取消置顶", lucide.PinOff()
+		}
 		renameKey := ""
 		if a.inspected == i.ID {
 			renameKey = "f2"
@@ -157,6 +162,7 @@ func (a *desktop) instanceMenu(c *ui.Context, i launcher.Instance, inList bool) 
 			{Key: "folder", Label: "打开游戏目录", Icon: lucide.FolderOpen()},
 			{Divider: true},
 			{Key: "icon", Label: "更换图标…", Icon: lucide.Image(), Disabled: a.busy},
+			{Key: "pin", Label: pinLabel, Icon: pinIcon, Disabled: a.busy},
 			{Key: "group", Label: "设置分组…", Icon: lucide.Folder(), Disabled: a.busy},
 			{Key: "rename", Label: "重命名", Icon: lucide.Pencil(), Hotkey: renameKey, Disabled: a.busy},
 			{Key: "export", Label: "导出整合包…", Icon: lucide.FileArchive(), Disabled: a.busy || a.running != nil},
@@ -182,6 +188,8 @@ func (a *desktop) instanceMenu(c *ui.Context, i launcher.Instance, inList bool) 
 			a.openPath(i.GameDir, true)
 		case "icon":
 			a.editInstanceIcon(i)
+		case "pin":
+			a.setInstancePinned(i, !pinned)
 		case "group":
 			a.editGroup(i)
 		case "rename":

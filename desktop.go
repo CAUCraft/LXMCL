@@ -511,6 +511,9 @@ func (a *desktop) instanceList(c *ui.Context, inspecting bool) {
 	var items []display.ListItem
 	for _, i := range a.libraryInstances() {
 		detail := i.Version + " · " + loaderName(i)
+		if a.state.PinnedInstances[i.ID] {
+			detail = "已置顶 · " + detail
+		}
 		if group := a.state.InstanceGroups[i.ID]; group != "" {
 			detail += " · " + group
 		}

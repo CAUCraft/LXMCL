@@ -22,6 +22,7 @@ type State struct {
 	Instances        []instance.Instance      `json:"instances"`
 	InstanceNotes    map[int]string           `json:"instance_notes,omitempty"`
 	InstanceIcons    map[int]string           `json:"instance_icons,omitempty"`
+	PinnedInstances  map[int]bool             `json:"pinned_instances,omitempty"`
 	InstanceGroups   map[int]string           `json:"instance_groups,omitempty"`
 	LibrarySort      string                   `json:"library_sort,omitempty"`
 	LibraryGroup     *string                  `json:"library_group,omitempty"` // nil shows all groups, empty selects ungrouped instances.
@@ -33,6 +34,7 @@ type State struct {
 func (s State) Clone() State {
 	s.Instances = slices.Clone(s.Instances)
 	s.InstanceNotes = maps.Clone(s.InstanceNotes)
+	s.PinnedInstances = maps.Clone(s.PinnedInstances)
 	s.InstanceGroups = maps.Clone(s.InstanceGroups)
 	s.InstanceIcons = maps.Clone(s.InstanceIcons)
 	if s.LibraryGroup != nil {
