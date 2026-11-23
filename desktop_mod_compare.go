@@ -62,22 +62,14 @@ func (a *desktop) modComparison(c *ui.Context, base launcher.Instance, p *modCom
 		p = &modComparisonView{err: "对照实例已变化，请重新选择。"}
 		a.content.comparison = p
 	}
+	var copyRequested bool
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 		if icon(c, lucide.ArrowLeft(), "返回模组列表", false) {
 			a.refreshContent(base)
 		}
 		display.Text(c, "比对模组", display.TextProps{Strong: true, FontSize: 16}).Grow(1)
-		if valid && !p.reading && p.err == "" && button(c, "复制差异清单", action.Default, false) {
-			c.WriteClipboardThen(modComparisonReport(base, peer, p.result), func(err error) {
-				if a.content.comparison != p {
-					return
-				}
-				if err != nil {
-					a.message("复制失败，请重试", err)
-					return
-				}
-				a.message("已复制模组差异清单", nil)
-			})
+		if valid && !p.reading && p.err == "" {
+			copyRequested = button(c.Key(p), "复制差异清单", action.Default, false)
 		}
 		if icon(c, lucide.RefreshCw(), "重新比对", !valid || p.reading) {
 			a.readModComparison(base, peer)
@@ -119,6 +111,18 @@ func (a *desktop) modComparison(c *ui.Context, base launcher.Instance, p *modCom
 	case p.reading:
 		flightLoading(c, "正在读取两个实例的本地模组…")
 		return
+	}
+	if copyRequested && a.content.comparison == p {
+		c.WriteClipboardThen(modComparisonReport(base, peer, p.result), func(err error) {
+			if a.content.comparison != p {
+				return
+			}
+			if err != nil {
+				a.message("复制失败，请重试", err)
+				return
+			}
+			a.message("已复制模组差异清单", nil)
+		})
 	}
 	if ids := p.result.Ambiguous; len(ids) > 0 {
 		display.Text(c, "重复 ID 或文件名未配对："+strings.Join(ids, "、"), display.TextProps{Rows: 2}).Ellipsis("…").Selectable()

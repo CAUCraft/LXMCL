@@ -13,7 +13,7 @@ function Add-Mod($instance, $file, $id, $version) {
     } finally { $zip.Dispose() }
 }
 
-function Press([string]$name) {
+function Find-Control([string]$name, [switch]$Press) {
     $limit = [DateTime]::UtcNow.AddSeconds(20)
     $condition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, $name)
     do {
@@ -23,6 +23,7 @@ function Press([string]$name) {
             $window = [Windows.Automation.AutomationElement]::FromHandle($process.MainWindowHandle)
             foreach ($node in $window.FindAll([Windows.Automation.TreeScope]::Descendants, $condition)) {
                 if (!$node.Current.IsEnabled) { continue }
+                if (!$Press) { return }
                 $pattern = $null
                 if ($node.TryGetCurrentPattern([Windows.Automation.InvokePattern]::Pattern, [ref]$pattern)) { $pattern.Invoke(); return }
                 if ($node.TryGetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern, [ref]$pattern)) { $pattern.Select(); return }
@@ -34,11 +35,12 @@ function Press([string]$name) {
     throw "Control unavailable: $name. Visible labels: $($labels -join ', ')"
 }
 
-function Assert-Copy($choice, [string]$expected) {
-    Press '选择对照实例'
-    Press $choice
+function Assert-Copy($choice, $ready, [string]$expected) {
     Set-Clipboard -Value 'waiting for the selected comparison'
-    Press '复制差异清单'
+    Find-Control '选择对照实例' -Press
+    Find-Control $choice -Press
+    Find-Control $ready
+    Find-Control '复制差异清单' -Press
     $limit = [DateTime]::UtcNow.AddSeconds(5)
     do {
         $actual = ([string](Get-Clipboard -Raw)).Replace("`r`n", "`n")
@@ -67,13 +69,13 @@ Add-Mod $instances[2] 'lantern.jar' 'lantern' '3'
 Add-Mod $instances[1] 'camp.jar' 'camp' '4'
 $process = Start-Process -PassThru -FilePath $Launcher -ArgumentList "--data-dir `"$root`""
 try {
-    foreach ($name in '实例', 'Profile 1', '资源', '模组', '比对实例模组') { Press $name }
+    foreach ($name in '实例', 'Profile 1', '资源', '模组', '比对实例模组') { Find-Control $name -Press }
     $base = '基准：Minecraft 1.21.1 · Fabric 0.16.14'
     $different = @($base, '对照：Minecraft 1.21.4 · Fabric 0.16.14', '新增 · camp：无 → 4 · 启用', '版本及启用状态 · forest：1.0 · 启用 → 2.0 · 停用', '缺少 · lantern：3 · 启用 → 无', '重复未配对 · maps') -join "`n"
     $equal = @($base, '对照：Minecraft 1.21.1 · Fabric 0.16.14', '未发现可确认的差异。') -join "`n"
-    Assert-Copy 'Profile 2 · #2' $different
-    Assert-Copy 'Profile 3 · #3' $equal
-    Assert-Copy 'Profile 2 · #2' $different
+    Assert-Copy 'Profile 2 · #2' 'camp' $different
+    Assert-Copy 'Profile 3 · #3' '未发现可确认的差异。' $equal
+    Assert-Copy 'Profile 2 · #2' 'camp' $different
     Write-Output 'Verified three native clipboard reads from the native launcher.'
 } finally {
     if (!$process.HasExited) { $process.Kill(); $process.WaitForExit() }
