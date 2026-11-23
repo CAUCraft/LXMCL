@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/CAUCraft/LXMCL/internal/i18n"
 	"github.com/CAUCraft/LXMCL/internal/instance"
 	"github.com/CAUCraft/LXMCL/internal/storage"
 )
@@ -59,4 +60,24 @@ func (s Store) Save(state State) error {
 		return err
 	}
 	return storage.WriteFile(filepath.Join(s.Root, "launcher.json"), b)
+}
+
+// SaveWithNewGameRoot checks that a new instance directory can be created before
+// committing a change of root. Existing instances keep their own paths.
+func (s Store) SaveWithNewGameRoot(state State) error {
+	root := state.Settings.GameRoot
+	if !filepath.IsAbs(root) {
+		return i18n.Error("settings.game_root_invalid")
+	}
+	if err := os.MkdirAll(root, 0755); err != nil {
+		return i18n.Error("settings.game_root_unusable", err)
+	}
+	probe, err := os.MkdirTemp(root, ".lxmcl-check-")
+	if err != nil {
+		return i18n.Error("settings.game_root_unusable", err)
+	}
+	if err := os.Remove(probe); err != nil {
+		return i18n.Error("settings.game_root_unusable", err)
+	}
+	return s.Save(state)
 }

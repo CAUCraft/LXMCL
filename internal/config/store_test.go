@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -135,5 +136,53 @@ func TestInstanceLaunchOverridesAndDuplicatePersist(t *testing.T) {
 		original.Launch.MaxMemory(saved.Settings.Memory) != 8192 ||
 		unchanged.Launch.MaxMemory(saved.Settings.Memory) != saved.Settings.Memory {
 		t.Fatal("instance overrides changed the global Java or memory defaults")
+	}
+}
+
+func TestSaveWithNewGameRoot(t *testing.T) {
+	store := Store{Root: t.TempDir()}
+	state, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	state.Settings.GameRoot = filepath.Join(t.TempDir(), "new", "games")
+	if err = store.SaveWithNewGameRoot(state); err != nil {
+		t.Fatal(err)
+	}
+	files, err := os.ReadDir(state.Settings.GameRoot)
+	if err != nil || len(files) != 0 {
+		t.Fatalf("new root: %v, %v", files, err)
+	}
+	previous := state.Settings.GameRoot
+	occupied := filepath.Join(t.TempDir(), "occupied")
+	if err = os.WriteFile(occupied, []byte("existing file"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	state.Settings.GameRoot = filepath.Join(occupied, "games")
+	if err = store.SaveWithNewGameRoot(state); err == nil {
+		t.Fatal("accepted a file as the parent of an instance directory")
+	}
+	t.Run("existing read-only folder", func(t *testing.T) {
+		root := t.TempDir()
+		if err := os.Chmod(root, 0500); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { os.Chmod(root, 0700) })
+		if probe, err := os.MkdirTemp(root, "test-"); err == nil {
+			if err := os.Remove(probe); err != nil {
+				t.Fatal(err)
+			}
+			t.Skip("this filesystem or user permits directory creation despite the mode")
+		} else if !errors.Is(err, os.ErrPermission) {
+			t.Fatal(err)
+		}
+		state.Settings.GameRoot = root
+		if err := store.SaveWithNewGameRoot(state); err == nil {
+			t.Fatal("accepted a directory that cannot create instance folders")
+		}
+	})
+	saved, err := store.Load()
+	if err != nil || saved.Settings.GameRoot != previous {
+		t.Fatalf("failed change replaced saved root: %q, %v", saved.Settings.GameRoot, err)
 	}
 }
