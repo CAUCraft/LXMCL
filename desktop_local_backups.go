@@ -56,9 +56,18 @@ func (a *desktop) refreshLocalBackups(i launcher.Instance) {
 }
 
 func (a *desktop) previewLocalSaveBackup(i launcher.Instance, name string) {
-	root := a.store.Root
-	a.readSavePreview(i, name, func(ctx context.Context) (launcher.SavePreview, error) {
-		path, err := saves.CheckLocalBackup(root, i.ID, name)
+	a.previewManagedSaveBackup(&restoreView{target: i, filename: name})
+}
+
+func (a *desktop) previewBackupTask(row taskRecord) {
+	source := launcher.Instance{ID: row.InstanceID, Name: row.Name}
+	a.previewManagedSaveBackup(&restoreView{target: source, filename: row.SaveArchive, readOnly: true})
+}
+
+func (a *desktop) previewManagedSaveBackup(p *restoreView) {
+	root, id, name := a.store.Root, p.target.ID, p.filename
+	a.readSavePreview(p, func(ctx context.Context) (launcher.SavePreview, error) {
+		path, err := saves.CheckLocalBackup(root, id, name)
 		if err != nil {
 			return launcher.SavePreview{}, err
 		}
