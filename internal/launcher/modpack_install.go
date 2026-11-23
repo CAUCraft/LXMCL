@@ -22,7 +22,7 @@ func (g Game) InstallModpack(ctx context.Context, store Store, next State, i Ins
 			InstallGame: func(ctx context.Context, work Instance, report func(Progress)) error {
 				return g.InstallWithJava(ctx, work, next.Settings.JavaPath, report)
 			},
-			Commit: func() error { return store.Save(next) },
+			Commit: func() error { return store.saveNewInstance(next, i) },
 		}, progress)
 	}, report)
 }

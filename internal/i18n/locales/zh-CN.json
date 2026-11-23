@@ -94,6 +94,7 @@
   "instance.duplicate_file_unsupported": "无法复制链接、特殊文件或不受支持的路径：%s",
   "instance.duplicate_nested_directory": "新实例目录不能位于原实例目录内",
   "instance.duplicate_source_changed": "复制期间源文件发生变化，请退出游戏后重试",
+  "instance.directory_occupied": "目标游戏目录已被占用。请在设置中更换「新实例目录」后重试。",
   "instance.duplicate_target_changed": "实例已变更，请重新选择要复制的配置",
   "instance.form_target_changed": "实例已变更，请重新打开表单",
   "instance.game_dir_required": "实例需要绝对游戏目录",

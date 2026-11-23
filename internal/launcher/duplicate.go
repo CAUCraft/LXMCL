@@ -18,6 +18,6 @@ func DuplicateWithContent(ctx context.Context, store Store, next State, source, 
 		return i18n.Error("instance.duplicate_target_changed")
 	}
 	return tasks.Run(ctx, func(ctx context.Context, progress func(Progress)) error {
-		return content.DuplicateSetup(ctx, source.GameDir, target.GameDir, func() error { return store.Save(next) }, progress)
+		return content.DuplicateSetup(ctx, source.GameDir, target.GameDir, func() error { return store.saveNewInstance(next, target) }, progress)
 	}, report)
 }

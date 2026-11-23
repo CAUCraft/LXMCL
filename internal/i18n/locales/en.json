@@ -94,6 +94,7 @@
   "instance.duplicate_file_unsupported": "Cannot copy a link, special file or unsupported path: %s",
   "instance.duplicate_nested_directory": "The new instance directory cannot be inside the source instance",
   "instance.duplicate_source_changed": "A source file changed during copying; close the game and try again",
+  "instance.directory_occupied": "The game directory is already in use. Change the new instance folder in Settings and try again.",
   "instance.duplicate_target_changed": "The instance changed. Select the configuration to copy again",
   "instance.form_target_changed": "The instance changed. Reopen the form",
   "instance.game_dir_required": "The instance needs an absolute game directory",
