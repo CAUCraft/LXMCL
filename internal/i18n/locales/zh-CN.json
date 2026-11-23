@@ -128,6 +128,7 @@
   "launch.memory_invalid": "最大内存须为 1024–65536 MiB",
   "launch.process_start_failed": "启动 Java 进程失败：%w",
   "launch.quick_play_unsupported": "此版本不支持启动时直连，请在游戏内加入服务器",
+  "launch.repair_download_failed": "修复下载失败。请检查网络后在任务中心重试。\n%w\n%w",
   "launch.repair_required": "游戏文件需要重新校验",
   "launch.resolution_invalid": "窗口宽度须为 320–8192，高度须为 240–8192 像素",
   "launch.runtime_dir_create_failed": "无法创建实例运行目录：%w",

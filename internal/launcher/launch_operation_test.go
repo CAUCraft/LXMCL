@@ -3,6 +3,8 @@ package launcher
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net/url"
 	"testing"
 )
 
@@ -67,5 +69,24 @@ func TestLaunchWorkflowStopsOnAuthFailureAndCancellation(t *testing.T) {
 	r.Instance.Revision = 9
 	if _, err = executeLaunch(t.Context(), r, nil, steps); err == nil {
 		t.Fatal("accepted mismatched target")
+	}
+}
+
+func TestLaunchReportsVerificationAndRepairDownloadFailure(t *testing.T) {
+	i := Instance{ID: 1}
+	r := LaunchRequest{Instance: i, State: State{Instances: []Instance{i}}}
+	missing := errors.New("missing asset")
+	offline := &url.Error{Op: "Get", URL: "https://example.invalid/manifest", Err: errors.New("network unreachable")}
+	steps := launchSteps{
+		installed: func(Instance) bool { return true },
+		authorize: func(context.Context, LaunchRequest, func(Progress)) (LaunchResult, error) { return LaunchResult{}, nil },
+		start: func(context.Context, LaunchRequest, LaunchResult, func(Progress)) (Running, error) {
+			return Running{}, fmt.Errorf("%w: %w", ErrRepairRequired, missing)
+		},
+		install: func(context.Context, Instance, string, func(Progress)) error { return offline },
+	}
+	_, err := executeLaunch(t.Context(), r, nil, steps)
+	if !errors.Is(err, missing) || !errors.Is(err, offline) {
+		t.Fatalf("lost verification or download failure: %v", err)
 	}
 }
