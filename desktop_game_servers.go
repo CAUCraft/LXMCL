@@ -20,6 +20,7 @@ type gameServerView struct {
 	loading, missing bool
 	err              string
 	rows             []server.Server
+	importing        *gameServerImport
 	list             ui.ListState
 }
 
@@ -77,7 +78,8 @@ func (a *desktop) gameServerLibrary(c *ui.Context) {
 	p := a.gameServers
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 		muted(c, i.Name+" · servers.dat").Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-		if button(c, "刷新列表", action.Default, p.loading) {
+		a.gameServerImportControls(c, p)
+		if p.importing == nil && button(c, "刷新列表", action.Default, p.loading) {
 			a.loadGameServers(i)
 		}
 	})
@@ -109,7 +111,11 @@ func (a *desktop) gameServerLibrary(c *ui.Context) {
 					display.Text(rc, name, display.TextProps{Strong: true, Rows: 1}).Ellipsis("…")
 					muted(rc, address).SingleLine().Ellipsis("…")
 				})
-				action.CopyButton(rc, s.Address, action.CopyButtonProps{}).Label("复制游戏内地址 " + name).Disabled(s.Address == "")
+				if p.importing != nil {
+					p.importing.checkbox(rc, row.Index, s, a.busy)
+				} else {
+					action.CopyButton(rc, s.Address, action.CopyButtonProps{}).Label("复制游戏内地址 " + name).Disabled(s.Address == "")
+				}
 			})
 		})
 	}
