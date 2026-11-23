@@ -35,6 +35,9 @@ func TestWorldSearchKeepsOnlyVisibleSelection(t *testing.T) {
 		}
 	}
 	click("河谷矿场")
+	if node, ok := tt.Access("打开世界目录"); !ok || node.Disabled {
+		t.Fatal("visible world did not enable its folder action")
+	}
 	click("搜索世界目录")
 	tt.Type("河谷")
 	if p.selected != 1 || p.visible[p.selected].Folder() != "河谷矿场" {
@@ -44,7 +47,7 @@ func TestWorldSearchKeepsOnlyVisibleSelection(t *testing.T) {
 	if p.selected != -1 || len(p.visible) != 1 || p.visible[0].Folder() != "河谷小屋" {
 		t.Fatal("hidden selection was transferred to another world", p.selected)
 	}
-	for _, label := range []string{"备份所选世界", "进入世界"} {
+	for _, label := range []string{"打开世界目录", "备份所选世界", "进入世界"} {
 		if node, ok := tt.Access(label); !ok || !node.Disabled {
 			t.Fatal("hidden selection left an enabled action", label)
 		}

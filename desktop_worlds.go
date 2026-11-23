@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"github.com/CAUCraft/LXMCL/internal/instance"
 	"github.com/CAUCraft/LXMCL/internal/launcher"
 	"github.com/CAUCraft/LXMCL/internal/saves"
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"github.com/lobehub/lobe-mygo/pkg/action"
 	"github.com/lobehub/lobe-mygo/pkg/feedback"
@@ -23,6 +25,8 @@ type worldBrowser struct {
 	list     ui.ListState
 	selected int
 	loading  bool
+	opening  bool
+	openErr  string
 	retry    *taskRecord
 }
 
@@ -70,11 +74,51 @@ func (a *desktop) backupWorld(i launcher.Instance, world saves.World) {
 	})
 }
 
-func (p *worldBrowser) filter() {
-	selectedFolder := ""
-	if p.selected >= 0 && p.selected < len(p.visible) {
-		selectedFolder = p.visible[p.selected].Folder()
+func (p *worldBrowser) selectedWorld() (saves.World, bool) {
+	if p.selected < 0 || p.selected >= len(p.visible) {
+		return saves.World{}, false
 	}
+	return p.visible[p.selected], true
+}
+
+func (a *desktop) openWorldDirectory(p *worldBrowser, i launcher.Instance, world saves.World) {
+	p.opening, p.openErr = true, ""
+	finish := func(err error) {
+		if !a.form.open || a.form.worlds != p {
+			return
+		}
+		p.opening = false
+		if selected, ok := p.selectedWorld(); err != nil && ok && selected.Folder() == world.Folder() {
+			p.openErr = err.Error()
+			p.list.ScrollIntoView(p.selected)
+		}
+	}
+	go func() {
+		err := world.Check(i.GameDir)
+		a.post(func() {
+			if !a.form.open || a.form.worlds != p {
+				return
+			}
+			current, found := a.state.Find(i.ID)
+			selected, ok := p.selectedWorld()
+			if !found || current != i || !ok || selected.Folder() != world.Folder() {
+				finish(nil)
+				return
+			}
+			if err != nil {
+				finish(err)
+				return
+			}
+			go func() {
+				err := mygo.Shell.OpenPath(filepath.Join(i.GameDir, "saves", world.Folder()))
+				a.post(func() { finish(err) })
+			}()
+		})
+	}()
+}
+
+func (p *worldBrowser) filter() {
+	selected, _ := p.selectedWorld()
 	query := strings.ToLower(strings.TrimSpace(p.query))
 	p.visible = p.entries
 	if query != "" {
@@ -85,7 +129,7 @@ func (p *worldBrowser) filter() {
 			}
 		}
 	}
-	p.selected = slices.IndexFunc(p.visible, func(world saves.World) bool { return world.Folder() == selectedFolder })
+	p.selected = slices.IndexFunc(p.visible, func(world saves.World) bool { return world.Folder() == selected.Folder() })
 	p.list = ui.ListState{}
 }
 
@@ -97,6 +141,7 @@ func (a *desktop) worldEditor(c *ui.Context) {
 		_, canRetry := launcher.RetryTarget(*p.retry, a.state)
 		stale = stale || !canRetry
 	}
+	previous, _ := p.selectedWorld()
 	panelHeading(c, lucide.FolderOpen(), i.Name, "Minecraft "+i.Version+" · "+loaderName(i))
 	switch {
 	case stale:
@@ -109,9 +154,9 @@ func (a *desktop) worldEditor(c *ui.Context) {
 		muted(c, "没有找到本地世界。可在游戏内创建世界，或从备份恢复。")
 	default:
 		if p.retry == nil {
-			previous := p.query
+			queryBefore := p.query
 			field.SearchBar(c, &p.query, field.SearchBarProps{Placeholder: "搜索世界目录"}).Label("搜索世界目录")
-			if p.query != previous {
+			if p.query != queryBefore {
 				p.filter()
 			}
 		}
@@ -120,7 +165,11 @@ func (a *desktop) worldEditor(c *ui.Context) {
 		} else {
 			p.list.Selected = &p.selected
 			p.list.Label = func(idx int) string { return p.visible[idx].Folder() }
-			ui.List(c, &p.list, len(p.visible)).Height(float32(min(5, len(p.visible))) * 36).FillWidth().Rows(func(r ui.ListRow) {
+			maxRows := 5
+			if p.openErr != "" {
+				maxRows = 4
+			}
+			ui.List(c, &p.list, len(p.visible)).Height(float32(min(maxRows, len(p.visible))) * 36).FillWidth().Rows(func(r ui.ListRow) {
 				rc := r.Context
 				ui.Row(rc).Height(36).AlignItems(ui.Center).Gap(8).Padding(0, 10).Children(func() {
 					ui.Icon(rc, lucide.Folder()).FontSize(16)
@@ -132,16 +181,25 @@ func (a *desktop) worldEditor(c *ui.Context) {
 			})
 		}
 	}
+	world, selected := p.selectedWorld()
+	if previous.Folder() != world.Folder() {
+		p.openErr = ""
+	}
+	if p.openErr != "" && !stale {
+		feedback.Alert(c, "无法打开世界目录", feedback.AlertProps{Type: feedback.Warning, Variant: feedback.Plain, Description: p.openErr})
+	}
 	canLaunch := p.retry == nil || p.retry.Action == taskLaunch
 	canBackup := p.retry == nil || p.retry.Action == taskBackup
 	supported := instance.SupportedRelease(i.Version)
 	if canLaunch && !supported {
 		muted(c, "LXMCL 的世界快速启动支持 1.20.1 及以后的正式版。").FontSize(12)
 	}
-	disabled := a.busy || a.running != nil || stale || a.form.err != "" || p.loading || p.selected < 0 || p.selected >= len(p.visible)
+	disabled := a.busy || a.running != nil || stale || a.form.err != "" || p.loading || !selected
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+		if p.retry == nil && button(c, "打开世界目录", action.Default, disabled || p.opening) {
+			a.openWorldDirectory(p, i, world)
+		}
 		if canBackup && button(c, "备份所选世界", action.Default, disabled) {
-			world := p.visible[p.selected]
 			a.form.open = false
 			a.backupWorld(i, world)
 		}
@@ -150,7 +208,6 @@ func (a *desktop) worldEditor(c *ui.Context) {
 			a.form.open = false
 		}
 		if canLaunch && button(c, "进入世界", action.Primary, disabled || !supported) {
-			world := p.visible[p.selected]
 			a.form.open = false
 			a.startGame(i, false, "", &world)
 		}
