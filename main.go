@@ -137,6 +137,7 @@ type desktop struct {
 	inspected                        int
 	detailPage                       int
 	launchDrafts                     map[int]*instanceLaunchDraft
+	screenshots                      *screenshotGallery
 	content                          contentView
 	contentRequest                   uint64
 	contentCancel                    context.CancelFunc

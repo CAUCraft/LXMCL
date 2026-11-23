@@ -25,6 +25,7 @@ const (
 	detailLaunch
 	detailContent
 	detailFiles
+	detailScreenshots
 )
 
 var instanceDetailTabs = []nav.TabItem{
@@ -32,6 +33,7 @@ var instanceDetailTabs = []nav.TabItem{
 	{Label: "启动设置", Icon: lucide.Settings2()},
 	{Label: "资源", Icon: lucide.Layers()},
 	{Label: "游戏文件", Icon: lucide.FolderOpen()},
+	{Label: "截图", Icon: lucide.Image()},
 }
 
 type instanceLaunchFields struct {

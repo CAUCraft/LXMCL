@@ -64,6 +64,8 @@ func (a *desktop) details(c *ui.Context, i launcher.Instance) {
 		a.instanceLaunchSettings(c.Key(i.ID), i)
 	case detailContent:
 		a.instanceContent(c.Key(i.ID), i)
+	case detailScreenshots:
+		a.instanceScreenshots(c.Key(i.ID), i)
 	case detailFiles:
 		a.instanceFiles(c.Key(i.ID), i)
 	default:
