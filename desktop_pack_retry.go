@@ -86,9 +86,13 @@ func (a *desktop) packRetryInput(c *ui.Context, p *modpackView) {
 	r := p.retry
 	heading(c, "重新预览整合包更新")
 	display.Text(c, r.row.Name+" · "+r.row.Version, display.TextProps{Strong: true})
-	muted(c, r.path).FontSize(12).Selectable()
+	muted(c, r.path).FontSize(12).SingleLine().Ellipsis("…").Tooltip(r.path).Selectable()
 	if p.prepareErr != "" {
-		feedback.Alert(c, p.prepareErr, feedback.AlertProps{Type: feedback.Error})
+		feedback.Alert(c, "无法重新读取整合包", feedback.AlertProps{Type: feedback.Error})
+		ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
+			muted(c, p.prepareErr).FontSize(12).MaxLines(2).Ellipsis("…").Grow(1).MinWidth(0).Selectable()
+			action.CopyButton(c, p.prepareErr, action.CopyButtonProps{}).Label("复制整合包读取错误")
+		})
 	}
 	if _, ok := launcher.PackRetryTarget(r.row, a.state); !ok {
 		muted(c, "原实例已变更，请重新选择更新目标。")

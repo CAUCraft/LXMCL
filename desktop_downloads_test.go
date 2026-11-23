@@ -92,6 +92,34 @@ func TestModpackWorkspaceShowsSourcesAndNewInstanceConfirmation(t *testing.T) {
 	capture(t, tt, "download-modpacks-import")
 }
 
+func TestCompactModpackRetryKeepsActionsAboveFailureNotice(t *testing.T) {
+	a, tt := testDesktop(t)
+	tt.SetSize(820, 530)
+	i := a.state.Instances[1]
+	path := filepath.Join(i.GameDir, strings.Repeat("归档副本及迁移记录", 6), strings.Repeat("整合包备份", 8), strings.Repeat("整合包备份", 8), "客户端更新.mrpack")
+	row := taskRecord{InstanceID: i.ID, Revision: i.Revision, Name: i.Name, Version: i.Version, Status: taskFailed}
+	row.Pack.Archive, row.Pack.GameDir = path, i.GameDir
+	row.Pack.SHA256, row.Pack.Source = strings.Repeat("a", 64), string(launcher.ModrinthModpacks)
+	a.page, a.downloadPage, a.modpacks.mode = pageDownloads, downloadModpacks, modpackLocal
+	a.modpacks.retry = &packRetry{row: row, path: path}
+	detail := "open " + path + ": file not found"
+	a.modpacks.prepareErr = detail
+	a.notice, a.noticeError = "更新整合包 · 已失败："+detail, true
+	tt.Frame()
+
+	if err := tt.Click("重新读取"); err != nil {
+		t.Fatal(err)
+	}
+	locate, ok := tt.Find("定位原整合包…")
+	notice, hasNotice := tt.Find("复制通知详情")
+	if !ok || !hasNotice || locate.Y+locate.H > notice.Y {
+		t.Fatalf("relocate action overlaps the failure notice: %+v / %+v", locate, notice)
+	}
+	if err := tt.Click("复制整合包读取错误"); err != nil || tt.Clipboard() != detail {
+		t.Fatalf("could not copy the complete error: %v", err)
+	}
+}
+
 func TestDownloadPageSelectsVersionAndLoader(t *testing.T) {
 	a, tt := testDesktop(t)
 	a.releases = []launcher.Version{{ID: "26.3"}, {ID: "1.21.11"}, {ID: "1.21.4"}, {ID: "1.21.1"}}
