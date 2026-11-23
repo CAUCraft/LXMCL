@@ -62,7 +62,7 @@ func (a *desktop) libraryInstances() []launcher.Instance {
 	query := strings.ToLower(strings.TrimSpace(a.query))
 	var rows []launcher.Instance
 	for _, i := range a.state.Instances {
-		if matchesInstanceSearch(i, query) && a.matchesCacheFilter(i) && a.matchesGroup(i.ID) {
+		if matchesInstanceSearch(i, query) && a.matchesCacheFilter(i) && a.matchesGroup(i.ID) && a.matchesLibraryLoader(i) {
 			rows = append(rows, i)
 		}
 	}

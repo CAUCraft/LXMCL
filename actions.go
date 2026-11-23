@@ -63,6 +63,9 @@ func (a *desktop) load() {
 			a.playtimes, a.playtimeErr = played, playErr
 			a.instanceIcons = icons
 			a.libraryGroup = s.LibraryGroup
+			if slices.Contains(installLoaders, s.LibraryLoader) || s.LibraryLoader == unknownLibraryLoader {
+				a.libraryLoader = s.LibraryLoader
+			}
 			a.modpacks.key = curseForgeKey
 			a.memory = strconv.Itoa(s.Settings.Memory)
 			a.restoreTaskHistory(history)
@@ -203,6 +206,9 @@ func (a *desktop) inspect(i launcher.Instance) {
 	}
 	if !a.matchesCacheFilter(i) {
 		a.instanceFilter, a.scroll.Y = 0, 0
+	}
+	if !a.matchesLibraryLoader(i) {
+		a.libraryLoader, a.scroll.Y = "", 0
 	}
 	if !a.matchesGroup(i.ID) {
 		a.libraryGroup, a.scroll.Y = nil, 0
@@ -367,6 +373,9 @@ func (a *desktop) submitEditor() {
 			a.message("版本已更换 · "+strings.TrimSpace(form.version), nil)
 		case "loader":
 			i, _ := a.state.Find(form.target.ID)
+			if a.inspected == i.ID && !a.matchesLibraryLoader(i) {
+				a.inspected = 0
+			}
 			a.message("已保存加载器 · "+loaderName(i), nil)
 		}
 	})

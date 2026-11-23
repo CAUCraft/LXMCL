@@ -12,9 +12,12 @@ func TestLibrarySortPreservesTargetsAndCombinesFilters(t *testing.T) {
 	a, _ := testDesktop(t)
 	a.state.Instances[0].Name = "Beta"
 	a.state.Instances[1].Name = "alpha"
+	a.state.Instances[0].Loader = "" // Older vanilla instances have no loader field.
+	a.state.Instances[1].Loader = "fAbRiC"
 	if err := a.state.Create("Gamma", "1.21.1"); err != nil {
 		t.Fatal(err)
 	}
+	a.state.Instances[2].Loader = "Custom Fabric"
 	a.state.Selected = 1
 	original := slices.Clone(a.state.Instances)
 	now := time.Now()
@@ -48,6 +51,16 @@ func TestLibrarySortPreservesTargetsAndCombinesFilters(t *testing.T) {
 	a.query = "a"
 	a.instanceFilter = 2
 	check(sortRecent, 2)
+	a.libraryLoader = "Fabric"
+	check(sortRecent, 2)
+	a.libraryLoader = "Vanilla"
+	check(sortRecent)
+	a.instanceFilter = 0
+	check(sortRecent, 1)
+	a.libraryLoader, a.libraryGroup = unknownLibraryLoader, nil
+	check(sortName, 3)
+	a.libraryLoader = ""
+	check(sortName, 3, 2, 1)
 	if a.state.Selected != 1 || !slices.Equal(a.state.Instances, original) {
 		t.Fatal("presentation reordered stored instances or changed the home target")
 	}
