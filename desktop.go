@@ -461,7 +461,10 @@ func (a *desktop) library(c *ui.Context) {
 		}
 		w, _ := c.Size()
 		splitWorkspace(c, listWidth(w), func() {
-			muted(c, "实例列表").Padding(3, 5)
+			ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
+				muted(c, "实例列表").Grow(1)
+				a.librarySortPicker(c)
+			})
 			_, inspecting := a.state.Find(a.inspected)
 			a.instanceList(c, inspecting)
 			if inspecting {
@@ -500,12 +503,8 @@ func (a *desktop) matchesCacheFilter(i launcher.Instance) bool {
 }
 
 func (a *desktop) instanceList(c *ui.Context, inspecting bool) {
-	query := strings.ToLower(strings.TrimSpace(a.query))
 	var items []display.ListItem
-	for _, i := range a.state.Instances {
-		if !matchesInstanceSearch(i, query) || !a.matchesCacheFilter(i) || !a.matchesGroup(i.ID) {
-			continue
-		}
+	for _, i := range a.libraryInstances() {
 		detail := i.Version + " · " + loaderName(i)
 		if group := a.state.InstanceGroups[i.ID]; group != "" {
 			detail += " · " + group

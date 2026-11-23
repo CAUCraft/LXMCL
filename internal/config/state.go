@@ -22,6 +22,7 @@ type State struct {
 	Instances        []instance.Instance      `json:"instances"`
 	InstanceNotes    map[int]string           `json:"instance_notes,omitempty"`
 	InstanceGroups   map[int]string           `json:"instance_groups,omitempty"`
+	LibrarySort      string                   `json:"library_sort,omitempty"`
 	LibraryGroup     *string                  `json:"library_group,omitempty"` // nil shows all groups, empty selects ungrouped instances.
 	OfflinePlayers   []string                 `json:"offline_players,omitempty"`
 	Selected         int                      `json:"selected"`
