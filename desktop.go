@@ -224,6 +224,10 @@ func (a *desktop) noticeBar(c *ui.Context) {
 }
 
 func (a *desktop) backFromDetail() {
+	if a.detailPage == detailContent && a.content.copyMods != nil {
+		a.closeModCopy()
+		return
+	}
 	if p := a.screenshots; p != nil && p.viewerFrom != "" && a.detailPage == detailScreenshots && a.inspected == p.instance.ID {
 		a.leaveScreenshotViewer(p)
 		return

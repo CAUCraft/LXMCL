@@ -37,7 +37,11 @@ func readManifestMods(root *os.Root, name string, markers []string) []manifestMo
 	if err != nil || !st.Mode().IsRegular() || st.Size() > MaxSize {
 		return nil
 	}
-	z, err := zip.NewReader(f, st.Size())
+	return manifestMods(f, st.Size(), markers)
+}
+
+func manifestMods(f io.ReaderAt, size int64, markers []string) []manifestMod {
+	z, err := zip.NewReader(f, size)
 	if err != nil {
 		return nil
 	}

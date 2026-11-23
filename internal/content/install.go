@@ -31,7 +31,7 @@ func Install(ctx context.Context, target instance.Instance, kind Kind, name stri
 		return err
 	}
 	return asset.Fetch(ctx, client, func(ctx context.Context, reader io.Reader) error {
-		return publishResource(ctx, target, kind, name, asset.Size, func(file *os.File) error {
+		return publishResource(ctx, target, kind, File{Name: name, Size: asset.Size, Enabled: true}, func(file *os.File) error {
 			return asset.CopyVerified(ctx, file, reader)
 		})
 	})

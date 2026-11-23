@@ -25,10 +25,7 @@ type InstalledMod struct {
 }
 
 func (m InstalledMod) DiskName() string {
-	if !m.File.Enabled {
-		return m.File.Name + ".disabled"
-	}
-	return m.File.Name
+	return m.File.DiskName()
 }
 
 func modDigest(ctx context.Context, root *os.Root, name string) (string, error) {
