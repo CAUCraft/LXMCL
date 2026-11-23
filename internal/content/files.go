@@ -78,7 +78,8 @@ func list(ctx context.Context, i instance.Instance, kind Kind, identify bool) ([
 		}
 		file := File{Name: name, Size: info.Size(), Enabled: !disabled, Modified: info.ModTime()}
 		if identify && kind == Mods {
-			file.ModTitle, file.ModIDs = ReadModMetadata(root, entry.Name(), markers)
+			file.mods = readManifestMods(root, entry.Name(), markers)
+			file.ModTitle, file.ModIDs = modLabels(file.mods)
 		}
 		result = append(result, file)
 	}

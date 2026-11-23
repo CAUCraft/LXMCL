@@ -19,6 +19,7 @@ const (
 type File struct {
 	Name             string
 	ModTitle, ModIDs string
+	mods             []manifestMod
 	Size             int64
 	Enabled          bool
 	Modified         time.Time
