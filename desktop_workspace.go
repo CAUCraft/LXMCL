@@ -115,6 +115,8 @@ func (a *desktop) instanceOverview(c *ui.Context, i launcher.Instance) {
 				}
 			})
 			layout.Divider(c, layout.DividerProps{})
+			property(c, "实例 ID", strconv.Itoa(i.ID))
+			layout.Divider(c, layout.DividerProps{})
 			a.playtimeOverview(c, i.ID)
 			layout.Divider(c, layout.DividerProps{})
 			note := a.state.InstanceNotes[i.ID]

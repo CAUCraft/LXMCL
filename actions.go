@@ -41,7 +41,13 @@ func (a *desktop) load() {
 	go func() {
 		s, err := a.store.Load()
 		if err != nil {
-			a.post(func() { a.loading, a.loadErr = false, err.Error() })
+			a.post(func() {
+				a.loading, a.loadErr = false, err.Error()
+				if a.pendingLaunchID != 0 {
+					a.loadErr += "。重新读取后请再次运行启动命令。"
+					a.pendingLaunchID = 0
+				}
+			})
 			return
 		}
 		icons := loadInstanceIcons(s)
@@ -79,6 +85,10 @@ func (a *desktop) load() {
 			}
 			if p, ok := s.Station(s.StationKey); ok {
 				a.loadStationPreview(p, false)
+			}
+			if id := a.pendingLaunchID; id != 0 {
+				a.pendingLaunchID = 0
+				a.launchByID(id)
 			}
 		})
 	}()
