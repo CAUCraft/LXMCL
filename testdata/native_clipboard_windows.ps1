@@ -21,7 +21,14 @@ function Find-Control([string]$name, [switch]$Press) {
         if ($process.HasExited) { throw "Launcher exited before $name" }
         if ($process.MainWindowHandle -ne [IntPtr]::Zero) {
             $window = [Windows.Automation.AutomationElement]::FromHandle($process.MainWindowHandle)
-            foreach ($node in $window.FindAll([Windows.Automation.TreeScope]::Descendants, $condition)) {
+            # The provider can replace the tree while FindAll is reading a new view.
+            try {
+                $nodes = $window.FindAll([Windows.Automation.TreeScope]::Descendants, $condition)
+            } catch {
+                if ([DateTime]::UtcNow.AddMilliseconds(120) -ge $limit) { throw "Cannot look up '$name': $($_.Exception.Message)" }
+                $nodes = @()
+            }
+            foreach ($node in $nodes) {
                 if (!$node.Current.IsEnabled) { continue }
                 if (!$Press) { return }
                 $pattern = $null
