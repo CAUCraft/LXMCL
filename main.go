@@ -101,6 +101,7 @@ type editor struct {
 	originalGroup      string
 	icon               *instanceIconDraft
 	prism              *prismDraft
+	worlds             *worldBrowser
 }
 
 type desktop struct {

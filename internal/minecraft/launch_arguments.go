@@ -13,7 +13,7 @@ import (
 
 func (g Runtime) launchArguments(ctx context.Context, i instance.Instance, options LaunchOptions, profile launchProfile, memory int) ([]string, error) {
 	m, cp, libraryDir, launchVersion := profile.metadata, profile.classpath, profile.libraryDir, profile.version
-	identity, server := options.Identity, options.Server
+	identity := options.Identity
 	natives := filepath.Join(i.GameDir, ".lxmcl-natives")
 	if err := os.MkdirAll(natives, 0755); err != nil {
 		return nil, i18n.Error("launch.runtime_dir_create_failed", err)
@@ -37,7 +37,11 @@ func (g Runtime) launchArguments(ctx context.Context, i instance.Instance, optio
 	if i.UsesInstaller() {
 		ignoreCachedVanillaJar(jvm, launchVersion)
 	}
-	game, err := clientArgs(m, values, i.Launch, server)
+	var world string
+	if options.World != nil {
+		world = options.World.Folder()
+	}
+	game, err := clientArgs(m, values, i.Launch, options.Server, world)
 	if err != nil {
 		return nil, i18n.Error("launch.client_args_failed", err)
 	}

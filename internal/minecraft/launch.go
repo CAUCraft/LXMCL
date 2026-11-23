@@ -7,6 +7,7 @@ import (
 	"github.com/CAUCraft/LXMCL/internal/account"
 	"github.com/CAUCraft/LXMCL/internal/i18n"
 	"github.com/CAUCraft/LXMCL/internal/instance"
+	"github.com/CAUCraft/LXMCL/internal/saves"
 )
 
 // LaunchOptions carries a validated identity. PrepareJVM lazily obtains optional
@@ -15,6 +16,7 @@ import (
 type LaunchOptions struct {
 	Settings   instance.Settings
 	Server     string
+	World      *saves.World
 	Identity   account.LaunchIdentity
 	PrepareJVM func(context.Context) ([]string, error)
 }
@@ -89,6 +91,11 @@ func (g Runtime) Start(ctx context.Context, i instance.Instance, options LaunchO
 	args, err := g.launchArguments(ctx, i, options, profile, memory)
 	if err != nil {
 		return Running{}, err
+	}
+	if options.World != nil {
+		if err := options.World.Check(i.GameDir); err != nil {
+			return Running{}, err
+		}
 	}
 	return startProcess(ctx, i, j, memory, args)
 }

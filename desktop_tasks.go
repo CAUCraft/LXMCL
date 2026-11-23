@@ -241,6 +241,9 @@ func (a *desktop) taskRow(c *ui.Context, row taskRecord) {
 		if row.Folder != "" {
 			muted(c, row.Folder).FontSize(13).Selectable()
 		}
+		if row.World != "" {
+			muted(c, "单人世界 · "+row.World).FontSize(13).Selectable()
+		}
 		if row.Server != "" {
 			muted(c, "服务器 · "+row.Server).FontSize(13).Selectable()
 		}
@@ -301,6 +304,8 @@ func (a *desktop) taskRow(c *ui.Context, row taskRecord) {
 					a.backupSaves(target)
 				} else if row.Resource != nil {
 					a.downloadResource(target, *row.Resource, launcher.PackVersion{})
+				} else if row.World != "" {
+					a.browseWorlds(target, row.World)
 				} else {
 					a.playOnServer(target, row.Action == taskVerify, row.Server)
 				}

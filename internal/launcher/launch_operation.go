@@ -30,7 +30,7 @@ func (g Game) Execute(ctx context.Context, store Store, request LaunchRequest, r
 				if err != nil {
 					return Running{}, err
 				}
-				return g.startProgress(ctx, r.Instance, r.State.Settings, r.Server, identity, &auth.StationSession, progress)
+				return g.startProgress(ctx, r.Instance, r.State.Settings, r.Server, r.World, identity, &auth.StationSession, progress)
 			}
 			var session *MinecraftSession
 			if r.State.MicrosoftProfile != "" {
@@ -40,7 +40,7 @@ func (g Game) Execute(ctx context.Context, store Store, request LaunchRequest, r
 			if err != nil {
 				return Running{}, err
 			}
-			return g.startProgress(ctx, r.Instance, r.State.Settings, r.Server, identity, nil, progress)
+			return g.startProgress(ctx, r.Instance, r.State.Settings, r.Server, r.World, identity, nil, progress)
 		},
 	})
 }
@@ -51,6 +51,14 @@ func executeLaunch(ctx context.Context, r LaunchRequest, report func(Progress), 
 		i := r.Instance
 		if current, ok := r.State.Find(i.ID); !ok || current != i {
 			return i18n.Error("instance.settings_target_changed")
+		}
+		if r.World != nil {
+			if r.InstallOnly || r.Server != "" {
+				return i18n.Error("launch.world_target_invalid")
+			}
+			if err := r.World.Check(i.GameDir); err != nil {
+				return err
+			}
 		}
 		var err error
 		if !r.InstallOnly {

@@ -51,6 +51,7 @@ type Record struct {
 	Name       string    `json:"name"`
 	Version    string    `json:"version"`
 	Server     string    `json:"server,omitempty"`
+	World      string    `json:"world,omitempty"`
 	Account    string    `json:"account,omitempty"`
 	Action     string    `json:"action"`
 	Status     string    `json:"status"`
