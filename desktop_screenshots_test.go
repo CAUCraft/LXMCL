@@ -71,6 +71,32 @@ func TestScreenshotPageKeepsInstanceSelection(t *testing.T) {
 		} else {
 			capture(t, tt, "screenshots-light")
 		}
+		click("查看大图")
+		large, ok := tt.Find("截图预览")
+		if !ok || large.W <= r.W || large.H <= r.H || large.X+large.W > 820 || large.Y+large.H > 530 || !tt.HasText("1 / 2") {
+			t.Fatal("viewer bounds or position", large, tt.Texts())
+		}
+		if dark {
+			capture(t, tt, "screenshot-viewer-dark")
+		} else {
+			capture(t, tt, "screenshot-viewer-light")
+		}
+		tt.Key(0, ui.KeyLeft)
+		if p.selected != "河谷.png" {
+			t.Fatal("moved past first screenshot")
+		}
+		if dark {
+			tt.Key(0, ui.KeyRight)
+			tt.Key(0, ui.KeyRight)
+			if p.selected != "林地.png" || p.original != nil || !tt.HasText("正在读取预览…") {
+				t.Fatal("wrong selection while loading last screenshot", tt.Texts())
+			}
+		}
+		tt.Key(0, ui.KeyEscape)
+		tt.Frame()
+		if a.detailPage != detailScreenshots || p.selected != "河谷.png" || p.viewerFrom != "" {
+			t.Fatal("Esc did not restore gallery selection")
+		}
 	}
 	click("林地.png")
 	if p.selected != "林地.png" || p.picture != nil || p.original != nil {

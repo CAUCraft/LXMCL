@@ -18,13 +18,14 @@ import (
 	"github.com/lobehub/lobe-mygo/pkg/feedback"
 	"github.com/lobehub/lobe-mygo/pkg/layout"
 	"github.com/lobehub/lobe-mygo/pkg/lucide"
+	"github.com/lobehub/lobe-mygo/pkg/theme"
 )
 
 type screenshotGallery struct {
 	instance                            launcher.Instance
 	cancel                              context.CancelFunc
 	rows                                []display.ListItem
-	selected                            string
+	selected, viewerFrom                string
 	loading, folder, exporting, copying bool
 	err, previewErr                     string
 	picture                             ui.ImageSource
@@ -159,6 +160,80 @@ func (a *desktop) exportScreenshot(p *screenshotGallery) {
 	})
 }
 
+func screenshotPreview(c *ui.Context, p *screenshotGallery, expandable bool) bool {
+	switch {
+	case p.previewErr != "":
+		feedback.Alert(c, "无法预览这张截图", feedback.AlertProps{Type: feedback.Warning, Description: "可选择另一张，或在文件夹中查看原图。"})
+	case p.picture == nil:
+		flightLoading(c, "正在读取预览…")
+	default:
+		frame := layout.Block(c, layout.BlockProps{Variant: layout.BlockBorderless, Clickable: expandable}).
+			Grow(1).Basis(0).MinHeight(0).Clip()
+		if expandable {
+			frame.Label("查看大图")
+		}
+		frame.Children(func() {
+			ui.Image(c, p.picture).Absolute().Top(0).Left(0).Right(0).Bottom(0).Fit(ui.Contain).Label("截图预览")
+			if expandable {
+				ui.Box(c).Absolute().Top(6).Right(6).Padding(5).Radius(5).Background(theme.TokensOf(c).BgContainer).Children(func() {
+					ui.Icon(c, lucide.Maximize2()).FontSize(16)
+				})
+			}
+		})
+		return expandable && frame.Clicked()
+	}
+	return false
+}
+
+func screenshotCopyButton(c *ui.Context, p *screenshotGallery) *screenshots.Original {
+	if button(c.Key(p.original), "复制图片", action.Default, p.original == nil || p.copying) {
+		return p.original
+	}
+	return nil
+}
+
+func (a *desktop) leaveScreenshotViewer(p *screenshotGallery) {
+	from := p.viewerFrom
+	p.viewerFrom = ""
+	if p.selected != from {
+		a.selectScreenshot(p, from)
+	}
+}
+
+func (a *desktop) screenshotViewer(c *ui.Context, p *screenshotGallery) {
+	index := slices.IndexFunc(p.rows, func(row display.ListItem) bool { return row.Key == p.selected })
+	target := index
+	var back bool
+	var toCopy *screenshots.Original
+	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+		back = button(c, "返回图库", action.Default, false)
+		display.Text(c, p.selected, display.TextProps{Strong: true, Rows: 1}).Grow(1).MinWidth(0).Ellipsis("…")
+		if p.original != nil {
+			muted(c, fmt.Sprintf("%d × %d", p.original.Size.X, p.original.Size.Y)).Shrink(0)
+		}
+		if icon(c, lucide.ChevronLeft(), "上一张", index <= 0) || c.Shortcut(0, ui.KeyLeft) {
+			target = index - 1
+		}
+		muted(c, fmt.Sprintf("%d / %d", index+1, len(p.rows)))
+		if icon(c, lucide.ChevronRight(), "下一张", index+1 >= len(p.rows)) || c.Shortcut(0, ui.KeyRight) {
+			target = index + 1
+		}
+		toCopy = screenshotCopyButton(c, p)
+	})
+	switch {
+	case back:
+		a.leaveScreenshotViewer(p)
+		c.Invalidate()
+		return
+	case target != index && target >= 0 && target < len(p.rows):
+		a.selectScreenshot(p, p.rows[target].Key)
+		c.Invalidate()
+	case toCopy != nil:
+		a.copyScreenshot(p, toCopy)
+	}
+	screenshotPreview(c, p, false)
+}
+
 func (a *desktop) instanceScreenshots(c *ui.Context, i launcher.Instance) {
 	p := a.screenshots
 	if p == nil || p.instance != i {
@@ -171,9 +246,7 @@ func (a *desktop) instanceScreenshots(c *ui.Context, i launcher.Instance) {
 		if icon(c, lucide.RefreshCw(), "刷新截图", p.loading) {
 			a.loadScreenshots(i, p.selected)
 		}
-		if button(c.Key(p.original), "复制图片", action.Default, p.original == nil || p.copying) {
-			toCopy = p.original
-		}
+		toCopy = screenshotCopyButton(c, p)
 		if button(c, "导出原图…", action.Default, p.picture == nil || p.exporting || a.pickerBusy || a.busy) {
 			a.exportScreenshot(p)
 		}
@@ -200,15 +273,11 @@ func (a *desktop) instanceScreenshots(c *ui.Context, i launcher.Instance) {
 				}
 			}).Grow(1).MinHeight(0)
 		}, func() {
-			switch {
-			case p.previewErr != "":
-				feedback.Alert(c, "无法预览这张截图", feedback.AlertProps{Type: feedback.Warning, Description: "可选择另一张，或在文件夹中查看原图。"})
-			case p.picture == nil:
-				flightLoading(c, "正在读取预览…")
-			default:
-				sectionPane(c).Grow(1).Basis(0).MinHeight(0).Clip().Children(func() {
-					ui.Image(c, p.picture).Absolute().Top(0).Left(0).Right(0).Bottom(0).Fit(ui.Contain).Label("截图预览")
-				})
+			if screenshotPreview(c, p, true) {
+				p.viewerFrom = p.selected
+				c.Invalidate()
+			}
+			if p.original != nil {
 				display.Text(c, p.selected, display.TextProps{Strong: true, Rows: 1}).MinWidth(0).Ellipsis("…")
 				muted(c, fmt.Sprintf("%d × %d", p.original.Size.X, p.original.Size.Y)).FontSize(12)
 			}

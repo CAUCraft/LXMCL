@@ -224,6 +224,10 @@ func (a *desktop) noticeBar(c *ui.Context) {
 }
 
 func (a *desktop) backFromDetail() {
+	if p := a.screenshots; p != nil && p.viewerFrom != "" && a.detailPage == detailScreenshots && a.inspected == p.instance.ID {
+		a.leaveScreenshotViewer(p)
+		return
+	}
 	if a.detailPage != detailOverview {
 		a.detailPage = detailOverview
 	} else {
@@ -425,6 +429,13 @@ func workspace(c *ui.Context, content func()) {
 
 func (a *desktop) library(c *ui.Context) {
 	workspace(c, func() {
+		if p := a.screenshots; p != nil && p.viewerFrom != "" {
+			if i, ok := a.state.Find(a.inspected); ok && i == p.instance {
+				a.screenshotViewer(c.Key("screenshot-viewer"), p)
+				return
+			}
+			a.closeScreenshots()
+		}
 		if len(a.state.Instances) == 0 {
 			ui.Column(c).Grow(1).Center().Children(func() {
 				display.Empty(c, display.EmptyProps{Icon: lucide.PackageOpen(), Title: "暂无实例",
