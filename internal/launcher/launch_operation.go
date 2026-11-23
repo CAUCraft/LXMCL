@@ -3,6 +3,7 @@ package launcher
 import (
 	"context"
 	"errors"
+	"net/url"
 
 	"github.com/CAUCraft/LXMCL/internal/i18n"
 	"github.com/CAUCraft/LXMCL/internal/tasks"
@@ -75,8 +76,12 @@ func executeLaunch(ctx context.Context, r LaunchRequest, report func(Progress), 
 		result.Running, err = steps.start(ctx, r, result, progress)
 		if !needsInstall && errors.Is(err, ErrRepairRequired) && ctx.Err() == nil {
 			progress(Progress{Stage: i18n.Text("progress.repair_game")})
-			if err = steps.install(ctx, i, r.State.Settings.JavaPath, progress); err != nil {
-				return err
+			if repairErr := steps.install(ctx, i, r.State.Settings.JavaPath, progress); repairErr != nil {
+				var requestErr *url.Error
+				if ctx.Err() == nil && errors.As(repairErr, &requestErr) {
+					return i18n.Error("launch.repair_download_failed", err, repairErr)
+				}
+				return repairErr
 			}
 			if err = ctx.Err(); err != nil {
 				return err

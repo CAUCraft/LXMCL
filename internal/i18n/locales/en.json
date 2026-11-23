@@ -128,6 +128,7 @@
   "launch.memory_invalid": "Maximum memory must be 1024–65536 MiB",
   "launch.process_start_failed": "Could not start the Java process: %w",
   "launch.quick_play_unsupported": "This version does not support joining a server at startup. Join from inside the game",
+  "launch.repair_download_failed": "Repair download failed. Check your connection, then retry in the task center.\n%w\n%w",
   "launch.repair_required": "Game files need to be verified again",
   "launch.resolution_invalid": "Window width must be 320–8192 pixels and height must be 240–8192 pixels",
   "launch.runtime_dir_create_failed": "Could not create the instance runtime directory: %w",
