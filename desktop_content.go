@@ -476,10 +476,14 @@ func (a *desktop) runFileTask(row taskRecord, work func(context.Context, func(la
 		} else {
 			row.Pack = tasks.PackUpdate{}
 		}
+		noticeErr := err
+		if plainTaskCancellation(row) {
+			row.Detail, noticeErr = "", nil
+		}
 		a.saveTask(row, func() {
 			a.busy, a.cancelTask, a.task = false, nil, launcher.Progress{}
 			a.taskCanceling = false
-			a.message(row.Action+" · "+row.Status, err)
+			a.message(row.Action+" · "+row.Status, noticeErr)
 			if refresh != nil {
 				refresh(err)
 			}

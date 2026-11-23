@@ -29,6 +29,11 @@ var (
 	updateTaskHistory = tasks.Update
 )
 
+// Older history entries may contain only the cancellation sentinel as their detail.
+func plainTaskCancellation(row taskRecord) bool {
+	return row.Status == taskCanceled && row.Detail == context.Canceled.Error()
+}
+
 func (a *desktop) restoreTaskHistory(records []taskRecord) {
 	a.history = records
 	if a.lastLog != "" {
@@ -73,7 +78,7 @@ func (a *desktop) saveTask(record taskRecord, render func()) {
 		}
 		render()
 		key := taskKey(record)
-		if a.noticeError && slices.ContainsFunc(a.history, func(row taskRecord) bool { return taskKey(row) == key }) {
+		if (a.noticeError || record.Status == taskCanceled) && slices.ContainsFunc(a.history, func(row taskRecord) bool { return taskKey(row) == key }) {
 			a.noticeTaskKey = key
 		}
 		if err != nil {
