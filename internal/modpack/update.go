@@ -269,6 +269,24 @@ func ApplyUpdate(ctx context.Context, expected UpdatePreview, o InstallOptions, 
 	})
 }
 
+// Record each directory as soon as it is created, including parents of a later failed write.
+func makeUpdateDirs(target *os.Root, dir string, created *[]string) error {
+	if dir == "." {
+		return nil
+	}
+	if _, err := target.Lstat(dir); !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if err := makeUpdateDirs(target, path.Dir(dir), created); err != nil {
+		return err
+	}
+	if err := target.Mkdir(dir, 0755); err != nil {
+		return err
+	}
+	*created = append(*created, dir)
+	return nil
+}
+
 func publishUpdate(ctx context.Context, target, stage *os.Root, changes []Change, commit func() error) (result error) {
 	temp, err := os.MkdirTemp(target.Name(), ".lxmcl-rollback-")
 	if err != nil {
@@ -280,6 +298,7 @@ func publishUpdate(ctx context.Context, target, stage *os.Root, changes []Change
 		saved, published bool
 	}
 	var journal []undo
+	var createdDirs []string
 	defer func() {
 		var rollback error
 		if result != nil {
@@ -289,6 +308,16 @@ func publishUpdate(ctx context.Context, target, stage *os.Root, changes []Change
 				}
 				if step.saved {
 					rollback = errors.Join(rollback, target.Rename(path.Join(backup, step.name), step.name))
+				}
+			}
+			for _, dir := range slices.Backward(createdDirs) {
+				info, err := target.Lstat(dir)
+				if err == nil && info.IsDir() {
+					err = target.Remove(dir)
+				}
+				// A player file may now occupy the directory. Leave it in place.
+				if !errors.Is(err, os.ErrNotExist) && !errors.Is(err, os.ErrExist) {
+					rollback = errors.Join(rollback, err)
 				}
 			}
 		}
@@ -336,7 +365,7 @@ func publishUpdate(ctx context.Context, target, stage *os.Root, changes []Change
 			continue
 		}
 		dir := path.Dir(step.Path)
-		if err := target.MkdirAll(dir, 0755); err != nil {
+		if err := makeUpdateDirs(target, dir, &createdDirs); err != nil {
 			return err
 		}
 		parent, err := target.OpenRoot(dir)
