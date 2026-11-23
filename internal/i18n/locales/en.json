@@ -1,10 +1,11 @@
 {
   "prism.select_root": "Choose a Prism or MultiMC instance folder containing instance.cfg and mmc-pack.json",
+  "prism.zip_layout": "Choose a ZIP containing one vanilla instance, with instance.cfg and mmc-pack.json at the root or in the same top-level folder",
   "prism.format": "Unrecognized instance metadata. Select an instance using format version 1",
   "prism.version": "Select a vanilla instance with one Minecraft release at version 1.20.1 or later",
   "prism.component": "Extra component or custom patch %s. Choose a vanilla instance or install the required loader from Downloads.",
   "prism.game_folder": "Cannot identify the game folder. Select an instance using either minecraft or .minecraft.",
-  "prism.changed": "The source changed after preview. Select the instance folder again.",
+  "prism.changed": "The source changed after preview. Select the instance folder or ZIP again.",
   "account.credentials_delete_failed": "Could not remove account credentials: %w",
   "account.credentials_save_failed": "Could not save account credentials; the latest credentials remain in this session for retry: %w",
   "account.offline_name_invalid": "An offline name must contain 3–16 letters, digits or underscores",

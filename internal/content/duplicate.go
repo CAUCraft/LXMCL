@@ -53,7 +53,7 @@ func copyNewDirectory(ctx context.Context, protected, source, destination string
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if !filepath.IsAbs(source) || !filepath.IsAbs(destination) || commit == nil {
+	if !filepath.IsAbs(source) {
 		return i18n.Error("instance.duplicate_target_changed")
 	}
 	src, err := os.OpenRoot(source)
@@ -61,6 +61,24 @@ func copyNewDirectory(ctx context.Context, protected, source, destination string
 		return err
 	}
 	defer src.Close()
+	return stageNewDirectory(ctx, protected, destination, commit, report, func(dst *os.Root) error {
+		if err := copySetup(ctx, src, dst, paths, report); err != nil {
+			return err
+		}
+		if includeScreenshots {
+			return CopyScreenshots(ctx, source, dst)
+		}
+		return nil
+	})
+}
+
+func stageNewDirectory(ctx context.Context, protected, destination string, commit func() error, report func(tasks.Progress), fill func(*os.Root) error) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if !filepath.IsAbs(destination) || commit == nil {
+		return i18n.Error("instance.duplicate_target_changed")
+	}
 	parent, name := filepath.Dir(destination), filepath.Base(destination)
 	if err := CheckSeparateDirectory(protected, parent); err != nil {
 		return err
@@ -94,10 +112,7 @@ func copyNewDirectory(ctx context.Context, protected, source, destination string
 	if err != nil {
 		return err
 	}
-	err = copySetup(ctx, src, dst, paths, report)
-	if err == nil && includeScreenshots {
-		err = CopyScreenshots(ctx, source, dst)
-	}
+	err = fill(dst)
 	if err := errors.Join(err, dst.Close()); err != nil {
 		return err
 	}

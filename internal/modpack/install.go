@@ -10,6 +10,7 @@ import (
 	"github.com/CAUCraft/LXMCL/internal/distribution"
 	"github.com/CAUCraft/LXMCL/internal/i18n"
 	"github.com/CAUCraft/LXMCL/internal/instance"
+	"github.com/CAUCraft/LXMCL/internal/storage"
 	"github.com/CAUCraft/LXMCL/internal/tasks"
 )
 
@@ -47,7 +48,7 @@ func Install(ctx context.Context, pack Prepared, options InstallOptions, report 
 		report = func(tasks.Progress) {}
 	}
 	report(tasks.Progress{Stage: i18n.Text("progress.check_modpack_manifest")})
-	f, size, err := openArchive(pack.filename)
+	f, size, err := storage.OpenPackFile(pack.filename)
 	if err != nil {
 		return err
 	}

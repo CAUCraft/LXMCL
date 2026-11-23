@@ -6,7 +6,6 @@ import (
 	"errors"
 	"io"
 	"os"
-	"path"
 	"path/filepath"
 
 	"github.com/CAUCraft/LXMCL/internal/i18n"
@@ -65,38 +64,9 @@ func writeBackupFile(ctx context.Context, root *os.Root, z *zip.Writer, file bac
 
 func extractArchive(ctx context.Context, root *os.Root, entries []restoreEntry) error {
 	for _, entry := range entries {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		if entry.file.FileInfo().IsDir() {
-			if err := root.MkdirAll(entry.name, 0755); err != nil {
-				return err
-			}
-			continue
-		}
-		if err := root.MkdirAll(path.Dir(entry.name), 0755); err != nil {
-			return err
-		}
-		if err := extractSaveFile(ctx, root, entry.file, entry.name); err != nil {
+		if err := transfer.ExtractZIPEntry(ctx, root, entry.file, entry.name); err != nil {
 			return err
 		}
 	}
 	return nil
-}
-
-func extractSaveFile(ctx context.Context, root *os.Root, entry *zip.File, name string) error {
-	src, err := entry.Open()
-	if err != nil {
-		return err
-	}
-	defer src.Close()
-	dst, err := root.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
-	if err != nil {
-		return err
-	}
-	n, err := io.Copy(dst, io.LimitReader(transfer.Reader(ctx, src), int64(entry.UncompressedSize64)+1))
-	if err == nil && uint64(n) != entry.UncompressedSize64 {
-		err = i18n.Error("saves.archive_size_mismatch")
-	}
-	return errors.Join(err, dst.Close())
 }

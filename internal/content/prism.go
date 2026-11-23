@@ -2,11 +2,13 @@ package content
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"io"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -18,9 +20,11 @@ import (
 
 // PrismInstance describes only a vanilla profile and the data offered in the preview.
 type PrismInstance struct {
-	Directory, GameFolder, Name, Version string
-	Worlds, Options, SkippedSettings     bool
-	Launch                               instance.LaunchOptions
+	Source, GameFolder, Name, Version string
+	Worlds, Options, SkippedSettings  bool
+	Launch                            instance.LaunchOptions
+	archiveRoot                       string // "." or the single wrapper folder in a ZIP; empty for a directory.
+	archiveIndex                      [sha256.Size]byte
 }
 
 func ReadPrismInstance(ctx context.Context, dir string) (PrismInstance, error) {
@@ -33,6 +37,10 @@ func ReadPrismInstance(ctx context.Context, dir string) (PrismInstance, error) {
 		return p, err
 	}
 	defer root.Close()
+	return readPrismProfile(ctx, root.FS(), PrismInstance{Source: filepath.Clean(dir)}, filepath.Base(dir))
+}
+
+func readPrismProfile(ctx context.Context, root fs.FS, p PrismInstance, fallbackName string) (PrismInstance, error) {
 	cfg, err := prismMetadata(ctx, root, "instance.cfg")
 	if err != nil {
 		return p, err
@@ -45,10 +53,9 @@ func ReadPrismInstance(ctx context.Context, dir string) (PrismInstance, error) {
 	if err != nil {
 		return p, err
 	}
-	p.Directory = filepath.Clean(dir)
-	p.readSettings(cfg)
+	p.readSettings(cfg, fallbackName)
 	for _, name := range []string{".minecraft", "minecraft"} {
-		info, err := root.Lstat(name)
+		info, err := fs.Lstat(root, name)
 		if errors.Is(err, fs.ErrNotExist) {
 			continue
 		}
@@ -64,17 +71,12 @@ func ReadPrismInstance(ctx context.Context, dir string) (PrismInstance, error) {
 	if p.GameFolder == "" {
 		return p, ctx.Err()
 	}
-	game, err := root.OpenRoot(p.GameFolder)
-	if err != nil {
-		return p, err
-	}
-	defer game.Close()
 	for _, item := range []struct {
 		name    string
 		dir     bool
 		present *bool
 	}{{"saves", true, &p.Worlds}, {"options.txt", false, &p.Options}} {
-		info, err := game.Lstat(item.name)
+		info, err := fs.Lstat(root, path.Join(p.GameFolder, item.name))
 		if errors.Is(err, fs.ErrNotExist) {
 			continue
 		}
@@ -89,7 +91,7 @@ func ReadPrismInstance(ctx context.Context, dir string) (PrismInstance, error) {
 	return p, ctx.Err()
 }
 
-func prismVersion(root *os.Root, data []byte) (string, error) {
+func prismVersion(root fs.FS, data []byte) (string, error) {
 	var version string
 	var pack struct {
 		FormatVersion int
@@ -113,7 +115,7 @@ func prismVersion(root *os.Root, data []byte) (string, error) {
 	if version == "" {
 		return "", i18n.Error("prism.version")
 	}
-	patches, err := fs.ReadDir(root.FS(), "patches")
+	patches, err := fs.ReadDir(root, "patches")
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return "", err
 	}
@@ -125,7 +127,7 @@ func prismVersion(root *os.Root, data []byte) (string, error) {
 	return version, nil
 }
 
-func (p *PrismInstance) readSettings(cfg []byte) {
+func (p *PrismInstance) readSettings(cfg []byte, fallbackName string) {
 	fields := make(map[string]string)
 	lines := strings.SplitSeq(strings.TrimPrefix(string(cfg), "\uFEFF"), "\n")
 	general := true
@@ -145,7 +147,7 @@ func (p *PrismInstance) readSettings(cfg []byte) {
 	}
 	p.Name = fields["name"]
 	if p.Name == "" {
-		p.Name = filepath.Base(p.Directory)
+		p.Name = fallbackName
 	}
 	if strings.EqualFold(fields["OverrideMemory"], "true") {
 		mib, err := strconv.Atoi(fields["MaxMemAlloc"])
@@ -167,8 +169,8 @@ func (p *PrismInstance) readSettings(cfg []byte) {
 	}
 }
 
-func prismMetadata(ctx context.Context, root *os.Root, name string) ([]byte, error) {
-	info, err := root.Lstat(name)
+func prismMetadata(ctx context.Context, root fs.FS, name string) ([]byte, error) {
+	info, err := fs.Lstat(root, name)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, i18n.Error("prism.select_root")
 	}
@@ -196,11 +198,17 @@ func prismMetadata(ctx context.Context, root *os.Root, name string) ([]byte, err
 
 // CopyPrismInstance rechecks the accepted preview before publishing a new directory.
 func CopyPrismInstance(ctx context.Context, p PrismInstance, destination string, worlds, options bool, commit func() error, report func(tasks.Progress)) error {
-	now, err := ReadPrismInstance(ctx, p.Directory)
+	if (worlds && !p.Worlds) || (options && !p.Options) {
+		return i18n.Error("prism.changed")
+	}
+	if p.archiveRoot != "" {
+		return copyPrismZIP(ctx, p, destination, worlds, options, commit, report)
+	}
+	now, err := ReadPrismInstance(ctx, p.Source)
 	if err != nil {
 		return err
 	}
-	if now != p || (worlds && !p.Worlds) || (options && !p.Options) {
+	if now != p {
 		return i18n.Error("prism.changed")
 	}
 	var paths []setupPath
@@ -210,5 +218,5 @@ func CopyPrismInstance(ctx context.Context, p PrismInstance, destination string,
 	if options {
 		paths = append(paths, setupPath{"options.txt", false})
 	}
-	return copyNewDirectory(ctx, p.Directory, filepath.Join(p.Directory, p.GameFolder), destination, paths, false, commit, report)
+	return copyNewDirectory(ctx, p.Source, filepath.Join(p.Source, p.GameFolder), destination, paths, false, commit, report)
 }
