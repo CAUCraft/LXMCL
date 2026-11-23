@@ -18,21 +18,23 @@ func (a *desktop) matchesGroup(id int) bool {
 
 // History and other direct navigation can reveal an instance temporarily.
 // Only an explicit filter choice changes the preference restored on restart.
-func (a *desktop) chooseLibraryGroup(group *string) {
-	next := a.state.Clone()
-	next.LibraryGroup = group
-	previous := a.libraryGroup
-	a.libraryGroup = group
+func (a *desktop) saveLibraryFilters(next launcher.State, group *string, loader string) {
+	previousGroup, previousLoader := a.libraryGroup, a.libraryLoader
+	a.libraryGroup, a.libraryLoader = group, loader
 	a.scroll.Y = 0
 	a.save(next, 0, func(err error) {
 		if err != nil {
 			if a.libraryGroup == group {
-				a.libraryGroup = previous
+				a.libraryGroup = previousGroup
 			}
-			a.message("保存分组筛选失败", err)
+			if a.libraryLoader == loader {
+				a.libraryLoader = previousLoader
+			}
+			a.message("保存实例筛选失败", err)
 			return
 		}
-		if a.page == pageLibrary && !a.matchesGroup(a.inspected) {
+		i, ok := a.state.Find(a.inspected)
+		if a.page == pageLibrary && ok && (!a.matchesGroup(i.ID) || !a.matchesLibraryLoader(i)) {
 			a.inspected = 0
 		}
 	})
@@ -79,11 +81,12 @@ func (a *desktop) libraryGroupPicker(c *ui.Context) {
 		return
 	}
 	if selected != key {
+		next := a.state.Clone()
+		next.LibraryGroup = nil
 		if name, ok := strings.CutPrefix(selected, "group:"); ok {
-			a.chooseLibraryGroup(&name)
-		} else {
-			a.chooseLibraryGroup(nil)
+			next.LibraryGroup = &name
 		}
+		a.saveLibraryFilters(next, next.LibraryGroup, a.libraryLoader)
 	}
 }
 

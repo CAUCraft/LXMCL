@@ -91,7 +91,7 @@ func (a *desktop) view(c *ui.Context) {
 		(a.microsoft == nil || !a.microsoft.open) {
 		if mods, key, ok := display.HotkeyBinding(searchHotkey, display.HotkeyAuto); ok && c.Shortcut(mods, key) {
 			a.page, a.inspected = pageLibrary, 0
-			a.instanceFilter, a.libraryGroup = 0, nil
+			a.instanceFilter, a.libraryGroup, a.libraryLoader = 0, nil, ""
 			a.focusSearch = len(a.state.Instances) > 0
 		}
 		if mods, key, ok := display.HotkeyBinding(tasksHotkey, display.HotkeyAuto); ok && c.Shortcut(mods, key) {
@@ -467,11 +467,12 @@ func (a *desktop) library(c *ui.Context) {
 			})
 			return
 		}
+		w, _ := c.Size()
 		query, filter := a.query, a.instanceFilter
 		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
 			ui.Column(c).Grow(1).MinWidth(0).Children(func() {
 				hotkey := searchHotkey
-				if a.form.open || a.restore != nil || a.logOpen || a.licensesOpen {
+				if w < 920 || a.form.open || a.restore != nil || a.logOpen || a.licensesOpen {
 					hotkey = ""
 				}
 				search := field.SearchBar(c, &a.query, field.SearchBarProps{
@@ -483,6 +484,7 @@ func (a *desktop) library(c *ui.Context) {
 				}
 			})
 			a.libraryGroupPicker(c)
+			a.libraryLoaderPicker(c)
 			action.Segmented(c, &a.instanceFilter, []string{"全部", "已缓存", "待下载"},
 				action.SegmentedProps{Size: theme.Small}).Label("实例筛选")
 			if button(c, "导入本地实例…", action.Default, a.busy || a.pickerBusy) {
@@ -495,7 +497,6 @@ func (a *desktop) library(c *ui.Context) {
 		if a.query != query || a.instanceFilter != filter {
 			a.scroll.Y = 0
 		}
-		w, _ := c.Size()
 		splitWorkspace(c, listWidth(w), func() {
 			ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
 				muted(c, "实例列表").Grow(1)
@@ -564,10 +565,12 @@ func (a *desktop) instanceList(c *ui.Context, inspecting bool) {
 	}
 	if len(items) == 0 {
 		display.Empty(c, display.EmptyProps{Icon: lucide.SearchX(), Title: "未找到实例", Action: func() {
-			hasGroup := a.libraryGroup != nil || a.state.LibraryGroup != nil
-			if button(c, "清除筛选", action.Default, a.busy && hasGroup) {
-				if hasGroup {
-					a.chooseLibraryGroup(nil)
+			hasPreference := a.state.LibraryGroup != nil || a.state.LibraryLoader != "" || a.libraryGroup != nil || a.libraryLoader != ""
+			if button(c, "清除筛选", action.Default, a.busy && hasPreference) {
+				if hasPreference {
+					next := a.state.Clone()
+					next.LibraryGroup, next.LibraryLoader = nil, ""
+					a.saveLibraryFilters(next, nil, "")
 				}
 				a.query, a.instanceFilter, a.scroll.Y = "", 0, 0
 			}
