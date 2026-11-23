@@ -22,8 +22,8 @@ import (
 )
 
 type Selection struct {
-	Mods, Config, Worlds bool
-	Screenshots          bool // Local instance copies only.
+	Mods, Config, Worlds    bool
+	Screenshots, ServerList bool // Local instance copies only.
 }
 
 func (s Selection) walk(ctx context.Context, dir string, write func(string, io.Reader) error) error {
@@ -152,6 +152,9 @@ func Duplicate(ctx context.Context, src, dst instance.Instance, selection Select
 		_, err = io.Copy(f, reader)
 		return errors.Join(err, f.Close())
 	})
+	if err == nil && selection.ServerList {
+		err = content.CopyServerList(ctx, src.GameDir, root)
+	}
 	if err == nil && selection.Screenshots {
 		err = content.CopyScreenshots(ctx, src.GameDir, root)
 	}
