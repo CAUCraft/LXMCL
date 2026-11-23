@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/CAUCraft/LXMCL/internal/content"
 	"github.com/CAUCraft/LXMCL/internal/distribution"
 	"github.com/CAUCraft/LXMCL/internal/i18n"
 	"github.com/CAUCraft/LXMCL/internal/instance"
@@ -20,7 +21,10 @@ import (
 	"github.com/CAUCraft/LXMCL/internal/transfer"
 )
 
-type Selection struct{ Mods, Config, Worlds bool }
+type Selection struct {
+	Mods, Config, Worlds bool
+	Screenshots          bool // Local instance copies only.
+}
 
 func (s Selection) walk(ctx context.Context, dir string, write func(string, io.Reader) error) error {
 	if !filepath.IsAbs(dir) {
@@ -148,6 +152,9 @@ func Duplicate(ctx context.Context, src, dst instance.Instance, selection Select
 		_, err = io.Copy(f, reader)
 		return errors.Join(err, f.Close())
 	})
+	if err == nil && selection.Screenshots {
+		err = content.CopyScreenshots(ctx, src.GameDir, root)
+	}
 	if err = errors.Join(err, root.Close()); err != nil {
 		return err
 	}

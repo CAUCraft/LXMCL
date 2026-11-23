@@ -17,6 +17,7 @@ import (
 	"github.com/CAUCraft/LXMCL/internal/launcher"
 	"github.com/CAUCraft/LXMCL/internal/playtime"
 	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/ui"
 )
 
 func (a *desktop) post(fn func()) {
@@ -42,6 +43,7 @@ func (a *desktop) load() {
 			a.post(func() { a.loading, a.loadErr = false, err.Error() })
 			return
 		}
+		icons := loadInstanceIcons(s)
 		played, playErr := playtime.Load(a.store.Root)
 		account, accountErr := a.store.LoadMicrosoftAccount()
 		history, historyErr := a.journal.Load(a.store.Root)
@@ -52,6 +54,7 @@ func (a *desktop) load() {
 			a.loading = false
 			a.state, a.draft, a.installed, a.ready = s, s.Settings, installed, true
 			a.playtimes, a.playtimeErr = played, playErr
+			a.instanceIcons = icons
 			a.libraryGroup = s.LibraryGroup
 			a.modpacks.key = curseForgeKey
 			a.memory = strconv.Itoa(s.Settings.Memory)
@@ -197,6 +200,11 @@ func (a *desktop) submitEditor() {
 	var err error
 	checkID := 0
 	switch form.mode {
+	case "icon":
+		if form.icon == nil || form.icon.reading || a.pickerBusy {
+			return
+		}
+		err = next.SetInstanceIcon(form.target.ID, form.target.Revision, form.icon.original, form.icon.encoded)
 	case "group":
 		err = next.SetInstanceGroup(form.target.ID, form.target.Revision, form.originalGroup, form.name)
 	case "note":
@@ -292,6 +300,15 @@ func (a *desktop) submitEditor() {
 			a.form.open = false
 		}
 		switch form.mode {
+		case "icon":
+			if form.icon.picture == nil {
+				delete(a.instanceIcons, form.target.ID)
+			} else {
+				if a.instanceIcons == nil {
+					a.instanceIcons = make(map[int]ui.ImageSource)
+				}
+				a.instanceIcons[form.target.ID] = form.icon.picture
+			}
 		case "group":
 			if a.libraryGroup != nil && *a.libraryGroup != "" && !slices.Contains(next.GroupNames(), *a.libraryGroup) {
 				a.libraryGroup = nil
@@ -309,6 +326,7 @@ func (a *desktop) submitEditor() {
 			}
 		case "remove":
 			delete(a.installed, form.target.ID)
+			delete(a.instanceIcons, form.target.ID)
 			delete(a.launchDrafts, form.target.ID)
 			if a.inspected == form.target.ID {
 				a.inspected = 0

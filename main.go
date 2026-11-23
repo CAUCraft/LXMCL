@@ -99,12 +99,14 @@ type editor struct {
 
 	note, originalNote string
 	originalGroup      string
+	icon               *instanceIconDraft
 }
 
 type desktop struct {
 	journal          tasks.Journal
 	playtimes        map[int]playtime.Entry
 	playtimeErr      error
+	instanceIcons    map[int]ui.ImageSource
 	historyReadErr   string
 	historyReloading bool
 	historyRetried   bool

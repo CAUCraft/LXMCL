@@ -100,6 +100,7 @@
   "instance.game_dir_required": "The instance needs an absolute game directory",
   "instance.game_root_required": "Set an absolute game directory first",
   "instance.group_name_invalid": "Enter a single-line group name of up to 48 characters",
+  "instance.icon_size_invalid": "Choose a PNG up to 32 MiB and 16 megapixels",
   "instance.id_exhausted": "No new instance ID is available",
   "instance.loader_target_changed": "The instance changed. Reopen the loader settings",
   "instance.name_conflict": "An instance with this name already exists",

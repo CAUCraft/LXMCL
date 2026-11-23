@@ -10,7 +10,7 @@ import (
 
 // DuplicateWithContent publishes copied files before saving the captured draft.
 // The caller serializes writes and prevents games from modifying the source.
-func DuplicateWithContent(ctx context.Context, store Store, next State, source, target Instance, report func(Progress)) error {
+func DuplicateWithContent(ctx context.Context, store Store, next State, source, target Instance, includeScreenshots bool, report func(Progress)) error {
 	old, sourceExists := next.Find(source.ID)
 	duplicate, targetExists := next.Find(target.ID)
 	if !sourceExists || !targetExists || old != source || duplicate != target || source.ID == target.ID ||
@@ -18,6 +18,6 @@ func DuplicateWithContent(ctx context.Context, store Store, next State, source, 
 		return i18n.Error("instance.duplicate_target_changed")
 	}
 	return tasks.Run(ctx, func(ctx context.Context, progress func(Progress)) error {
-		return content.DuplicateSetup(ctx, source.GameDir, target.GameDir, func() error { return store.saveNewInstance(next, target) }, progress)
+		return content.DuplicateSetup(ctx, source.GameDir, target.GameDir, includeScreenshots, func() error { return store.saveNewInstance(next, target) }, progress)
 	}, report)
 }

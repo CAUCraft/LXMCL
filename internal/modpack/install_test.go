@@ -9,12 +9,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image"
+	"image/png"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/CAUCraft/LXMCL/internal/distribution"
 	"github.com/CAUCraft/LXMCL/internal/i18n"
@@ -184,7 +187,23 @@ func TestPortableSelectionRoundTrip(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	files := modpack.Selection{Mods: true, Config: true}
+	shot := filepath.Join("screenshots", "river.png")
+	sourceShot := filepath.Join(i.GameDir, shot)
+	if err := os.MkdirAll(filepath.Dir(sourceShot), 0755); err != nil {
+		t.Fatal(err)
+	}
+	var picture bytes.Buffer
+	if err := png.Encode(&picture, image.NewNRGBA(image.Rect(0, 0, 8, 5))); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(sourceShot, picture.Bytes(), 0600); err != nil {
+		t.Fatal(err)
+	}
+	at := time.Date(2026, 2, 3, 4, 5, 6, 0, time.UTC)
+	if err := os.Chtimes(sourceShot, at, at); err != nil {
+		t.Fatal(err)
+	}
+	files := modpack.Selection{Mods: true, Config: true, Screenshots: true}
 	filename, err := modpack.Export(ctx, i, t.TempDir(), "1.0", files)
 	if err != nil {
 		t.Fatal(err)
@@ -211,6 +230,18 @@ func TestPortableSelectionRoundTrip(t *testing.T) {
 	dup.GameDir = filepath.Join(t.TempDir(), "copy")
 	if err := modpack.Duplicate(ctx, i, dup, files, o.Commit); err != nil {
 		t.Fatal(err)
+	}
+	copyShot := filepath.Join(dup.GameDir, shot)
+	b, err := os.ReadFile(copyShot)
+	if err != nil || !bytes.Equal(b, picture.Bytes()) {
+		t.Fatal("missing independent screenshot", err)
+	}
+	info, err := os.Stat(copyShot)
+	if err != nil || !info.ModTime().Equal(at) {
+		t.Fatal("screenshot capture order changed", err)
+	}
+	if _, err := os.Stat(filepath.Join(o.Target.GameDir, shot)); !os.IsNotExist(err) {
+		t.Fatal("private screenshot included in exported pack", err)
 	}
 	for _, dir := range []string{dup.GameDir, o.Target.GameDir} {
 		for _, name := range []string{"mods/local.jar.disabled", "config/local.txt"} {

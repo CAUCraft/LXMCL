@@ -12,11 +12,11 @@ import (
 	"net/url"
 	"time"
 
-	"golang.org/x/image/draw"
 	_ "golang.org/x/image/webp"
 
 	"github.com/CAUCraft/LXMCL/internal/distribution"
 	"github.com/CAUCraft/LXMCL/internal/i18n"
+	"github.com/CAUCraft/LXMCL/internal/iconimage"
 	"github.com/CAUCraft/LXMCL/internal/transfer"
 )
 
@@ -67,11 +67,5 @@ func (c Client) LoadIcon(ctx context.Context, raw string) (image.Image, error) {
 	if err != nil {
 		return nil, err
 	}
-	const size = 96
-	den := max(config.Width, config.Height)
-	w, h := max(1, size*config.Width/den), max(1, size*config.Height/den)
-	img := image.NewRGBA(image.Rect(0, 0, size, size))
-	left, top := (size-w)/2, (size-h)/2
-	draw.ApproxBiLinear.Scale(img, image.Rect(left, top, left+w, top+h), src, src.Bounds(), draw.Src, nil)
-	return img, ctx.Err()
+	return iconimage.Fit(src), ctx.Err()
 }
