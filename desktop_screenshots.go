@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"image"
 	"io/fs"
 	"path/filepath"
 	"slices"
@@ -12,6 +11,7 @@ import (
 	"github.com/CAUCraft/LXMCL/internal/launcher"
 	"github.com/CAUCraft/LXMCL/internal/screenshots"
 	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/transfer"
 	"github.com/egoist/mygo/ui"
 	"github.com/lobehub/lobe-mygo/pkg/action"
 	"github.com/lobehub/lobe-mygo/pkg/display"
@@ -21,15 +21,15 @@ import (
 )
 
 type screenshotGallery struct {
-	instance                   launcher.Instance
-	cancel                     context.CancelFunc
-	rows                       []display.ListItem
-	selected                   string
-	loading, folder, exporting bool
-	err, previewErr            string
-	picture                    ui.ImageSource
-	dimensions                 image.Point
-	scroll                     ui.ScrollState
+	instance                            launcher.Instance
+	cancel                              context.CancelFunc
+	rows                                []display.ListItem
+	selected                            string
+	loading, folder, exporting, copying bool
+	err, previewErr                     string
+	picture                             ui.ImageSource
+	original                            *screenshots.Original
+	scroll                              ui.ScrollState
 }
 
 func (a *desktop) closeScreenshots() {
@@ -79,14 +79,14 @@ func (a *desktop) selectScreenshot(p *screenshotGallery, name string) {
 	if p.cancel != nil {
 		p.cancel()
 	}
-	p.selected, p.picture, p.dimensions, p.previewErr = name, nil, image.Point{}, ""
+	p.selected, p.picture, p.original, p.previewErr, p.copying = name, nil, nil, "", false
 	if a.ctx == nil {
 		return
 	}
 	ctx, cancel := context.WithCancel(a.ctx)
 	p.cancel = cancel
 	go func() {
-		img, size, err := screenshots.Preview(ctx, p.instance.GameDir, name)
+		img, original, err := screenshots.Preview(ctx, p.instance.GameDir, name)
 		var picture ui.ImageSource
 		if err == nil && ctx.Err() == nil {
 			picture = ui.NewBitmap(img)
@@ -99,7 +99,41 @@ func (a *desktop) selectScreenshot(p *screenshotGallery, name string) {
 				p.previewErr = err.Error()
 				return
 			}
-			p.picture, p.dimensions = picture, size
+			p.picture, p.original = picture, original
+		})
+	}()
+}
+
+func (a *desktop) copyScreenshot(p *screenshotGallery, original *screenshots.Original) {
+	ctx, cancel := context.WithCancel(a.ctx)
+	if p.cancel != nil {
+		p.cancel()
+	}
+	p.cancel, p.copying = cancel, true
+	go func() {
+		defer cancel()
+		png, err := original.PNG(ctx)
+		var data transfer.Data
+		if err == nil {
+			data = transfer.New(transfer.NewItem(transfer.Bytes(transfer.PNG, png)))
+		}
+		a.post(func() {
+			if a.screenshots != p || p.original != original {
+				return
+			}
+			p.copying = false
+			if a.page != pageLibrary || a.detailPage != detailScreenshots || a.inspected != p.instance.ID {
+				return
+			}
+			if err != nil {
+				a.message("无法读取原图，请刷新截图后重试", err)
+				return
+			}
+			if err := mygo.Clipboard.Write(data); err != nil {
+				a.message("无法复制图片，请重试", err)
+				return
+			}
+			a.message("已复制图片", nil)
 		})
 	}()
 }
@@ -131,10 +165,14 @@ func (a *desktop) instanceScreenshots(c *ui.Context, i launcher.Instance) {
 		a.loadScreenshots(i, "")
 		p = a.screenshots
 	}
+	var toCopy *screenshots.Original
 	ui.Row(c).Gap(7).AlignItems(ui.Center).Children(func() {
 		display.Text(c, "游戏截图", display.TextProps{Strong: true, FontSize: 16}).Grow(1)
 		if icon(c, lucide.RefreshCw(), "刷新截图", p.loading) {
 			a.loadScreenshots(i, p.selected)
+		}
+		if button(c.Key(p.original), "复制图片", action.Default, p.original == nil || p.copying) {
+			toCopy = p.original
 		}
 		if button(c, "导出原图…", action.Default, p.picture == nil || p.exporting || a.pickerBusy || a.busy) {
 			a.exportScreenshot(p)
@@ -172,8 +210,11 @@ func (a *desktop) instanceScreenshots(c *ui.Context, i launcher.Instance) {
 					ui.Image(c, p.picture).Absolute().Top(0).Left(0).Right(0).Bottom(0).Fit(ui.Contain).Label("截图预览")
 				})
 				display.Text(c, p.selected, display.TextProps{Strong: true, Rows: 1}).MinWidth(0).Ellipsis("…")
-				muted(c, fmt.Sprintf("%d × %d", p.dimensions.X, p.dimensions.Y)).FontSize(12)
+				muted(c, fmt.Sprintf("%d × %d", p.original.Size.X, p.original.Size.Y)).FontSize(12)
 			}
 		})
+	}
+	if toCopy != nil && a.screenshots == p && p.original == toCopy {
+		a.copyScreenshot(p, toCopy)
 	}
 }

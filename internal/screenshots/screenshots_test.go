@@ -40,9 +40,9 @@ func TestGalleryReadsOnlyInstancePNGsInTimeOrder(t *testing.T) {
 	if err != nil || len(rows) != 2 || rows[0].Name != "later.PNG" || rows[1].Name != "early.png" {
 		t.Fatal(rows, err)
 	}
-	img, size, err := Preview(t.Context(), game, rows[0].Name)
-	if err != nil || size != image.Pt(2000, 250) || img.Bounds().Size() != image.Pt(1600, 200) {
-		t.Fatal(size, err)
+	img, original, err := Preview(t.Context(), game, rows[0].Name)
+	if err != nil || original.Size != image.Pt(2000, 250) || img.Bounds().Size() != image.Pt(1600, 200) {
+		t.Fatal(original, err)
 	}
 	folder := t.TempDir()
 	if err := Export(t.Context(), game, rows[0].Name, folder); err != nil {
@@ -55,6 +55,10 @@ func TestGalleryReadsOnlyInstancePNGsInTimeOrder(t *testing.T) {
 			t.Fatal(err)
 		}
 		return b
+	}
+	full, err := original.PNG(t.Context())
+	if err != nil || !bytes.Equal(full, read(filepath.Join(dir, rows[0].Name))) {
+		t.Fatal("clipboard image differs from the original 2000-pixel PNG", err)
 	}
 	out := filepath.Join(folder, rows[0].Name)
 	if !bytes.Equal(read(out), read(filepath.Join(dir, rows[0].Name))) {

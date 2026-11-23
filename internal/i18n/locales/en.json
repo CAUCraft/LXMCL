@@ -311,7 +311,7 @@
   "resource.not_regular": "The resource is not a regular file",
   "resource.regular_file_required": "Select a regular resource file",
   "resource.size_or_sha512_invalid": "The resource file is missing a valid size or SHA-512 hash",
-  "screenshot.changed": "The screenshot changed during export. Refresh the gallery and try again.",
+  "screenshot.changed": "The screenshot changed. Refresh the gallery and try again.",
   "screenshot.export_conflict": "%s already exists in this folder. Choose another folder to export the original PNG.",
   "screenshot.too_large": "This screenshot is too large to preview. Open the folder to view the original.",
   "saves.archive_changed": "The archive contents changed after preview. Select the ZIP again.",

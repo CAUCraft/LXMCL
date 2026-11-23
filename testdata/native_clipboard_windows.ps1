@@ -76,7 +76,8 @@ try {
     Assert-Copy 'Profile 2 · #2' 'camp' $different
     Assert-Copy 'Profile 3 · #3' '未发现可确认的差异。' $equal
     Assert-Copy 'Profile 2 · #2' 'camp' $different
-    Write-Output 'Verified three native clipboard reads from the native launcher.'
+    Write-Output 'Verified three native text clipboard reads from the launcher.'
+    & (Join-Path $PSScriptRoot 'screenshot_clipboard_windows.ps1') $instances[0].game_directory $instances[1].game_directory
 } finally {
     if (!$process.HasExited) { $process.Kill(); $process.WaitForExit() }
     Remove-Item -LiteralPath $root -Recurse -Force
