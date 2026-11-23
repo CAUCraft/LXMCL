@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/CAUCraft/LXMCL/internal/instance"
@@ -10,13 +11,15 @@ import (
 	"github.com/CAUCraft/LXMCL/internal/saves"
 	"github.com/egoist/mygo/ui"
 	"github.com/lobehub/lobe-mygo/pkg/action"
-	"github.com/lobehub/lobe-mygo/pkg/display"
 	"github.com/lobehub/lobe-mygo/pkg/feedback"
+	"github.com/lobehub/lobe-mygo/pkg/field"
 	"github.com/lobehub/lobe-mygo/pkg/lucide"
 )
 
 type worldBrowser struct {
 	entries  []saves.World
+	visible  []saves.World
+	query    string
 	list     ui.ListState
 	selected int
 	loading  bool
@@ -49,7 +52,7 @@ func (a *desktop) browseWorlds(i launcher.Instance, retry *taskRecord) {
 				entries = entries[idx : idx+1]
 				p.selected = 0
 			}
-			p.entries = entries
+			p.entries, p.visible = entries, entries
 		})
 	}()
 }
@@ -65,6 +68,25 @@ func (a *desktop) backupWorld(i launcher.Instance, world saves.World) {
 			a.refreshBackups(i.ID)
 		}
 	})
+}
+
+func (p *worldBrowser) filter() {
+	selectedFolder := ""
+	if p.selected >= 0 && p.selected < len(p.visible) {
+		selectedFolder = p.visible[p.selected].Folder()
+	}
+	query := strings.ToLower(strings.TrimSpace(p.query))
+	p.visible = p.entries
+	if query != "" {
+		p.visible = nil
+		for _, world := range p.entries {
+			if strings.Contains(strings.ToLower(world.Folder()), query) {
+				p.visible = append(p.visible, world)
+			}
+		}
+	}
+	p.selected = slices.IndexFunc(p.visible, func(world saves.World) bool { return world.Folder() == selectedFolder })
+	p.list = ui.ListState{}
 }
 
 func (a *desktop) worldEditor(c *ui.Context) {
@@ -86,19 +108,29 @@ func (a *desktop) worldEditor(c *ui.Context) {
 	case len(p.entries) == 0:
 		muted(c, "没有找到本地世界。可在游戏内创建世界，或从备份恢复。")
 	default:
-		display.Text(c, "世界目录", display.TextProps{Strong: true})
-		p.list.Selected = &p.selected
-		p.list.Label = func(idx int) string { return p.entries[idx].Folder() }
-		ui.List(c, &p.list, len(p.entries)).Height(float32(min(5, len(p.entries))) * 36).FillWidth().Rows(func(r ui.ListRow) {
-			rc := r.Context
-			ui.Row(rc).Height(36).AlignItems(ui.Center).Gap(8).Padding(0, 10).Children(func() {
-				ui.Icon(rc, lucide.Folder()).FontSize(16)
-				ui.Text(rc, p.entries[r.Index].Folder()).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-				if r.Selected() {
-					ui.Icon(rc, lucide.Check()).FontSize(15)
-				}
+		if p.retry == nil {
+			previous := p.query
+			field.SearchBar(c, &p.query, field.SearchBarProps{Placeholder: "搜索世界目录"}).Label("搜索世界目录")
+			if p.query != previous {
+				p.filter()
+			}
+		}
+		if len(p.visible) == 0 {
+			muted(c, "没有匹配的世界目录。")
+		} else {
+			p.list.Selected = &p.selected
+			p.list.Label = func(idx int) string { return p.visible[idx].Folder() }
+			ui.List(c, &p.list, len(p.visible)).Height(float32(min(5, len(p.visible))) * 36).FillWidth().Rows(func(r ui.ListRow) {
+				rc := r.Context
+				ui.Row(rc).Height(36).AlignItems(ui.Center).Gap(8).Padding(0, 10).Children(func() {
+					ui.Icon(rc, lucide.Folder()).FontSize(16)
+					ui.Text(rc, p.visible[r.Index].Folder()).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+					if r.Selected() {
+						ui.Icon(rc, lucide.Check()).FontSize(15)
+					}
+				})
 			})
-		})
+		}
 	}
 	canLaunch := p.retry == nil || p.retry.Action == taskLaunch
 	canBackup := p.retry == nil || p.retry.Action == taskBackup
@@ -106,10 +138,10 @@ func (a *desktop) worldEditor(c *ui.Context) {
 	if canLaunch && !supported {
 		muted(c, "LXMCL 的世界快速启动支持 1.20.1 及以后的正式版。").FontSize(12)
 	}
-	disabled := a.busy || a.running != nil || stale || p.selected < 0 || p.selected >= len(p.entries)
+	disabled := a.busy || a.running != nil || stale || a.form.err != "" || p.loading || p.selected < 0 || p.selected >= len(p.visible)
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 		if canBackup && button(c, "备份所选世界", action.Default, disabled) {
-			world := p.entries[p.selected]
+			world := p.visible[p.selected]
 			a.form.open = false
 			a.backupWorld(i, world)
 		}
@@ -118,7 +150,7 @@ func (a *desktop) worldEditor(c *ui.Context) {
 			a.form.open = false
 		}
 		if canLaunch && button(c, "进入世界", action.Primary, disabled || !supported) {
-			world := p.entries[p.selected]
+			world := p.visible[p.selected]
 			a.form.open = false
 			a.startGame(i, false, "", &world)
 		}

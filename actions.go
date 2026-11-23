@@ -192,6 +192,9 @@ func (a *desktop) configureLoader(i launcher.Instance) {
 }
 
 func (a *desktop) inspect(i launcher.Instance) {
+	if a.form.open && a.form.worlds != nil && a.form.target.ID != i.ID {
+		a.form.open = false
+	}
 	if a.content.savedPacks != nil {
 		a.closeSavedPacks()
 	}
