@@ -99,6 +99,9 @@ func TestCommandLaunchInExistingWindow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(before) < 76 || !bytes.HasPrefix(before, []byte{0x4c, 0, 0, 0, 1, 0x14, 2, 0}) {
+		t.Fatalf("missing Shell Link header (%d bytes)", len(before))
+	}
 	if err := shortcut.Create(ctx, path, executable, store.Root, state.Selected); !errors.Is(err, os.ErrExist) {
 		t.Fatal("existing link was not protected", err)
 	}
@@ -107,9 +110,10 @@ func TestCommandLaunchInExistingWindow(t *testing.T) {
 	}
 	// Check the properties as Windows sees them, then invoke the .lnk through the shell.
 	const openLink = `$ErrorActionPreference = 'Stop'
-$link = (New-Object -ComObject WScript.Shell).CreateShortcut($env:LXMCL_TEST_LINK)
+$file = Get-Item -LiteralPath $env:LXMCL_TEST_LINK
+$link = (New-Object -ComObject WScript.Shell).CreateShortcut($file.FullName)
 if ($link.TargetPath -ne $env:LXMCL_TEST_TARGET -or $link.WorkingDirectory -ne (Split-Path $env:LXMCL_TEST_TARGET) -or $link.Arguments -cne $env:LXMCL_TEST_ARGS) {
-    throw "Unexpected shortcut properties: $($link.TargetPath) | $($link.WorkingDirectory) | $($link.Arguments)"
+    throw "Unexpected shortcut properties ($($file.Length) bytes): $($link.TargetPath) | $($link.WorkingDirectory) | $($link.Arguments)"
 }
 Start-Process -FilePath $env:LXMCL_TEST_LINK -Wait`
 	powershell := filepath.Join(os.Getenv("SystemRoot"), "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
