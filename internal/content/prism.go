@@ -140,12 +140,15 @@ func (p *PrismInstance) readSettings(cfg []byte, fallbackName string) {
 		if key, value, ok := strings.Cut(line, "="); ok && general {
 			key = strings.TrimSpace(key)
 			switch key {
-			case "name", "OverrideMemory", "MaxMemAlloc", "OverrideWindow", "LaunchMaximized", "MinecraftWinWidth", "MinecraftWinHeight":
+			case "name", "ConfigVersion", "OverrideMemory", "MaxMemAlloc", "OverrideWindow", "LaunchMaximized", "MinecraftWinWidth", "MinecraftWinHeight":
 				fields[key] = strings.TrimSpace(value)
 			}
 		}
 	}
 	p.Name = fields["name"]
+	if fields["ConfigVersion"] == "" {
+		p.Name = unescapePrismName.Replace(p.Name)
+	}
 	if p.Name == "" {
 		p.Name = fallbackName
 	}

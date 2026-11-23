@@ -631,6 +631,8 @@ func (a *desktop) editor(c *ui.Context) {
 		title, okText = "更换版本", "保存版本"
 	case "duplicate":
 		title, okText = "复制实例", "创建副本"
+	case "prismExport":
+		title, okText = "导出 Prism / MultiMC 实例", "选择目标文件…"
 	case "export":
 		title, okText = "导出整合包", "选择保存位置…"
 	case "loader":
@@ -647,6 +649,10 @@ func (a *desktop) editor(c *ui.Context) {
 			}
 			if a.form.worlds != nil {
 				a.worldEditor(c)
+				return
+			}
+			if d := a.form.prismExport; d != nil {
+				a.prismExportEditor(c, d)
 				return
 			}
 			if a.form.prism != nil {

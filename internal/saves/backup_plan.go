@@ -16,6 +16,28 @@ type backupFile struct {
 	info fs.FileInfo
 }
 
+// VisitWorldFiles visits the same recognized worlds and stable file snapshots as a backup.
+func VisitWorldFiles(ctx context.Context, gameDir string, visit func(*os.Root, string, fs.FileInfo) error) error {
+	root, err := savesRoot(gameDir, false)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	files, err := planBackup(ctx, root, nil)
+	if err != nil {
+		return err
+	}
+	for _, f := range files {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := visit(root, f.name, f.info); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // planBackup validates the entire file list before creating any output.
 func planBackup(ctx context.Context, root *os.Root, selected *World) ([]backupFile, error) {
 	var entries []fs.DirEntry

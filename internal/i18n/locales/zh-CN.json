@@ -1,4 +1,7 @@
 {
+  "prism.export_target": "请在源实例以外选择一个新的 .zip 文件。",
+  "prism.export_exists": "已有同名文件，请更换 ZIP 文件名或位置。%w",
+  "prism.export_name": "请使用非空且不含回车或空字符的实例名称后重试。",
   "prism.select_root": "请选择包含 instance.cfg 和 mmc-pack.json 的 Prism 或 MultiMC 实例目录",
   "prism.zip_layout": "请选择只含一个原版实例的 ZIP，instance.cfg 和 mmc-pack.json 应位于顶层或同一个一级目录内",
   "prism.format": "无法识别实例元数据，请选择使用格式版本 1 的实例",

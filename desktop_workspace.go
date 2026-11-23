@@ -165,6 +165,7 @@ func (a *desktop) instanceMenu(c *ui.Context, i launcher.Instance, inList bool) 
 			{Key: "pin", Label: pinLabel, Icon: pinIcon, Disabled: a.busy},
 			{Key: "group", Label: "设置分组…", Icon: lucide.Folder(), Disabled: a.busy},
 			{Key: "rename", Label: "重命名", Icon: lucide.Pencil(), Hotkey: renameKey, Disabled: a.busy},
+			{Key: "prismExport", Label: "导出实例 ZIP…", Icon: lucide.FileArchive(), Disabled: a.busy || a.running != nil || !i.Vanilla()},
 			{Key: "export", Label: "导出整合包…", Icon: lucide.FileArchive(), Disabled: a.busy || a.running != nil},
 			{Key: "duplicate", Label: "复制实例…", Icon: lucide.Copy(), Disabled: a.busy || (!i.Vanilla() && !i.Fabric() && !i.Forge() && !i.NeoForge() && !i.Quilt())},
 			{Divider: true},
@@ -194,6 +195,8 @@ func (a *desktop) instanceMenu(c *ui.Context, i launcher.Instance, inList bool) 
 			a.editGroup(i)
 		case "rename":
 			a.edit(i)
+		case "prismExport":
+			a.form = editor{open: true, mode: "prismExport", target: i, prismExport: &prismExportDraft{}}
 		case "export":
 			a.form = editor{open: true, mode: "export", target: i, version: "1.0.0", files: launcher.PortableFiles{Mods: true}}
 		case "duplicate":
