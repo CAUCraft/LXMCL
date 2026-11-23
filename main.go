@@ -93,6 +93,7 @@ type editor struct {
 	version     string
 	err         string
 	focus       bool
+	copyGroup   string
 	copyContent bool
 	loaders     *loaderSelection
 	files       launcher.PortableFiles

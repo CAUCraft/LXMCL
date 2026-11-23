@@ -49,7 +49,7 @@ func (s *State) Create(name, version string) error {
 	return nil
 }
 
-func (s *State) Duplicate(id int, revision uint64, name string) (instance.Instance, error) {
+func (s *State) Duplicate(id int, revision uint64, name, group string) (instance.Instance, error) {
 	source, ok := s.Find(id)
 	if !ok || source.Revision != revision {
 		return instance.Instance{}, i18n.Error("instance.duplicate_target_changed")
@@ -57,12 +57,18 @@ func (s *State) Duplicate(id int, revision uint64, name string) (instance.Instan
 	if err := source.Validate(); err != nil {
 		return instance.Instance{}, err
 	}
+	if group != "" && !slices.Contains(s.GroupNames(), group) {
+		return instance.Instance{}, i18n.Error("instance.group_missing")
+	}
 	selected := s.Selected
 	if err := s.Create(name, source.Version); err != nil {
 		return instance.Instance{}, err
 	}
 	s.Selected = selected
 	duplicate := &s.Instances[len(s.Instances)-1]
+	if group != "" {
+		s.InstanceGroups[duplicate.ID] = group
+	}
 	duplicate.Launch = source.Launch
 	duplicate.Loader, duplicate.LoaderVersion = source.Loader, source.LoaderVersion
 	return *duplicate, nil

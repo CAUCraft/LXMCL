@@ -229,7 +229,7 @@ func (a *desktop) submitEditor() {
 		return
 	case "duplicate":
 		var duplicate launcher.Instance
-		duplicate, err = next.Duplicate(form.target.ID, form.target.Revision, form.name)
+		duplicate, err = next.Duplicate(form.target.ID, form.target.Revision, form.name, form.copyGroup)
 		checkID = duplicate.ID
 		if err == nil && form.files != (launcher.PortableFiles{}) {
 			if a.running != nil {

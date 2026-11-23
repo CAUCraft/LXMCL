@@ -689,7 +689,17 @@ func (a *desktop) editor(c *ui.Context) {
 					feedback.AlertProps{Type: feedback.Warning})
 			} else {
 				if a.form.mode == "duplicate" {
-					panelHeading(c, lucide.Copy(), a.form.target.Name, "Minecraft "+a.form.target.Version+" · "+loaderName(a.form.target))
+					ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
+						ui.Column(c).Grow(1).MinWidth(0).Children(func() {
+							panelHeading(c, lucide.Copy(), a.form.target.Name, "Minecraft "+a.form.target.Version+" · "+loaderName(a.form.target))
+						})
+						if groups := a.state.GroupNames(); len(groups) > 0 || a.form.copyGroup != "" {
+							ui.Column(c).Width(148).Gap(4).Children(func() {
+								muted(c, "副本分组").FontSize(12)
+								groupDestinationPicker(c, &a.form.copyGroup, groups, "选择副本分组", a.busy)
+							})
+						}
+					})
 				}
 				ui.Column(c).Gap(5).Children(func() {
 					display.Text(c, "实例名称", display.TextProps{Strong: true})
