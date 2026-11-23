@@ -178,7 +178,7 @@ func TestPortableSelectionRoundTrip(t *testing.T) {
 	i := o.Target
 	i.GameDir = t.TempDir()
 	i.Name = "Source"
-	for _, name := range []string{"mods/local.jar.disabled", "saves/world/level.dat", "config/local.txt"} {
+	for _, name := range []string{"mods/local.jar.disabled", "saves/world/level.dat", "config/local.txt", "servers.dat"} {
 		filename := filepath.Join(i.GameDir, name)
 		if err := os.MkdirAll(filepath.Dir(filename), 0755); err != nil {
 			t.Fatal(err)
@@ -203,7 +203,7 @@ func TestPortableSelectionRoundTrip(t *testing.T) {
 	if err := os.Chtimes(sourceShot, at, at); err != nil {
 		t.Fatal(err)
 	}
-	files := modpack.Selection{Mods: true, Config: true, Screenshots: true}
+	files := modpack.Selection{Mods: true, Config: true, Screenshots: true, ServerList: true}
 	filename, err := modpack.Export(ctx, i, t.TempDir(), "1.0", files)
 	if err != nil {
 		t.Fatal(err)
@@ -230,6 +230,12 @@ func TestPortableSelectionRoundTrip(t *testing.T) {
 	dup.GameDir = filepath.Join(t.TempDir(), "copy")
 	if err := modpack.Duplicate(ctx, i, dup, files, o.Commit); err != nil {
 		t.Fatal(err)
+	}
+	if b, err := os.ReadFile(filepath.Join(dup.GameDir, "servers.dat")); err != nil || string(b) != "servers.dat" {
+		t.Fatalf("server list copy: %q, %v", b, err)
+	}
+	if _, err := os.Stat(filepath.Join(o.Target.GameDir, "servers.dat")); !os.IsNotExist(err) {
+		t.Fatal("game server list included in exported pack", err)
 	}
 	copyShot := filepath.Join(dup.GameDir, shot)
 	b, err := os.ReadFile(copyShot)

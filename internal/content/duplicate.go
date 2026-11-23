@@ -20,10 +20,25 @@ type setupPath struct {
 	directory bool
 }
 
+var serverListPath = setupPath{"servers.dat", false}
+
 var setupPaths = []setupPath{
 	{"mods", true}, {"resourcepacks", true}, {"shaderpacks", true}, {"config", true},
 	{"defaultconfigs", true}, {"kubejs", true}, {"scripts", true},
-	{"options.txt", false}, {"optionsof.txt", false}, {"optionsshaders.txt", false}, {"servers.dat", false},
+	{"options.txt", false}, {"optionsof.txt", false}, {"optionsshaders.txt", false}, serverListPath,
+}
+
+// CopyServerList copies the optional game multiplayer list into a staged instance.
+func CopyServerList(ctx context.Context, gameDir string, destination *os.Root) error {
+	source, err := os.OpenRoot(gameDir)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	defer source.Close()
+	return copySetup(ctx, source, destination, []setupPath{serverListPath}, nil)
 }
 
 // DuplicateSetup copies resources and game settings into a new, independent
