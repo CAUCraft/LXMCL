@@ -14,7 +14,7 @@ Windows x64 开发版在 [GitHub Actions](https://github.com/CAUCraft/LXMCL/acti
 
 Windows x64 会优先使用兼容的本机 Java，必要时下载官方运行时。也可在设置中指定 Java。启动失败后，可在任务中心查看日志或重试。
 
-在「实例 → 概览」查看实例 ID。例如，在 PowerShell 中运行 `.\LXMCL.exe --launch 2` 即可用当前账号启动 ID 为 2 的实例，结果可在任务中心查看。启动器已打开时由现有窗口处理，主页的启动目标保持原样。
+在「实例 → 概览」查看实例 ID。例如，在 PowerShell 中运行 `.\LXMCL.exe --launch 2` 即可用当前账号启动 ID 为 2 的实例，结果可在任务中心查看。启动器已打开时由现有窗口处理，主页的启动目标保持原样。在 Windows 的实例菜单中选择「创建启动快捷方式…」，选好保存位置后即可从 `.lnk` 打开该实例。同名文件会保留。
 
 ## 常用功能
 

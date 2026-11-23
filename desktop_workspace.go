@@ -2,9 +2,11 @@ package main
 
 import (
 	"runtime"
+	"slices"
 	"strconv"
 
 	"github.com/CAUCraft/LXMCL/internal/launcher"
+	"github.com/CAUCraft/LXMCL/internal/shortcut"
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"github.com/lobehub/lobe-mygo/pkg/action"
@@ -158,7 +160,7 @@ func (a *desktop) instanceMenu(c *ui.Context, i launcher.Instance, inList bool) 
 		if a.inspected == i.ID {
 			renameKey = "f2"
 		}
-		chosen := overlay.DropdownMenu(c, open, overlay.DropdownMenuProps{Items: []overlay.MenuItem{
+		items := []overlay.MenuItem{
 			{Key: "launch", Label: "启动此实例", Icon: lucide.Play(), Disabled: a.busy || a.running != nil},
 			{Key: "verify", Label: install, Icon: lucide.Download(), Disabled: a.busy || a.running != nil},
 			{Key: "folder", Label: "打开游戏目录", Icon: lucide.FolderOpen()},
@@ -172,7 +174,11 @@ func (a *desktop) instanceMenu(c *ui.Context, i launcher.Instance, inList bool) 
 			{Key: "duplicate", Label: "复制实例…", Icon: lucide.Copy(), Disabled: a.busy || (!i.Vanilla() && !i.Fabric() && !i.Forge() && !i.NeoForge() && !i.Quilt())},
 			{Divider: true},
 			{Key: "remove", Label: "移除配置…", Icon: lucide.Trash2(), Danger: true, Disabled: a.busy || a.runningID == i.ID},
-		}}, func(trigger ui.Element) {
+		}
+		if shortcut.Supported {
+			items = slices.Insert(items, 1, overlay.MenuItem{Key: "shortcut", Label: "创建启动快捷方式…", Icon: lucide.ExternalLink(), Disabled: a.pickerBusy || a.busy})
+		}
+		chosen := overlay.DropdownMenu(c, open, overlay.DropdownMenuProps{Items: items}, func(trigger ui.Element) {
 			action.StyleActionIcon(c, trigger, lucide.Ellipsis(), action.ActionIconProps{Title: title, BlockSize: 28})
 		})
 		if inList && *open && a.listMenuID != i.ID {
@@ -185,6 +191,8 @@ func (a *desktop) instanceMenu(c *ui.Context, i launcher.Instance, inList bool) 
 		switch chosen {
 		case "launch":
 			a.play(i, false)
+		case "shortcut":
+			a.chooseLaunchShortcut(i)
 		case "verify":
 			a.play(i, true)
 		case "folder":
