@@ -172,6 +172,9 @@ func (a *desktop) instanceRuntimeSettings(c *ui.Context, i launcher.Instance, d 
 			if path := a.state.Settings.JavaPath; path != "" {
 				settingsRow(c, "全局 Java", func() {
 					muted(c, path).Grow(1).MinWidth(0).SingleLine().Ellipsis("…").Selectable()
+					if button(c, "修改全局 Java", action.Text, disabled) {
+						a.page, a.settingsPage = pageSettings, 1
+					}
 				})
 			}
 		}
