@@ -289,12 +289,17 @@ func TestUpdatePreservesPlayerFilesAndRollsBackFailedCommit(t *testing.T) {
 	if err := os.Remove(filepath.Join(source.GameDir, "mods/obsolete.jar")); err != nil {
 		t.Fatal(err)
 	}
+	put(source.GameDir, "config/extra/nested/pack.cfg", "upstream")
 	latest := pack("2")
 	preview, err := modpack.PreviewUpdate(ctx, latest, o)
-	if err != nil || !preview.Tracked || len(preview.Changes) != 6 {
+	if err != nil || !preview.Tracked || len(preview.Changes) != 7 {
 		t.Fatalf("preview %+v: %v", preview, err)
 	}
-	o.Commit = func() error { return errors.New("disk full") }
+	commitErr := errors.New("disk full")
+	o.Commit = func() error {
+		put(o.Target.GameDir, "config/extra/player.cfg", "player")
+		return commitErr
+	}
 	check := func(name, want string) {
 		t.Helper()
 		b, err := os.ReadFile(filepath.Join(o.Target.GameDir, name))
@@ -302,11 +307,16 @@ func TestUpdatePreservesPlayerFilesAndRollsBackFailedCommit(t *testing.T) {
 			t.Fatalf("%s: got %q, %v", name, b, err)
 		}
 	}
-	if err := modpack.ApplyUpdate(ctx, preview, o, nil); err == nil {
-		t.Fatal("accepted failed commit")
+	var rollbackErr *modpack.RollbackError
+	if err := modpack.ApplyUpdate(ctx, preview, o, nil); !errors.Is(err, commitErr) || errors.As(err, &rollbackErr) {
+		t.Fatalf("expected failed commit with complete rollback, got %v", err)
 	}
 	check("mods/a.jar.disabled", "initial")
 	check("mods/obsolete.jar", "initial")
+	check("config/extra/player.cfg", "player")
+	if _, err := os.Stat(filepath.Join(o.Target.GameDir, "config/extra/nested")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("new directory after rollback: %v", err)
+	}
 	if _, err := os.Stat(filepath.Join(o.Target.GameDir, "mods/new.jar")); !os.IsNotExist(err) {
 		t.Fatalf("new file after rollback: %v", err)
 	}
@@ -329,6 +339,8 @@ func TestUpdatePreservesPlayerFilesAndRollsBackFailedCommit(t *testing.T) {
 	}
 	check("mods/new.jar", "upstream")
 	check("config/client", "player")
+	check("config/extra/nested/pack.cfg", "upstream")
+	check("config/extra/player.cfg", "player")
 	check("saves/world/level.dat", "played")
 	if _, err := os.Stat(filepath.Join(o.Target.GameDir, "mods/obsolete.jar")); !os.IsNotExist(err) {
 		t.Fatalf("obsolete mod: %v", err)
