@@ -54,17 +54,33 @@ func (s *State) serverAddressesExcept(index int) map[string]bool {
 	return saved
 }
 
-// ImportServers appends eligible favorites in selection order, preserving existing entries.
-func (s *State) ImportServers(rows []server.Server) int {
+type ServerImportEntry struct {
+	Server server.Server
+	Add    bool
+}
+
+// PlanServerImport keeps the input order and marks the first eligible occurrence.
+func (s *State) PlanServerImport(rows []server.Server) []ServerImportEntry {
 	saved := s.SavedServerAddresses()
-	before := len(s.Servers)
+	plan := make([]ServerImportEntry, 0, len(rows))
 	for _, row := range rows {
 		entry, err := server.NewFavorite(row.Name, row.Address)
-		if err != nil || saved[entry.Address] {
-			continue
+		add := err == nil && !saved[entry.Address]
+		if add {
+			saved[entry.Address] = true
 		}
-		s.Servers = append(s.Servers, entry)
-		saved[entry.Address] = true
+		plan = append(plan, ServerImportEntry{Server: entry, Add: add})
+	}
+	return plan
+}
+
+// ImportServers appends eligible favorites in selection order, preserving existing entries.
+func (s *State) ImportServers(rows []server.Server) int {
+	before := len(s.Servers)
+	for _, row := range s.PlanServerImport(rows) {
+		if row.Add {
+			s.Servers = append(s.Servers, row.Server)
+		}
 	}
 	return len(s.Servers) - before
 }

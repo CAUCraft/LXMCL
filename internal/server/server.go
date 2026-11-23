@@ -24,7 +24,7 @@ func NewFavorite(name, address string) (Server, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		name = address
-	} else if len([]rune(name)) > 80 {
+	} else if name != address && len([]rune(name)) > 80 {
 		return Server{}, i18n.Error("server.favorite_name_too_long")
 	}
 	return Server{Name: name, Address: address}, nil
