@@ -32,3 +32,17 @@ func publishInstanceZIP(ctx context.Context, gameDir, filename string, prepare f
 	}
 	return err
 }
+
+type limitedZIPWriter struct {
+	file      *os.File
+	remaining int64
+}
+
+func (w *limitedZIPWriter) Write(p []byte) (int, error) {
+	if int64(len(p)) > w.remaining {
+		return 0, i18n.Error("archive.zip_too_large")
+	}
+	n, err := w.file.Write(p)
+	w.remaining -= int64(n)
+	return n, err
+}

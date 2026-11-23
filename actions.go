@@ -189,6 +189,9 @@ func (a *desktop) configureLoader(i launcher.Instance) {
 }
 
 func (a *desktop) inspect(i launcher.Instance) {
+	if a.content.restoreMods != nil {
+		a.closeModRestore()
+	}
 	if a.content.packPreview != nil {
 		a.closePackPreview()
 	}

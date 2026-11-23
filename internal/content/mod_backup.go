@@ -17,13 +17,17 @@ func BackupMods(ctx context.Context, source instance.Instance, selected []File, 
 	if len(selected) == 0 {
 		return i18n.Error("resource.backup_select")
 	}
+	if len(selected) > storage.MaxPackEntries {
+		return i18n.Error("modpack.archive_too_many_files")
+	}
 	src, err := OpenDirectory(source, Mods, false)
 	if err != nil {
 		return err
 	}
 	defer src.Close()
 	return publishInstanceZIP(ctx, source.GameDir, filename, func(dst *os.File) error {
-		z := zip.NewWriter(dst)
+		z := zip.NewWriter(&limitedZIPWriter{file: dst, remaining: storage.MaxPackSize})
+		var total int64
 		paths := make(storage.ArchivePaths)
 		for index, file := range selected {
 			if err := ctx.Err(); err != nil {
@@ -31,6 +35,10 @@ func BackupMods(ctx context.Context, source instance.Instance, selected []File, 
 			}
 			if err := validateResource(source, Mods, file.Name, file.Size); err != nil {
 				return err
+			}
+			total += file.Size
+			if total > storage.MaxPackBytes {
+				return i18n.Error("modpack.archive_expanded_too_large")
 			}
 			name := file.DiskName()
 			entry := "mods/" + name
