@@ -22,9 +22,27 @@ func (a *desktop) openTasks() {
 	a.page, a.downloadPage = pageDownloads, downloadTasks
 }
 
+func failedOrCanceled(row taskRecord) bool {
+	return row.Status == taskFailed || row.Status == taskCanceled
+}
+
+func (a *desktop) noticeTaskFiltered() bool {
+	if a.taskFilter == 1 && a.noticeTaskKey != "" {
+		for _, row := range a.history {
+			if taskKey(row) == a.noticeTaskKey {
+				return !failedOrCanceled(row)
+			}
+		}
+	}
+	return false
+}
+
 func (a *desktop) openNoticeTask() {
 	if a.noticeTaskKey != "" {
 		a.browsedTask = a.noticeTaskKey
+		if a.noticeTaskFiltered() {
+			a.taskFilter = 0
+		}
 	}
 	a.openTasks()
 }
@@ -91,7 +109,7 @@ func (a *desktop) tasks(c *ui.Context) {
 			if a.taskFilter == 1 {
 				visible = nil
 				for _, row := range a.history {
-					if row.Status == taskFailed || row.Status == taskCanceled {
+					if failedOrCanceled(row) {
 						visible = append(visible, row)
 					}
 				}
@@ -199,7 +217,7 @@ func (a *desktop) taskRow(c *ui.Context, row taskRecord) {
 	case taskStarted:
 		tone = display.TagProcessing
 	}
-	failed := row.Status == taskFailed || row.Status == taskCanceled
+	failed := failedOrCanceled(row)
 	target, retry := launcher.RetryTarget(row, a.state)
 	folderRetry := failed && row.Folder != "" && row.Resource != nil &&
 		row.Resource.Project != "" && row.Resource.Version != "" &&

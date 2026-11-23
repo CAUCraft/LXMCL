@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"github.com/CAUCraft/LXMCL/internal/launcher"
-	"github.com/CAUCraft/LXMCL/internal/tasks"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
+
+	"github.com/CAUCraft/LXMCL/internal/launcher"
+	"github.com/CAUCraft/LXMCL/internal/tasks"
 )
 
 func TestQueueRestartRetainsTargetsAndPrunesFinishedWork(t *testing.T) {
@@ -66,8 +68,25 @@ func TestQueueRestartRetainsTargetsAndPrunesFinishedWork(t *testing.T) {
 
 func TestQueueWaitsForCurseForgeKey(t *testing.T) {
 	a, tt := testDesktop(t)
-	item := queuedResource{id: "waiting", resource: resourceTask{Source: launcher.CurseForgeMods, Kind: string(launcher.Mods), Title: "AppleSkin", Project: "248787", Version: "5864741"}, folder: t.TempDir()}
-	a.queue.pending = []queuedResource{item}
+	tt.SetSize(820, 530)
+	target := a.state.Instances[1]
+	target.Loader, target.LoaderVersion = launcher.LoaderFabric, "0.16.14"
+	a.state.Instances[1] = target
+	item := queuedResource{id: "waiting", target: target, version: launcher.PackVersion{Number: "3.0"},
+		resource: resourceTask{Source: launcher.CurseForgeMods, Kind: string(launcher.Mods), Title: "AppleSkin", Project: "248787", Version: "5864741"}}
+	waiting := taskRecord{ID: item.id, InstanceID: target.ID, Revision: target.Revision, Version: target.Version, Name: target.Name,
+		Action: "安装模组", Status: tasks.WaitingForKey, Resource: &item.resource, Detail: "请更新 CurseForge API Key。", At: time.Now()}
+	a.history = []taskRecord{waiting, {ID: "previous", Name: "先前的任务", Status: taskFailed, Action: taskVerify, At: waiting.At.Add(-time.Hour)}}
+	root := t.TempDir()
+	if err := writeDownloadQueue(root, queueEntries([]queuedResource{item})); err != nil {
+		t.Fatal(err)
+	}
+	var err error
+	a.queue.pending, err = readDownloadQueue(root, a.history)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.inspect(a.state.Instances[0])
 	a.queue.running = true
 	a.ctx = t.Context()
 	a.nextResource()
@@ -75,8 +94,25 @@ func TestQueueWaitsForCurseForgeKey(t *testing.T) {
 	if a.queue.running || a.queue.activeID != "" || len(a.queue.pending) != 1 || a.busy {
 		t.Fatal("missing key consumed or started the waiting download")
 	}
-	a.openTasks()
+	a.taskFilter, a.browsedTask = 1, "previous"
+	a.notice, a.noticeError, a.noticeTaskKey = waiting.Detail, true, waiting.ID
 	tt.Frame()
+	if err := tt.Click("查看任务"); err != nil || !tt.HasText("CurseForge · AppleSkin") {
+		t.Fatalf("notice did not reveal the waiting record in filtered history: %v", err)
+	}
+	if err := tt.Click("失败 / 取消"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.Click("查看任务"); err != nil || a.browsedTask != waiting.ID || !tt.HasText("CurseForge · AppleSkin") {
+		t.Fatalf("could not reopen the filtered record from the task center: %v", err)
+	}
+	for _, theme := range []string{"light", "dark"} {
+		tt.SetDark(theme == "dark")
+		tt.Frame()
+		tt.Advance(300 * time.Millisecond)
+		tt.Frame()
+		capture(t, tt, "queue-waiting-for-key-"+theme)
+	}
 	if err := tt.Click("设置 CurseForge API Key…"); err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +120,7 @@ func TestQueueWaitsForCurseForgeKey(t *testing.T) {
 	if err := tt.Click("应用"); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := tt.Find("开始队列"); !ok || a.needsResourceKey(item.resource) || a.queue.pending[0].id != item.id {
+	if _, ok := tt.Find("开始队列"); !ok || a.needsResourceKey(item.resource) || a.queue.pending[0].saved() != item.saved() || a.state.Selected != 1 || a.inspected != 1 {
 		t.Fatal("applying a key lost the waiting download")
 	}
 }

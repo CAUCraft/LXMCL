@@ -176,7 +176,7 @@ func (a *desktop) view(c *ui.Context) {
 }
 
 func (a *desktop) noticeBar(c *ui.Context) {
-	showingNoticeTask := a.page == pageDownloads && a.downloadPage == downloadTasks && a.browsedTask == a.noticeTaskKey
+	showingNoticeTask := a.page == pageDownloads && a.downloadPage == downloadTasks && a.browsedTask == a.noticeTaskKey && !a.noticeTaskFiltered()
 	tk := theme.TokensOf(c)
 	layout.Divider(c, layout.DividerProps{})
 	ui.Row(c).Padding(5, 18).Gap(8).AlignItems(ui.Center).Background(tk.BgContainer).Children(func() {
