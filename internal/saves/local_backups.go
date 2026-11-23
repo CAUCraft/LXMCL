@@ -46,13 +46,29 @@ func LocalBackups(ctx context.Context, dataRoot string, id int, known []BackupRe
 			return nil, err
 		}
 		defer dir.Close()
-		err = visitBackupFiles(ctx, dir, func(name string, info fs.FileInfo) {
+		err = visitBackupFiles(ctx, dir, func(name string, info fs.FileInfo) error {
 			_, recorded := missing[name]
 			if isBackupReparsePoint(info) || !validBackupName(name) || (!recorded && !legacyBackupName(name)) {
-				return
+				return nil
+			}
+			// A scoped Lstat captures the current file ID on Windows, even on
+			// file systems where directory entries defer looking it up.
+			snapshot, err := root.Lstat(name)
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+			if !regularBackup(snapshot) {
+				return nil
 			}
 			delete(missing, name)
-			entries = append(entries, BackupEntry{Name: name, Modified: info.ModTime(), Size: info.Size()})
+			entries = append(entries, BackupEntry{
+				Name: name, Modified: snapshot.ModTime(), Size: snapshot.Size(),
+				path: filepath.Join(BackupsDir(dataRoot, id), name), info: snapshot,
+			})
+			return nil
 		})
 		if err != nil {
 			return nil, err
@@ -80,10 +96,14 @@ func CheckLocalBackup(dataRoot string, id int, name string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if !info.Mode().IsRegular() || isBackupReparsePoint(info) {
+	if !regularBackup(info) {
 		return "", i18n.Error("saves.path_invalid", name)
 	}
 	return filepath.Join(BackupsDir(dataRoot, id), name), nil
+}
+
+func regularBackup(info fs.FileInfo) bool {
+	return info.Mode().IsRegular() && !isBackupReparsePoint(info)
 }
 
 func validBackupName(name string) bool {
