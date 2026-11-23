@@ -232,6 +232,10 @@ func (a *desktop) backFromDetail() {
 		a.closePackPreview()
 		return
 	}
+	if a.detailPage == detailContent && a.content.savedPacks != nil {
+		a.closeSavedPacks()
+		return
+	}
 	if a.detailPage == detailContent && a.content.copyMods != nil {
 		a.closeModCopy()
 		return

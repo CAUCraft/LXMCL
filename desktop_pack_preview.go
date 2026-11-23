@@ -53,7 +53,11 @@ func (a *desktop) openPackPreview(i launcher.Instance, file launcher.ContentFile
 
 func (a *desktop) resourcePackPreview(c *ui.Context, i launcher.Instance, p *resourcePackView) {
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-		if icon(c, lucide.ArrowLeft(), "返回资源包列表", false) {
+		back := "返回资源包列表"
+		if a.content.savedPacks != nil {
+			back = "返回游戏上次选择"
+		}
+		if icon(c, lucide.ArrowLeft(), back, false) {
 			a.closePackPreview()
 		}
 		display.Text(c, p.file.Name, display.TextProps{Strong: true, FontSize: 16, Rows: 1}).Grow(1).MinWidth(0).Ellipsis("…")
