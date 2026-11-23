@@ -48,6 +48,7 @@ func (a *desktop) load() {
 		a.post(func() {
 			a.loading = false
 			a.state, a.draft, a.installed, a.ready = s, s.Settings, installed, true
+			a.libraryGroup = s.LibraryGroup
 			a.modpacks.key = curseForgeKey
 			a.memory = strconv.Itoa(s.Settings.Memory)
 			a.restoreTaskHistory(history)
@@ -176,6 +177,9 @@ func (a *desktop) inspect(i launcher.Instance) {
 	if !a.matchesCacheFilter(i) {
 		a.instanceFilter, a.scroll.Y = 0, 0
 	}
+	if !a.matchesGroup(i.ID) {
+		a.libraryGroup, a.scroll.Y = nil, 0
+	}
 	a.page, a.inspected = pageLibrary, i.ID
 	a.detailPage = detailOverview
 }
@@ -189,6 +193,8 @@ func (a *desktop) submitEditor() {
 	var err error
 	checkID := 0
 	switch form.mode {
+	case "group":
+		err = next.SetInstanceGroup(form.target.ID, form.target.Revision, form.originalGroup, form.name)
 	case "note":
 		err = next.SetInstanceNote(form.target.ID, form.target.Revision, form.originalNote, form.note)
 	case "rename":
@@ -282,6 +288,13 @@ func (a *desktop) submitEditor() {
 			a.form.open = false
 		}
 		switch form.mode {
+		case "group":
+			if a.libraryGroup != nil && *a.libraryGroup != "" && !slices.Contains(next.GroupNames(), *a.libraryGroup) {
+				a.libraryGroup = nil
+			}
+			if a.inspected == form.target.ID && !a.matchesGroup(a.inspected) {
+				a.inspected = 0
+			}
 		case "duplicate":
 			i, _ := a.state.Find(checkID)
 			if visible {

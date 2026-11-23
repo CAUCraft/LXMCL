@@ -91,7 +91,7 @@ func (a *desktop) view(c *ui.Context) {
 		(a.microsoft == nil || !a.microsoft.open) {
 		if mods, key, ok := display.HotkeyBinding(searchHotkey, display.HotkeyAuto); ok && c.Shortcut(mods, key) {
 			a.page, a.inspected = pageLibrary, 0
-			a.instanceFilter = 0
+			a.instanceFilter, a.libraryGroup = 0, nil
 			a.focusSearch = len(a.state.Instances) > 0
 		}
 		if mods, key, ok := display.HotkeyBinding(tasksHotkey, display.HotkeyAuto); ok && c.Shortcut(mods, key) {
@@ -449,6 +449,7 @@ func (a *desktop) library(c *ui.Context) {
 				}
 			})
 			ui.Spacer(c).Grow(1)
+			a.libraryGroupPicker(c)
 			action.Segmented(c, &a.instanceFilter, []string{"全部", "已缓存", "待下载"},
 				action.SegmentedProps{Size: theme.Small}).Label("实例筛选")
 			if button(c, "安装实例…", action.Primary, false) {
@@ -502,10 +503,13 @@ func (a *desktop) instanceList(c *ui.Context, inspecting bool) {
 	query := strings.ToLower(strings.TrimSpace(a.query))
 	var items []display.ListItem
 	for _, i := range a.state.Instances {
-		if !matchesInstanceSearch(i, query) || !a.matchesCacheFilter(i) {
+		if !matchesInstanceSearch(i, query) || !a.matchesCacheFilter(i) || !a.matchesGroup(i.ID) {
 			continue
 		}
 		detail := i.Version + " · " + loaderName(i)
+		if group := a.state.InstanceGroups[i.ID]; group != "" {
+			detail += " · " + group
+		}
 		if i.ID == a.state.Selected {
 			detail += " · 启动目标"
 		}
@@ -518,7 +522,11 @@ func (a *desktop) instanceList(c *ui.Context, inspecting bool) {
 	}
 	if len(items) == 0 {
 		display.Empty(c, display.EmptyProps{Icon: lucide.SearchX(), Title: "未找到实例", Action: func() {
-			if button(c, "清除筛选", action.Default, false) {
+			hasGroup := a.libraryGroup != nil || a.state.LibraryGroup != nil
+			if button(c, "清除筛选", action.Default, a.busy && hasGroup) {
+				if hasGroup {
+					a.chooseLibraryGroup(nil)
+				}
 				a.query, a.instanceFilter, a.scroll.Y = "", 0, 0
 			}
 		}})
@@ -588,6 +596,8 @@ func (a *desktop) editor(c *ui.Context) {
 	}
 	title, okText := "重命名实例", "保存"
 	switch a.form.mode {
+	case "group":
+		title, okText = "设置分组 · "+a.form.target.Name, "保存分组"
 	case "note":
 		title, okText = "实例备注 · "+a.form.target.Name, "保存备注"
 	case "remove":
@@ -606,6 +616,10 @@ func (a *desktop) editor(c *ui.Context) {
 		Title: title, OkText: okText, CancelText: "取消", Width: 480, NoFooter: a.form.loaders != nil,
 	}, func() {
 		ui.Column(c).Gap(12).Children(func() {
+			if a.form.mode == "group" {
+				submit = a.groupEditor(c)
+				return
+			}
 			if a.form.mode == "note" {
 				area := field.TextArea(c, &a.form.note, field.TextAreaProps{MinRows: 4, MaxRows: 7, Placeholder: "记录游玩进度、坐标或下次要做的事"}).Label("备注内容").Disabled(a.busy)
 				if a.form.focus {

@@ -153,6 +153,7 @@ func (a *desktop) instanceMenu(c *ui.Context, i launcher.Instance, inList bool) 
 			{Key: "verify", Label: install, Icon: lucide.Download(), Disabled: a.busy || a.running != nil},
 			{Key: "folder", Label: "打开游戏目录", Icon: lucide.FolderOpen()},
 			{Divider: true},
+			{Key: "group", Label: "设置分组…", Icon: lucide.Folder(), Disabled: a.busy},
 			{Key: "rename", Label: "重命名", Icon: lucide.Pencil(), Hotkey: renameKey, Disabled: a.busy},
 			{Key: "export", Label: "导出整合包…", Icon: lucide.FileArchive(), Disabled: a.busy || a.running != nil},
 			{Key: "duplicate", Label: "复制实例…", Icon: lucide.Copy(), Disabled: a.busy || (!i.Vanilla() && !i.Fabric() && !i.Forge() && !i.NeoForge() && !i.Quilt())},
@@ -175,6 +176,8 @@ func (a *desktop) instanceMenu(c *ui.Context, i launcher.Instance, inList bool) 
 			a.play(i, true)
 		case "folder":
 			a.openPath(i.GameDir, true)
+		case "group":
+			a.editGroup(i)
 		case "rename":
 			a.edit(i)
 		case "export":

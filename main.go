@@ -97,6 +97,7 @@ type editor struct {
 	files       launcher.PortableFiles
 
 	note, originalNote string
+	originalGroup      string
 }
 
 type desktop struct {
@@ -155,6 +156,7 @@ type desktop struct {
 	query                            string
 	focusSearch                      bool
 	instanceFilter                   int
+	libraryGroup                     *string
 	listMenuID                       int
 	taskFilter                       int
 	browsedTask                      string
