@@ -439,6 +439,22 @@ func TestRecoveredHistoryKeepsCurrentGameLog(t *testing.T) {
 	}
 }
 
+func TestCanceledTaskHistoryKeepsAdditionalDiagnostics(t *testing.T) {
+	a, tt := testDesktop(t)
+	a.openTasks()
+	row := taskRecord{ID: "canceled-export", Name: "实例", Action: "导出整合包", Status: taskCanceled, Detail: context.Canceled.Error()}
+	a.history = []taskRecord{row}
+	tt.Frame()
+	if _, ok := tt.Find("复制错误详情"); ok || tt.HasText(row.Detail) {
+		t.Fatal("plain cancellation presented as a diagnostic")
+	}
+	a.history[0].Detail += "\n清理临时文件失败"
+	tt.Frame()
+	if err := tt.Click("复制错误详情"); err != nil || tt.Clipboard() != a.history[0].Detail {
+		t.Fatal("additional cancellation diagnostics could not be copied")
+	}
+}
+
 func TestTaskCenterFiltersAndDisablesStaleRetry(t *testing.T) {
 	a, tt := testDesktop(t)
 	i := a.state.Instances[1]

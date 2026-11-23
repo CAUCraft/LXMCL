@@ -208,6 +208,9 @@ func taskIcon(row taskRecord) *ui.SVG {
 }
 
 func (a *desktop) taskRow(c *ui.Context, row taskRecord) {
+	if plainTaskCancellation(row) {
+		row.Detail = ""
+	}
 	tone := display.TagGray
 	switch row.Status {
 	case taskFailed:
