@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestWorldSelectionDetectsReplacementAndKeepsMissingRootAbsent(t *testing.T) {
+func TestWorldSelectionBacksUpOnlyTheChosenWorldAndRejectsReplacement(t *testing.T) {
 	game := t.TempDir()
 	ctx := t.Context()
 	worlds, err := Worlds(ctx, game)
@@ -36,12 +36,28 @@ func TestWorldSelectionDetectsReplacementAndKeepsMissingRootAbsent(t *testing.T)
 	if err := worlds[0].Check(game); err != nil {
 		t.Fatal(err)
 	}
+	dataRoot := t.TempDir()
+	archive, err := BackupWorld(ctx, game, dataRoot, 1, worlds[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	preview, err := Inspect(ctx, archive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := preview.Worlds()
+	if len(names) != 1 || names[0] != "First" {
+		t.Fatal(names)
+	}
 	if err := os.Rename(filepath.Join(base, "First"), filepath.Join(base, "Moved")); err != nil {
 		t.Fatal(err)
 	}
 	makeWorld("First")
 	if worlds[0].Check(game) == nil {
 		t.Fatal("accepted replacement at old path")
+	}
+	if _, err := BackupWorld(ctx, game, dataRoot, 1, worlds[0]); err == nil {
+		t.Fatal("archived a replacement world")
 	}
 	if err := worlds[1].Check(game); err != nil {
 		t.Fatal(err)

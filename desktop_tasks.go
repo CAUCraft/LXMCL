@@ -300,12 +300,12 @@ func (a *desktop) taskRow(c *ui.Context, row taskRecord) {
 			if (retry || folderRetry) && !needsKey && button(c, "重试", action.Primary, a.busy || a.running != nil) {
 				if folderRetry {
 					a.saveResourceFile(row.Folder, *row.Resource, launcher.PackVersion{})
+				} else if row.World != "" {
+					a.browseWorlds(target, &row)
 				} else if row.Action == taskBackup {
 					a.backupSaves(target)
 				} else if row.Resource != nil {
 					a.downloadResource(target, *row.Resource, launcher.PackVersion{})
-				} else if row.World != "" {
-					a.browseWorlds(target, row.World)
 				} else {
 					a.playOnServer(target, row.Action == taskVerify, row.Server)
 				}

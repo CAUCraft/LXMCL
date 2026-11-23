@@ -320,7 +320,7 @@ func (a *desktop) instanceFiles(c *ui.Context, i launcher.Instance) {
 				settingsRow(c.Key(folder.path), folder.label, func() {
 					muted(c, folder.path).Grow(1)
 					if folder.path == "saves" && button(c, "浏览存档…", action.Default, disabled) {
-						a.browseWorlds(i, "")
+						a.browseWorlds(i, nil)
 					}
 					action.CopyButton(c, path, action.CopyButtonProps{}).Label("复制" + folder.label + "目录")
 					if icon(c, lucide.FolderOpen(), "打开"+folder.label+"目录", false) {

@@ -16,10 +16,19 @@ type backupFile struct {
 }
 
 // planBackup validates the entire file list before creating any output.
-func planBackup(ctx context.Context, root *os.Root) ([]backupFile, error) {
-	entries, err := fs.ReadDir(root.FS(), ".")
-	if err != nil {
-		return nil, err
+func planBackup(ctx context.Context, root *os.Root, selected *World) ([]backupFile, error) {
+	var entries []fs.DirEntry
+	if selected != nil {
+		if err := selected.check(root); err != nil {
+			return nil, err
+		}
+		entries = []fs.DirEntry{fs.FileInfoToDirEntry(selected.directory)}
+	} else {
+		var err error
+		entries, err = fs.ReadDir(root.FS(), ".")
+		if err != nil {
+			return nil, err
+		}
 	}
 	var files []backupFile
 	var size uint64
