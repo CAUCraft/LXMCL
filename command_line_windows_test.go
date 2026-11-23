@@ -111,17 +111,21 @@ func TestCommandLaunchInExistingWindow(t *testing.T) {
 	// Check the properties as Windows sees them, then invoke the .lnk through the shell.
 	const openLink = `$ErrorActionPreference = 'Stop'
 $file = Get-Item -LiteralPath $env:LXMCL_TEST_LINK
-$link = (New-Object -ComObject WScript.Shell).CreateShortcut($file.FullName)
-if ($link.TargetPath -ne $env:LXMCL_TEST_TARGET -or $link.WorkingDirectory -ne (Split-Path $env:LXMCL_TEST_TARGET) -or $link.Arguments -cne $env:LXMCL_TEST_ARGS) {
-    throw "Unexpected shortcut properties ($($file.Length) bytes): $($link.TargetPath) | $($link.WorkingDirectory) | $($link.Arguments)"
-}
-Start-Process -FilePath $env:LXMCL_TEST_LINK -Wait`
+$shell = New-Object -ComObject Shell.Application
+$item = $shell.NameSpace([string]$file.DirectoryName).ParseName([string]$file.Name)
+if (!$item.IsLink) { throw "Explorer did not recognize the saved shortcut" }
+$link = $item.GetLink
+Start-Process -FilePath $file.FullName -Wait
+if ($link.Path -ne $env:LXMCL_TEST_TARGET -or $link.WorkingDirectory -ne (Split-Path $env:LXMCL_TEST_TARGET) -or $link.Arguments -cne $env:LXMCL_TEST_ARGS) {
+    throw "Unexpected Explorer properties ($($file.Length) bytes): $($link.Path) | $($link.WorkingDirectory) | $($link.Arguments)"
+}`
 	powershell := filepath.Join(os.Getenv("SystemRoot"), "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
 	invoke := exec.CommandContext(ctx, powershell, "-NoProfile", "-NonInteractive", "-Command", openLink)
 	invoke.Env = append(os.Environ(), "LXMCL_TEST_LINK="+path, "LXMCL_TEST_TARGET="+executable,
 		"LXMCL_TEST_ARGS=--data-dir "+syscall.EscapeArg(store.Root)+" --launch "+strconv.Itoa(target.ID))
 	if out, err := invoke.CombinedOutput(); err != nil {
-		t.Fatalf("open saved shortcut: %v, %s", err, out)
+		rows, _ := tasks.Load(store.Root)
+		t.Fatalf("open saved shortcut (%d journal entries): %v, %s", len(rows), err, out)
 	}
 	waitRecords(3)
 	if saved, err := store.Load(); err != nil || saved.Selected != state.Selected {
