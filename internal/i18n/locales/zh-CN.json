@@ -332,6 +332,8 @@
   "saves.restore_partial": "已恢复 %d 个存档：%w",
   "saves.world_missing": "归档中找不到世界 %s，请重新选择 ZIP",
   "server.address_invalid": "请输入 Java 服务器域名或 IP，可附端口",
+  "server.game_list_invalid": "游戏内服务器列表格式不完整或无法识别",
+  "server.game_list_large": "游戏内服务器列表超过可读取的大小",
   "server.favorite_changed": "此收藏已更改，请重新打开后再试。",
   "server.favorite_duplicate": "已收藏此服务器",
   "server.favorite_name_too_long": "服务器名称不能超过 80 个字符",

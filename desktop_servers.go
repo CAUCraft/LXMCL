@@ -13,6 +13,7 @@ import (
 	"github.com/lobehub/lobe-mygo/pkg/field"
 	"github.com/lobehub/lobe-mygo/pkg/layout"
 	"github.com/lobehub/lobe-mygo/pkg/lucide"
+	"github.com/lobehub/lobe-mygo/pkg/theme"
 )
 
 type serverCheck struct {
@@ -79,11 +80,17 @@ func (a *desktop) network(c *ui.Context) {
 				a.openServerForm(serverAdd, launcher.Server{})
 			}
 		}
-		if len(a.state.Servers) == 0 {
-			heading(c, "联机")
-		} else {
-			heading(c, "联机", controls)
+		heading(c, "联机", func() {
+			action.Segmented(c, &a.serverSource, []string{"启动器收藏", "游戏内收藏"}, action.SegmentedProps{Size: theme.Small}).Label("收藏来源")
+			if a.serverSource == 0 && len(a.state.Servers) != 0 {
+				controls()
+			}
+		})
+		if a.serverSource == 1 {
+			a.gameServerLibrary(c)
+			return
 		}
+		a.closeGameServers()
 		note := "离线账号仅能加入允许离线登录的服务器。"
 		if a.state.StationKey != "" {
 			note = "皮肤站账号：" + a.accountName() + "。请加入同一认证体系的服务器。"
@@ -153,7 +160,7 @@ func (a *desktop) network(c *ui.Context) {
 					})
 					check := a.serverStatus[server.Address]
 					serverStatusDetails(c, check)
-					i, selected := a.serverInstancePicker(c)
+					i, selected := a.serverInstancePicker(c, "加入时使用")
 					ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 						if button(c, "启动并加入", action.Primary, !selected || a.busy || a.running != nil) {
 							a.playOnServer(i, false, server.Address)
@@ -199,7 +206,7 @@ func (a *desktop) serverInstance() (launcher.Instance, bool) {
 	return a.state.Find(a.state.Selected)
 }
 
-func (a *desktop) serverInstancePicker(c *ui.Context) (launcher.Instance, bool) {
+func (a *desktop) serverInstancePicker(c *ui.Context, label string) (launcher.Instance, bool) {
 	if len(a.state.Instances) == 0 {
 		if button(c, "先安装游戏实例…", action.Default, a.busy) {
 			a.serverForm = nil
@@ -222,7 +229,7 @@ func (a *desktop) serverInstancePicker(c *ui.Context) (launcher.Instance, bool) 
 	if _, ok := a.serverInstance(); !ok && a.serverInstanceID != 0 {
 		placeholder = "原实例已移除，请重新选择"
 	}
-	settingsRow(c, "加入时使用", func() {
+	settingsRow(c, label, func() {
 		catalogPicker(c, &value, options, "选择联机实例", placeholder, a.busy || a.running != nil).Grow(1).MinWidth(0)
 	})
 	if value != strconv.Itoa(a.serverInstanceID) {

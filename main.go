@@ -144,6 +144,8 @@ type desktop struct {
 	stationSessions  map[string]launcher.StationSession
 	stationPreviews  map[string]*stationPreview
 	browsedServer    string
+	serverSource     int
+	gameServers      *gameServerView
 
 	page, settingsPage, downloadPage int
 	inspected                        int
