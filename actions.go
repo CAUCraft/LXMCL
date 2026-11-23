@@ -90,8 +90,12 @@ func (a *desktop) save(next launcher.State, checkID int, done func(error)) {
 		return
 	}
 	a.busy = true
+	save := a.store.Save
+	if next.Settings.GameRoot != a.state.Settings.GameRoot {
+		save = a.store.SaveWithNewGameRoot
+	}
 	a.writes.Go(func() {
-		err := a.store.Save(next)
+		err := save(next)
 		var installed bool
 		if err == nil && checkID != 0 {
 			if i, ok := next.Find(checkID); ok {

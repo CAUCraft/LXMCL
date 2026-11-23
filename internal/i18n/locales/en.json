@@ -323,6 +323,7 @@
   "server.status_missing": "The server did not return Java status",
   "server.status_packet_invalid": "The server did not return a valid Java status packet",
   "settings.game_root_invalid": "The game directory must be an absolute path",
+  "settings.game_root_unusable": "The new instance folder cannot be used. Choose a writable folder and apply the settings again.\n%w",
   "station.account_or_role_changed": "The skin site returned a different character or account",
   "station.agent_cache_path_invalid": "The cache directory path must not contain an equals sign when using a skin site",
   "station.agent_checksum_failed": "The authlib-injector download failed SHA-256 verification",

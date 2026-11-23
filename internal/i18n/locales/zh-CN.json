@@ -323,6 +323,7 @@
   "server.status_missing": "服务器未返回 Java 状态",
   "server.status_packet_invalid": "服务器未返回有效的 Java 状态包",
   "settings.game_root_invalid": "游戏目录须为绝对路径",
+  "settings.game_root_unusable": "新实例目录不可用。请选择可写入的目录后再应用。\n%w",
   "station.account_or_role_changed": "皮肤站返回了不同的角色或账号",
   "station.agent_cache_path_invalid": "皮肤站启动需要缓存目录路径不包含等号",
   "station.agent_checksum_failed": "authlib-injector 下载未通过 SHA-256 校验",

@@ -21,3 +21,7 @@ func DefaultStore() (Store, error) {
 
 func (s Store) Load() (State, error)   { return (config.Store{Root: s.Root}).Load() }
 func (s Store) Save(state State) error { return (config.Store{Root: s.Root}).Save(state) }
+
+func (s Store) SaveWithNewGameRoot(state State) error {
+	return (config.Store{Root: s.Root}).SaveWithNewGameRoot(state)
+}
