@@ -109,13 +109,14 @@ func modTitle(id, name, version string) string {
 	return name
 }
 
+const manifestLimit = 512 << 10
+
 func manifestBytes(z *zip.Reader, name string) []byte {
-	const limit = 512 << 10
 	for _, entry := range z.File {
 		if entry.Name != name {
 			continue
 		}
-		if entry.UncompressedSize64 > limit {
+		if entry.UncompressedSize64 > manifestLimit {
 			return nil
 		}
 		r, err := entry.Open()
@@ -123,8 +124,8 @@ func manifestBytes(z *zip.Reader, name string) []byte {
 			return nil
 		}
 		defer r.Close()
-		data, err := io.ReadAll(io.LimitReader(r, limit+1))
-		if err == nil && len(data) <= limit {
+		data, err := io.ReadAll(io.LimitReader(r, manifestLimit+1))
+		if err == nil && len(data) <= manifestLimit {
 			return data
 		}
 		return nil

@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/CAUCraft/LXMCL/internal/i18n"
+	"github.com/CAUCraft/LXMCL/internal/mctext"
 )
 
 // queryStatus uses the original address in the handshake, even when DNS selects
@@ -53,7 +54,7 @@ func queryStatus(conn io.ReadWriter, host string, port uint16) (Status, error) {
 	if err := json.NewDecoder(b).Decode(&status); err != nil {
 		return Status{}, err
 	}
-	result := Status{Version: plainStatusText(status.Version.Name, 80), Description: descriptionText(status.Description), Icon: serverIcon(status.Favicon)}
+	result := Status{Version: mctext.Plain(status.Version.Name, 80), Description: mctext.Component(status.Description, 256), Icon: serverIcon(status.Favicon)}
 	if online, max := status.Players.Online, status.Players.Max; online != nil && max != nil && *online >= 0 && *max >= 0 {
 		result.Online, result.Max, result.PlayersReported = *online, *max, true
 	}

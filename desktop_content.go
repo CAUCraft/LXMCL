@@ -25,29 +25,31 @@ import (
 )
 
 type contentView struct {
-	comparison *modComparisonView
-	copyMods   *modCopyView
-	mods       map[string]launcher.InstalledMod
-	checking   bool
-	checkError string
-	id, tab    int
-	revision   uint64
-	files      []launcher.ContentFile
-	reading    bool
-	err        string
-	query      string
-	filter     int
-	order      string
-	selected   map[string]bool // physical filename → enabled state
-	scroll     ui.ListState
-	listing    *resourceListing
+	packPreview *resourcePackView
+	comparison  *modComparisonView
+	copyMods    *modCopyView
+	mods        map[string]launcher.InstalledMod
+	checking    bool
+	checkError  string
+	id, tab     int
+	revision    uint64
+	files       []launcher.ContentFile
+	reading     bool
+	err         string
+	query       string
+	filter      int
+	order       string
+	selected    map[string]bool // physical filename → enabled state
+	scroll      ui.ListState
+	listing     *resourceListing
 }
 
 type resourceListing struct {
-	query     string
-	filter    int
-	files     []launcher.ContentFile
-	clipboard string
+	query      string
+	filter     int
+	files      []launcher.ContentFile
+	selectable int
+	clipboard  string
 }
 
 // Build the clipboard text and filtered view when the listing changes, including
@@ -59,10 +61,15 @@ func (v *contentView) currentListing() *resourceListing {
 	list := &resourceListing{query: v.query, filter: v.filter, files: v.visibleFiles()}
 	var text strings.Builder
 	for _, file := range list.files {
-		if file.Enabled {
-			text.WriteString("[启用] ")
+		if file.Directory {
+			text.WriteString("[目录] ")
 		} else {
-			text.WriteString("[停用] ")
+			list.selectable++
+			if file.Enabled {
+				text.WriteString("[启用] ")
+			} else {
+				text.WriteString("[停用] ")
+			}
 		}
 		text.WriteString(file.Name)
 		text.WriteByte('\n')
@@ -84,6 +91,7 @@ func (v contentView) kind() launcher.ContentKind {
 }
 
 func (a *desktop) refreshContent(i launcher.Instance) {
+	a.content.packPreview = nil
 	a.content.copyMods = nil
 	a.content.comparison = nil
 	a.content.listing = nil
@@ -135,6 +143,10 @@ func (a *desktop) instanceContent(c *ui.Context, i launcher.Instance) {
 	if v.id != i.ID || v.revision != i.Revision || v.tab != 0 && !v.kind().Supports(i) {
 		*v = contentView{id: i.ID, revision: i.Revision}
 		a.refreshContent(i)
+	}
+	if v.packPreview != nil {
+		a.resourcePackPreview(c, i, v.packPreview)
+		return
 	}
 	if v.copyMods != nil {
 		a.modCopy(c, i, v.copyMods)
@@ -249,7 +261,7 @@ func (v *contentView) visibleFiles() []launcher.ContentFile {
 	var files []launcher.ContentFile
 	for _, file := range v.files {
 		if query != "" && !strings.Contains(strings.ToLower(file.Name+"\n"+file.ModTitle+"\n"+file.ModIDs+"\n"+v.mods[file.DiskName()].Title), query) ||
-			v.filter == 1 && !file.Enabled || v.filter == 2 && file.Enabled {
+			v.filter != 0 && file.Directory || v.filter == 1 && !file.Enabled || v.filter == 2 && file.Enabled {
 			continue
 		}
 		files = append(files, file)
@@ -317,13 +329,15 @@ func (a *desktop) contentList(c *ui.Context, i launcher.Instance, disabled bool)
 	files := listing.files
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 		n := len(v.selected)
-		all := n > 0 && n == len(files)
-		if choice.Checkbox(c, &all, "全选当前列表", choice.CheckboxProps{Indeterminate: n > 0 && n < len(files)}).
-			Disabled(disabled || len(files) == 0).Changed() {
+		all := n > 0 && n == listing.selectable
+		if choice.Checkbox(c, &all, "全选当前列表", choice.CheckboxProps{Indeterminate: n > 0 && n < listing.selectable}).
+			Disabled(disabled || listing.selectable == 0).Changed() {
 			v.selected = make(map[string]bool, len(files))
 			if all {
 				for _, file := range files {
-					v.selected[file.DiskName()] = file.Enabled
+					if !file.Directory {
+						v.selected[file.DiskName()] = file.Enabled
+					}
 				}
 			}
 		}
@@ -363,7 +377,7 @@ func (a *desktop) contentList(c *ui.Context, i launcher.Instance, disabled bool)
 		ui.Row(c).MinHeight(46).Padding(0, 12).Gap(8).AlignItems(ui.Center).Children(func() {
 			_, checked := v.selected[key]
 			if choice.Checkbox(c, &checked, "", choice.CheckboxProps{}).Label("选择资源 " + file.Name).
-				Disabled(disabled).Changed() {
+				Disabled(disabled || file.Directory).Changed() {
 				if v.selected == nil {
 					v.selected = make(map[string]bool)
 				}
@@ -375,6 +389,13 @@ func (a *desktop) contentList(c *ui.Context, i launcher.Instance, disabled bool)
 			}
 			leadIcon(c, downloadTabs[downloadTab(v.kind())].Icon, 26)
 			a.contentFileTitle(c, i, file)
+			if v.kind() == launcher.ResourcePacks && action.Button(c, "预览", action.ButtonProps{Variant: action.Default}).Label("预览 "+key).Clicked() {
+				a.openPackPreview(i, file)
+			}
+			if file.Directory {
+				muted(c, "目录").FontSize(12)
+				return
+			}
 			detail := fileSizeLabel(file.Size)
 			if v.order == "modified" && !file.Modified.IsZero() {
 				detail = file.Modified.Local().Format("01-02 15:04") + " · " + detail
