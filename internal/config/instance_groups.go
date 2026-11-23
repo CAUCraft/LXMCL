@@ -27,7 +27,7 @@ func (s *State) SetInstanceGroup(id int, revision uint64, previous, name string)
 		return i18n.Error("instance.form_target_changed")
 	}
 	name = strings.TrimSpace(name)
-	if utf8.RuneCountInString(name) > 48 || strings.ContainsFunc(name, unicode.IsControl) {
+	if !validGroupName(name) {
 		return i18n.Error("instance.group_name_invalid")
 	}
 	if name == "" {
@@ -45,6 +45,35 @@ func (s *State) SetInstanceGroup(id int, revision uint64, previous, name string)
 		s.InstanceGroups[id] = name
 	}
 	s.clearMissingGroupFilter()
+	return nil
+}
+
+func validGroupName(name string) bool {
+	return utf8.RuneCountInString(name) <= 48 && !strings.ContainsFunc(name, unicode.IsControl)
+}
+
+func (s *State) RenameInstanceGroup(previous, name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" || !validGroupName(name) {
+		return i18n.Error("instance.group_name_invalid")
+	}
+	groups := s.GroupNames()
+	if !slices.Contains(groups, previous) {
+		return i18n.Error("instance.form_target_changed")
+	}
+	for _, g := range groups {
+		if g != previous && strings.EqualFold(g, name) {
+			return i18n.Error("instance.group_name_taken")
+		}
+	}
+	for id, g := range s.InstanceGroups {
+		if g == previous {
+			s.InstanceGroups[id] = name
+		}
+	}
+	if s.LibraryGroup != nil && *s.LibraryGroup == previous {
+		s.LibraryGroup = &name
+	}
 	return nil
 }
 

@@ -5,6 +5,34 @@ import (
 	"testing"
 )
 
+func TestRenameInstanceGroup(t *testing.T) {
+	group := "Friends"
+	var s State
+	s.Settings.GameRoot = t.TempDir()
+	for _, name := range []string{"First", "Second", "Third"} {
+		if err := s.Create(name, "1.21.1"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s.InstanceGroups = map[int]string{1: group, 2: group, 3: "Solo"}
+	s.LibraryGroup = &group
+	next := s.Clone()
+	for _, name := range []string{" ", "Solo", "solo", "New\nName"} {
+		if err := next.RenameInstanceGroup(group, name); err == nil {
+			t.Fatalf("accepted invalid group name %q", name)
+		}
+	}
+	if err := next.RenameInstanceGroup(group, " friends "); err != nil {
+		t.Fatal(err)
+	}
+	if *next.LibraryGroup != "friends" || next.InstanceGroups[1] != "friends" || next.InstanceGroups[2] != "friends" || next.InstanceGroups[3] != "Solo" || *s.LibraryGroup != group || s.InstanceGroups[1] != group {
+		t.Fatal("unexpected group membership or filter", s.InstanceGroups, next.InstanceGroups)
+	}
+	if err := next.RenameInstanceGroup(group, "Stale"); err == nil {
+		t.Fatal("accepted missing group")
+	}
+}
+
 func TestInstanceGroupsSurviveReloadWithoutChangingLaunchTargets(t *testing.T) {
 	store := Store{Root: t.TempDir()}
 	s, err := store.Load()

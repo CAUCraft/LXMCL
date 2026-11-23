@@ -511,6 +511,9 @@ func (a *desktop) instanceList(c *ui.Context, inspecting bool) {
 	var items []display.ListItem
 	for _, i := range a.libraryInstances() {
 		detail := i.Version + " · " + loaderName(i)
+		if a.state.PinnedInstances[i.ID] {
+			detail = "已置顶 · " + detail
+		}
 		if group := a.state.InstanceGroups[i.ID]; group != "" {
 			detail += " · " + group
 		}
@@ -610,6 +613,8 @@ func (a *desktop) editor(c *ui.Context) {
 		title = "导入 Prism / MultiMC 实例"
 	case "icon":
 		title = "实例图标 · " + a.form.target.Name
+	case "renameGroup":
+		title, okText = "重命名分组 · "+a.form.originalGroup, "保存名称"
 	case "group":
 		title, okText = "设置分组 · "+a.form.target.Name, "保存分组"
 	case "note":
@@ -642,7 +647,7 @@ func (a *desktop) editor(c *ui.Context) {
 				submit = a.instanceIconEditor(c)
 				return
 			}
-			if a.form.mode == "group" {
+			if a.form.mode == "group" || a.form.mode == "renameGroup" {
 				submit = a.groupEditor(c)
 				return
 			}

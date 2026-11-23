@@ -34,6 +34,14 @@ func TestLibrarySortPreservesTargetsAndCombinesFilters(t *testing.T) {
 	check(sortName, 2, 1, 3)
 	check(sortRecent, 2, 1, 3)
 	check(sortDuration, 1, 2, 3)
+	a.state.PinnedInstances = map[int]bool{2: true, 3: true}
+	check("", 2, 3, 1)
+	check(sortName, 2, 3, 1)
+	check(sortRecent, 2, 3, 1)
+	check(sortDuration, 2, 3, 1)
+	delete(a.state.PinnedInstances, 2)
+	check(sortName, 3, 2, 1)
+	check(sortDuration, 3, 1, 2)
 	group := "g"
 	a.state.InstanceGroups = map[int]string{1: group, 2: group}
 	a.libraryGroup = &group
