@@ -1083,6 +1083,31 @@ func capture(t *testing.T, tt *ui.Tester, name string) {
 	}
 }
 
+func TestGameServerJoinFollowsTheVisibleInstance(t *testing.T) {
+	a, tt := testDesktop(t)
+	a.serverInstanceID = a.state.Instances[1].ID
+	a.serverSource = 1
+	target := a.state.Instances[1]
+	rows := []launcher.Server{{Name: "建筑", Address: "build.example.invalid:25570"}, {Name: "空地址"}}
+	if err := tt.Click("联机"); err != nil {
+		t.Fatal(err)
+	}
+	a.gameServers = &gameServerView{instance: target, rows: rows}
+	tt.Frame()
+	join := "启动并加入 建筑 build.example.invalid:25570"
+	if b, ok := tt.Access(join); !ok || b.Disabled {
+		t.Fatal("missing join action for the selected instance")
+	}
+	if b, ok := tt.Access("启动并加入 空地址 未填写地址"); !ok || !b.Disabled {
+		t.Fatal("empty address enabled")
+	}
+	a.serverInstanceID = a.state.Instances[0].ID
+	tt.Frame()
+	if _, ok := tt.Access(join); ok {
+		t.Fatal("previous instance still offers its join action")
+	}
+}
+
 func TestServerDialogsKeepTemporaryAndSavedTargetsSeparate(t *testing.T) {
 	a, tt := testDesktop(t)
 	click := func(label string) {

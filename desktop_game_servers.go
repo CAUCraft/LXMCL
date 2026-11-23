@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io/fs"
 
+	"github.com/CAUCraft/LXMCL/internal/instance"
 	"github.com/CAUCraft/LXMCL/internal/launcher"
 	"github.com/CAUCraft/LXMCL/internal/server"
 	"github.com/egoist/mygo/ui"
@@ -12,6 +13,7 @@ import (
 	"github.com/lobehub/lobe-mygo/pkg/display"
 	"github.com/lobehub/lobe-mygo/pkg/feedback"
 	"github.com/lobehub/lobe-mygo/pkg/lucide"
+	"github.com/lobehub/lobe-mygo/pkg/theme"
 )
 
 type gameServerView struct {
@@ -94,8 +96,12 @@ func (a *desktop) gameServerLibrary(c *ui.Context) {
 	case len(p.rows) == 0:
 		emptyPanel(c, lucide.Server(), "此实例没有可见的游戏内收藏")
 	default:
+		supported := instance.SupportedRelease(i.Version)
+		if !supported && p.importing == nil {
+			muted(c, "启动时加入服务器支持 1.20.1 及以后的正式版。").FontSize(12)
+		}
 		p.list.Label = func(idx int) string { return p.rows[idx].Name + " " + p.rows[idx].Address }
-		ui.List(c.Key(i.ID), &p.list, len(p.rows)).Grow(1).MinHeight(0).FillWidth().Rows(func(row ui.ListRow) {
+		ui.List(c.Key(p), &p.list, len(p.rows)).Grow(1).MinHeight(0).FillWidth().Rows(func(row ui.ListRow) {
 			rc := row.Context
 			s := p.rows[row.Index]
 			name, address := s.Name, s.Address
@@ -114,6 +120,15 @@ func (a *desktop) gameServerLibrary(c *ui.Context) {
 				if p.importing != nil {
 					p.importing.checkbox(rc, row.Index, s, a.busy)
 				} else {
+					target, err := launcher.ServerAddress(s.Address)
+					join := action.Button(rc, "启动并加入", action.ButtonProps{Size: theme.Small}).
+						Label("启动并加入 " + name + " " + address).Disabled(!supported || err != nil || a.busy || a.running != nil)
+					if err != nil {
+						join.Tooltip(err.Error())
+					}
+					if join.Clicked() {
+						a.playOnServer(p.instance, false, target)
+					}
 					action.CopyButton(rc, s.Address, action.CopyButtonProps{}).Label("复制游戏内地址 " + name).Disabled(s.Address == "")
 				}
 			})
