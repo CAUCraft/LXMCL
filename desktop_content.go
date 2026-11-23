@@ -424,8 +424,13 @@ func (a *desktop) contentList(c *ui.Context, i launcher.Instance, disabled bool)
 		layout.Divider(c, layout.DividerProps{})
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 			muted(c, fmt.Sprintf("已选 %d 项", count)).FontSize(12).Grow(1)
-			if v.kind() == launcher.Mods && button(c, "复制到实例…", action.Default, disabled) {
-				v.copyMods = &modCopyView{selected: v.selection(files)}
+			if v.kind() == launcher.Mods {
+				if button(c, "复制到实例…", action.Default, disabled) {
+					v.copyMods = &modCopyView{selected: v.selection(files)}
+				}
+				if button(c, "备份 ZIP…", action.Default, disabled) {
+					a.chooseModBackup(i, v.selection(files))
+				}
 			}
 			if button(c, "取消选择", action.Text, false) {
 				v.selected = nil
