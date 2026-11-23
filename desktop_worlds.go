@@ -21,6 +21,7 @@ type worldBrowser struct {
 	entries  []saves.World
 	visible  []saves.World
 	query    string
+	order    string
 	list     ui.ListState
 	selected int
 	loading  bool
@@ -127,8 +128,20 @@ func (p *worldBrowser) filter() {
 			}
 		}
 	}
+	if p.order == sortRecent {
+		if query == "" {
+			// Preserve the directory order shared with the default view.
+			p.visible = slices.Clone(p.visible)
+		}
+		slices.SortStableFunc(p.visible, func(a, b saves.World) int {
+			return b.LastPlayed().Compare(a.LastPlayed())
+		})
+	}
 	p.selected = slices.IndexFunc(p.visible, func(world saves.World) bool { return world.Folder() == selected.Folder() })
 	p.list = ui.ListState{}
+	if p.selected >= 0 {
+		p.list.ScrollIntoView(p.selected)
+	}
 }
 
 func (a *desktop) worldEditor(c *ui.Context) {
@@ -152,9 +165,17 @@ func (a *desktop) worldEditor(c *ui.Context) {
 		muted(c, "没有找到本地世界。可在游戏内创建世界，或从备份恢复。")
 	default:
 		if p.retry == nil {
-			queryBefore := p.query
-			field.SearchBar(c, &p.query, field.SearchBarProps{Placeholder: "搜索世界目录"}).Label("搜索世界目录")
-			if p.query != queryBefore {
+			queryBefore, orderBefore := p.query, p.order
+			ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
+				ui.Column(c).Grow(1).MinWidth(0).Children(func() {
+					field.SearchBar(c, &p.query, field.SearchBarProps{Placeholder: "搜索世界目录"}).Label("搜索世界目录")
+				})
+				field.Select(c, &p.order, field.SelectProps{Options: []field.SelectOption{
+					{Value: "", Label: "按目录名"},
+					{Value: sortRecent, Label: "最近游玩"},
+				}}).Label("存档排序").Width(112)
+			})
+			if p.query != queryBefore || p.order != orderBefore {
 				p.filter()
 			}
 		}
