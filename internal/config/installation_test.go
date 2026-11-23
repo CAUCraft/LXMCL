@@ -36,6 +36,11 @@ func TestInstallationDraftIsIndependentAndKeepsLaunchSelection(t *testing.T) {
 	if err == nil || target != (instance.Instance{}) || !reflect.DeepEqual(failed, before) || !reflect.DeepEqual(state, before) {
 		t.Fatalf("failed planning allocated or modified state: %+v %v", failed, err)
 	}
+	state.Instances[0].GameDir = filepath.Join(root, "instance-2")
+	before = state.Clone()
+	if _, _, err := state.PrepareInstallation("reserved", "1.21.1", instance.LoaderVanilla, ""); err == nil || !reflect.DeepEqual(state, before) {
+		t.Fatal("another profile's missing game directory was available for installation")
+	}
 	first := config.State{Settings: instance.Settings{GameRoot: root}}
 	prepared, target, err := first.PrepareInstallation("first", "1.21.1", instance.LoaderVanilla, "")
 	if err != nil || prepared.Selected != 1 || target.ID != 1 || target.Revision != 1 || len(first.Instances) != 0 {

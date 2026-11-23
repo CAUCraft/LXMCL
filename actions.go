@@ -90,24 +90,25 @@ func (a *desktop) save(next launcher.State, checkID int, done func(error)) {
 		return
 	}
 	a.busy = true
+	i, found := next.Find(checkID)
+	check := checkID != 0 && found
+	_, registered := a.state.Find(checkID)
 	save := a.store.Save
-	if next.Settings.GameRoot != a.state.Settings.GameRoot {
+	switch {
+	case check && !registered:
+		save = func(state launcher.State) error { return a.store.RegisterInstance(state, i) }
+	case next.Settings.GameRoot != a.state.Settings.GameRoot:
 		save = a.store.SaveWithNewGameRoot
 	}
 	a.writes.Go(func() {
 		err := save(next)
-		var installed bool
-		if err == nil && checkID != 0 {
-			if i, ok := next.Find(checkID); ok {
-				installed = a.game.Installed(i)
-			}
-		}
+		installed := err == nil && check && a.game.Installed(i)
 		a.post(func() {
 			a.busy = false
 			if err == nil {
 				a.state = next
-				if checkID != 0 {
-					a.installed[checkID] = installed
+				if check {
+					a.installed[i.ID] = installed
 				}
 			}
 			done(err)
@@ -342,6 +343,7 @@ func (a *desktop) saveSettings() {
 		return
 	}
 	next := a.state.Clone()
+	rootChanged := settings.GameRoot != next.Settings.GameRoot
 	previousPlayer := next.Settings.Player
 	next.Settings = settings
 	player := next.Settings.Player
@@ -351,6 +353,9 @@ func (a *desktop) saveSettings() {
 	next.StationKey = a.state.StationKey
 	a.save(next, 0, func(err error) {
 		if err == nil {
+			if rootChanged {
+				a.install.err = ""
+			}
 			a.draft = next.Settings
 			a.memory = strconv.Itoa(next.Settings.Memory)
 			a.message("设置已保存", nil)

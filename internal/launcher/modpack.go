@@ -40,5 +40,5 @@ func ExportInstance(ctx context.Context, i Instance, folder, version string, sel
 	return modpack.Export(ctx, i, folder, version, selection)
 }
 func DuplicateFiles(ctx context.Context, source, target Instance, selection PortableFiles, store Store, next State) error {
-	return modpack.Duplicate(ctx, source, target, selection, func() error { return store.Save(next) })
+	return modpack.Duplicate(ctx, source, target, selection, func() error { return store.saveNewInstance(next, target) })
 }

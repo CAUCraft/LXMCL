@@ -36,8 +36,13 @@ func (s *State) Create(name, version string) error {
 	if id == math.MaxInt {
 		return i18n.Error("instance.id_exhausted")
 	}
-	i := instance.Instance{ID: id, Name: name, Version: version, Loader: instance.LoaderVanilla, Revision: 1,
-		GameDir: filepath.Join(s.Settings.GameRoot, fmt.Sprintf("instance-%d", id))}
+	dir := filepath.Join(s.Settings.GameRoot, fmt.Sprintf("instance-%d", id))
+	for _, other := range s.Instances {
+		if filepath.Clean(other.GameDir) == dir {
+			return i18n.Error("instance.directory_occupied")
+		}
+	}
+	i := instance.Instance{ID: id, Name: name, Version: version, Loader: instance.LoaderVanilla, Revision: 1, GameDir: dir}
 	s.NextID = id + 1
 	s.Instances = append(s.Instances, i)
 	s.Selected = i.ID

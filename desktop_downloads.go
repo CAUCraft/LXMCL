@@ -283,7 +283,7 @@ func (a *desktop) submitInstall(p *installView, defaultName string) {
 		return
 	}
 	p.err = ""
-	a.save(next, 0, func(err error) {
+	a.save(next, instance.ID, func(err error) {
 		if err != nil {
 			p.err = err.Error()
 			a.message("无法保存新实例", err)
