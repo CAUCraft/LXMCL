@@ -42,7 +42,7 @@ func (a *desktop) details(c *ui.Context, i launcher.Instance) {
 		a.instanceMenu(c.Key(i.ID), i, false)
 		ui.Column(c).Width(152).Shrink(0).Children(func() {
 			d := a.launchDrafts[i.ID]
-			if d != nil && d.revision == i.Revision && d.fields != launchFields(i.Launch) &&
+			if d != nil && d.revision == i.Revision && d.fields.changed(i.Launch) &&
 				a.running == nil && a.task.Stage == "" {
 				_, err := d.fields.options()
 				if err != nil && a.detailPage != detailLaunch {

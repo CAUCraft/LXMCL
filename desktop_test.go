@@ -565,6 +565,41 @@ func TestTaskCenterFiltersAndDisablesStaleRetry(t *testing.T) {
 
 }
 
+func TestInstanceLaunchModesRetainCustomDraft(t *testing.T) {
+	a, tt := testDesktop(t)
+	target := &a.state.Instances[1]
+	target.Launch = launcher.LaunchOptions{
+		JavaMode: launcher.JavaCustom, JavaPath: filepath.Join(t.TempDir(), "bin", "java"),
+		Display: launcher.DisplayResolution, Width: 1920, Height: 1080,
+	}
+	for _, label := range []string{
+		"实例", target.Name, "启动设置",
+		"自定义分辨率", "启动时全屏", "启动时全屏", "自定义分辨率",
+		"指定路径", "自动选择", "自动选择", "指定路径",
+	} {
+		if err := tt.Click(label); err != nil {
+			t.Fatal(err)
+		}
+	}
+	fields := a.launchDrafts[target.ID].fields
+	if got, err := fields.options(); err != nil || got != target.Launch {
+		t.Fatalf("switching modes changed custom settings: %+v, %v", got, err)
+	}
+	if _, ok := tt.Find("应用并启动"); ok {
+		t.Fatal("returning to the saved modes left a pending change")
+	}
+
+	// Hidden edits stay in the draft until the user applies or reverts it.
+	fields.display, fields.javaMode = launcher.DisplayFullscreen, launcher.JavaAuto
+	saved := launcher.LaunchOptions{Display: launcher.DisplayFullscreen, JavaMode: launcher.JavaAuto}
+	if fields.changed(saved) {
+		t.Fatal("hidden custom values marked unchanged settings as edited")
+	}
+	if got, err := fields.options(); err != nil || got != saved {
+		t.Fatalf("inactive custom values would be saved: %+v, %v", got, err)
+	}
+}
+
 func TestInstanceSettingsKeepDraftAndLaunchTargetSeparate(t *testing.T) {
 	a, tt := testDesktop(t)
 	tt.SetSize(820, 530)
