@@ -206,6 +206,8 @@ func (a *desktop) submitEditor() {
 			return
 		}
 		err = next.SetInstanceIcon(form.target.ID, form.target.Revision, form.icon.original, form.icon.encoded)
+	case "renameGroup":
+		err = next.RenameInstanceGroup(form.originalGroup, form.name)
 	case "group":
 		err = next.SetInstanceGroup(form.target.ID, form.target.Revision, form.originalGroup, form.name)
 	case "note":
@@ -309,6 +311,11 @@ func (a *desktop) submitEditor() {
 					a.instanceIcons = make(map[int]ui.ImageSource)
 				}
 				a.instanceIcons[form.target.ID] = form.icon.picture
+			}
+		case "renameGroup":
+			if a.libraryGroup != nil && *a.libraryGroup == form.originalGroup {
+				name := strings.TrimSpace(form.name)
+				a.libraryGroup = &name
 			}
 		case "group":
 			if a.libraryGroup != nil && *a.libraryGroup != "" && !slices.Contains(next.GroupNames(), *a.libraryGroup) {

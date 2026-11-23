@@ -39,7 +39,7 @@ func (a *desktop) chooseLibraryGroup(group *string) {
 }
 
 func groupLabel(name string) string {
-	if name == "全部分组" || name == "未分组" {
+	if name == "全部分组" || name == "未分组" || name == "重命名当前分组…" {
 		return "分组 · " + name
 	}
 	return name
@@ -61,8 +61,16 @@ func (a *desktop) libraryGroupPicker(c *ui.Context) {
 	for _, g := range groups {
 		options = append(options, field.SelectOption{Value: "group:" + g, Label: groupLabel(g)})
 	}
+	if a.libraryGroup != nil && *a.libraryGroup != "" {
+		options = append(options, field.SelectOption{Value: "rename", Label: "重命名当前分组…"})
+	}
 	selected := key
 	catalogPicker(c, &selected, options, "筛选实例分组", fallback, a.busy).Width(128)
+	if selected == "rename" && a.libraryGroup != nil {
+		name := *a.libraryGroup
+		a.form = editor{mode: "renameGroup", open: true, focus: true, name: name, originalGroup: name}
+		return
+	}
 	if selected != key {
 		if name, ok := strings.CutPrefix(selected, "group:"); ok {
 			a.chooseLibraryGroup(&name)
@@ -79,13 +87,18 @@ func (a *desktop) editGroup(i launcher.Instance) {
 
 func (a *desktop) groupEditor(c *ui.Context) bool {
 	display.Text(c, "分组名称", display.TextProps{Strong: true})
-	input := field.Input(c, &a.form.name, field.InputProps{Placeholder: "输入分组名，留空即为未分组"}).Label("分组名称").Disabled(a.busy)
+	placeholder := "输入分组名，留空即为未分组"
+	if a.form.mode == "renameGroup" {
+		placeholder = "输入新分组名称"
+	}
+	previous := a.form.name
+	input := field.Input(c, &a.form.name, field.InputProps{Placeholder: placeholder}).Label("分组名称").Disabled(a.busy)
 	if a.form.focus {
 		input.Focus()
 		a.form.focus = false
 	}
 	groups := a.state.GroupNames()
-	if len(groups) > 0 {
+	if a.form.mode == "group" && len(groups) > 0 {
 		ui.Row(c).Gap(8).Children(func() {
 			options := make([]field.SelectOption, 0, len(groups))
 			for _, g := range groups {
@@ -96,6 +109,9 @@ func (a *desktop) groupEditor(c *ui.Context) bool {
 				a.form.name = ""
 			}
 		})
+	}
+	if a.form.name != previous {
+		a.form.err = ""
 	}
 	if a.form.err != "" {
 		feedback.Alert(c, a.form.err, feedback.AlertProps{Type: feedback.Error})
