@@ -193,11 +193,11 @@ func (d *prismDraft) renderWorlds(c *ui.Context, disabled bool) {
 			muted(c, "没有存档目录").FontSize(12)
 			return
 		}
-		p.render(c.Key("prism-world-folders"), d.worldMode == prismSelectedWorlds, disabled)
+		p.render(c.Key("prism-world-folders"), d.worldMode == prismSelectedWorlds, disabled, "仅复制勾选目录及其内容")
 	})
 }
 
-func (p *prismWorldPreview) render(c *ui.Context, picking, disabled bool) {
+func (p *prismWorldPreview) render(c *ui.Context, picking, disabled bool, selectionHint string) {
 	if !p.known {
 		muted(c, "无法完整确认存档目录").FontSize(12)
 		return
@@ -219,7 +219,7 @@ func (p *prismWorldPreview) render(c *ui.Context, picking, disabled bool) {
 		p.list.Label = func(n int) string { return p.folders[n] }
 		ui.Column(c).Width(294).Gap(6).Children(func() {
 			if picking {
-				muted(c, "仅复制勾选目录及其内容").FontSize(12)
+				muted(c, selectionHint).FontSize(12)
 			}
 			ui.List(c, &p.list, len(p.folders)).
 				Height(float32(min(5, len(p.folders)) * rowHeight)).FillWidth().Rows(func(row ui.ListRow) {

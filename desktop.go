@@ -688,7 +688,7 @@ func (a *desktop) editor(c *ui.Context) {
 	case "duplicate":
 		title, okText = "复制实例", "创建副本"
 	case "prismExport":
-		title, okText = "导出 Prism / MultiMC 实例", "选择目标文件…"
+		title = "导出 Prism / MultiMC 实例"
 	case "export":
 		title, okText = "导出整合包", "选择保存位置…"
 	case "loader":
@@ -696,7 +696,7 @@ func (a *desktop) editor(c *ui.Context) {
 	}
 	submit := false
 	if feedback.Modal(c, &a.form.open, feedback.ModalProps{
-		Title: title, OkText: okText, CancelText: "取消", Width: width, NoFooter: a.form.loaders != nil || a.form.icon != nil || a.form.prism != nil || a.form.worlds != nil || a.form.groupMove != nil,
+		Title: title, OkText: okText, CancelText: "取消", Width: width, NoFooter: a.form.loaders != nil || a.form.icon != nil || a.form.prism != nil || a.form.prismExport != nil || a.form.worlds != nil || a.form.groupMove != nil,
 	}, func() {
 		ui.Column(c).Gap(12).Children(func() {
 			if p := a.form.groupMove; p != nil {
@@ -708,7 +708,7 @@ func (a *desktop) editor(c *ui.Context) {
 				return
 			}
 			if d := a.form.prismExport; d != nil {
-				a.prismExportEditor(c, d)
+				submit = a.prismExportEditor(c, d)
 				return
 			}
 			if a.form.prism != nil {
