@@ -46,6 +46,6 @@ func (a *desktop) libraryLoaderPicker(c *ui.Context) {
 	if selected != key {
 		next := a.state.Clone()
 		next.LibraryLoader = selected
-		a.saveLibraryFilters(next, a.libraryGroup, selected)
+		a.saveLibraryFilters(next, a.libraryGroup, selected, a.libraryVersion)
 	}
 }

@@ -183,6 +183,7 @@ type desktop struct {
 	focusSearch                      bool
 	instanceFilter                   int
 	libraryLoader                    string
+	libraryVersion                   string
 	libraryGroup                     *string
 	listMenuID                       int
 	taskFilter                       int
