@@ -19,19 +19,20 @@ import (
 )
 
 type worldBrowser struct {
-	entries  []saves.World
-	visible  []saves.World
-	query    string
-	order    string
-	list     ui.ListState
-	selected int
-	loading  bool
-	cancel   context.CancelFunc
-	opening  bool
-	openErr  string
-	retry    *taskRecord
-	copy     *worldCopyView
-	packs    *worldPacksView
+	entries   []saves.World
+	visible   []saves.World
+	query     string
+	order     string
+	list      ui.ListState
+	selected  int
+	loading   bool
+	cancel    context.CancelFunc
+	opening   bool
+	openErr   string
+	retry     *taskRecord
+	copy      *worldCopyView
+	packs     *worldPacksView
+	thumbnail *worldThumbnail
 }
 
 func (a *desktop) browseWorlds(i launcher.Instance, retry *taskRecord) {
@@ -41,6 +42,7 @@ func (a *desktop) browseWorlds(i launcher.Instance, retry *taskRecord) {
 	if old := a.form.worlds; old != nil {
 		old.closeWorldCopy()
 		old.closeWorldPacks()
+		old.closeWorldThumbnail()
 		if old.cancel != nil {
 			old.cancel()
 		}
@@ -244,7 +246,9 @@ func (a *desktop) worldEditor(c *ui.Context) {
 		p.openErr = ""
 	}
 	if selected && !stale && !p.loading && a.form.err == "" {
-		muted(c, worldSavedVersionLabel(world)).FontSize(12).SingleLine().Ellipsis("…")
+		a.worldSelectionDetails(c, p, i, world)
+	} else {
+		p.closeWorldThumbnail()
 	}
 	if p.openErr != "" && !stale {
 		feedback.Alert(c, "无法打开世界目录", feedback.AlertProps{Type: feedback.Warning, Variant: feedback.Plain, Description: p.openErr})

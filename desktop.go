@@ -827,6 +827,7 @@ func (a *desktop) editor(c *ui.Context) {
 	if p := a.form.worlds; !a.form.open && p != nil {
 		p.closeWorldCopy()
 		p.closeWorldPacks()
+		p.closeWorldThumbnail()
 		if p.cancel != nil {
 			p.cancel()
 			p.cancel = nil
