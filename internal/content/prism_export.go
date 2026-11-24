@@ -15,6 +15,7 @@ import (
 	"github.com/CAUCraft/LXMCL/internal/distribution"
 	"github.com/CAUCraft/LXMCL/internal/i18n"
 	"github.com/CAUCraft/LXMCL/internal/instance"
+	"github.com/CAUCraft/LXMCL/internal/nbt"
 	"github.com/CAUCraft/LXMCL/internal/saves"
 	"github.com/CAUCraft/LXMCL/internal/storage"
 	"github.com/CAUCraft/LXMCL/internal/tasks"
@@ -28,6 +29,11 @@ var unescapePrismName = strings.NewReplacer("\\\\", "\\", "\\n", "\n", "\\t", "\
 // ExportPrismZIP publishes a new archive containing only portable vanilla configuration
 // and the optional game data selected by the player.
 func ExportPrismZIP(ctx context.Context, i instance.Instance, filename string, worlds, options bool, report func(tasks.Progress)) error {
+	return ExportPrismFiles(ctx, i, filename, PrismFiles{Worlds: worlds, Options: options}, report)
+}
+
+// ExportPrismFiles writes the selected game files to a new Prism or MultiMC ZIP.
+func ExportPrismFiles(ctx context.Context, i instance.Instance, filename string, selected PrismFiles, report func(tasks.Progress)) error {
 	if err := i.Validate(); err != nil {
 		return err
 	}
@@ -67,12 +73,17 @@ func ExportPrismZIP(ctx context.Context, i instance.Instance, filename string, w
 			}
 			return transfer.WriteZIPFile(ctx, root, z, source, entry, info)
 		}
-		if options {
+		if selected.Options {
 			if err := addPrismOptions(i.GameDir, add); err != nil {
 				return err
 			}
 		}
-		if worlds {
+		if selected.Servers {
+			if err := addPrismServerList(i.GameDir, add); err != nil {
+				return i18n.Error("instance.duplicate_file_failed", serverListPath.name, err)
+			}
+		}
+		if selected.Worlds {
 			err := saves.VisitWorldFiles(ctx, i.GameDir, func(root *os.Root, name string, info fs.FileInfo) error {
 				_, relative, _ := strings.Cut(name, "/")
 				if !prismWorldData(relative) {
@@ -132,6 +143,29 @@ func addPrismOptions(gameDir string, add func(*os.Root, string, string, fs.FileI
 		return err
 	}
 	return add(root, "options.txt", "options.txt", info)
+}
+
+func addPrismServerList(gameDir string, add func(*os.Root, string, string, fs.FileInfo) error) error {
+	root, err := os.OpenRoot(gameDir)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	name := serverListPath.name
+	info, err := root.Lstat(name)
+	if err != nil {
+		return err
+	}
+	if info.Size() > nbt.MaxBytes {
+		return i18n.Error("server.game_list_large")
+	}
+	if err := add(root, name, name, info); err != nil {
+		return err
+	}
+	if !currentPrismServerFile(root, info) {
+		return i18n.Error("instance.duplicate_source_changed")
+	}
+	return nil
 }
 
 var playerProgressFile = regexp.MustCompile(`(?i)^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}[.]json$`)

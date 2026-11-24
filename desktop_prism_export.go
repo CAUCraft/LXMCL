@@ -15,7 +15,7 @@ import (
 	"github.com/lobehub/lobe-mygo/pkg/lucide"
 )
 
-type prismExportDraft struct{ worlds, options bool }
+type prismExportDraft struct{ worlds, options, servers bool }
 
 func (a *desktop) prismExportEditor(c *ui.Context, d *prismExportDraft) {
 	i := a.form.target
@@ -31,6 +31,8 @@ func (a *desktop) prismExportEditor(c *ui.Context, d *prismExportDraft) {
 	muted(c, memory+" · "+window).FontSize(13)
 	choice.Checkbox(c, &d.worlds, "存档（原版世界数据）", choice.CheckboxProps{}).Disabled(a.pickerBusy)
 	choice.Checkbox(c, &d.options, "游戏选项（options.txt）", choice.CheckboxProps{}).Disabled(a.pickerBusy)
+	choice.Checkbox(c, &d.servers, "游戏内服务器列表", choice.CheckboxProps{}).Disabled(a.pickerBusy)
+	muted(c, "勾选后，服务器地址将写入 ZIP。").FontSize(12)
 	if d.worlds {
 		muted(c, "数据包、脚本和额外文件留在原实例。").FontSize(12)
 	}
@@ -44,7 +46,7 @@ func (a *desktop) savePrismExport(d *prismExportDraft) {
 		return
 	}
 	i := a.form.target
-	worlds, options := d.worlds, d.options
+	files := content.PrismFiles{Worlds: d.worlds, Options: d.options, Servers: d.servers}
 	name := i.Name + ".zip"
 	if !storage.ValidFilename(name) {
 		name = fmt.Sprintf("instance-%d.zip", i.ID)
@@ -72,7 +74,7 @@ func (a *desktop) savePrismExport(d *prismExportDraft) {
 			}
 			a.form.open = false
 			a.runContentTask(i, "导出实例 ZIP", nil, func(ctx context.Context, report func(launcher.Progress)) error {
-				return content.ExportPrismZIP(ctx, i, filename, worlds, options, report)
+				return content.ExportPrismFiles(ctx, i, filename, files, report)
 			})
 		})
 	}()
