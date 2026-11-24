@@ -4,8 +4,10 @@ import (
 	"archive/zip"
 	"context"
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -31,6 +33,10 @@ func TestPrismImportLimitsAndRechecksPreview(t *testing.T) {
 	write("instance.cfg", "[General]\nname=Island\nOverrideMemory=true\nMaxMemAlloc=3072\nOverrideWindow=false\nMinecraftWinWidth=1600\n")
 	write("mmc-pack.json", pack("org.lwjgl3"))
 	write("minecraft/saves/Island/level.dat", "sample world")
+	write("minecraft/saves/notes.txt", "not a folder")
+	if err := os.Mkdir(filepath.Join(dir, "minecraft", "saves", "空目录"), 0700); err != nil {
+		t.Fatal(err)
+	}
 	write("minecraft/options.txt", "fov:0.5")
 	write("minecraft/servers.dat", "synthetic list bytes")
 	write("minecraft/servers.dat_old", "previous list")
@@ -39,6 +45,7 @@ func TestPrismImportLimitsAndRechecksPreview(t *testing.T) {
 	if err != nil || !p.Worlds || !p.Options || !p.Servers || p.Name != "Island" || p.Version != "1.21.4" || p.Launch.Memory != 3072 || p.Launch.Width != 0 {
 		t.Fatal(p, err)
 	}
+	assertPrismWorldFolders(t, p, "Island", "空目录")
 	dst := filepath.Join(t.TempDir(), "copy")
 	commit := func() error { return nil }
 	if err := CopyPrismInstance(t.Context(), p, dst, true, false, commit, nil); err != nil {
@@ -49,6 +56,9 @@ func TestPrismImportLimitsAndRechecksPreview(t *testing.T) {
 		t.Fatal(entries, err)
 	}
 	if b, e := os.ReadFile(filepath.Join(dst, "saves", "Island", "level.dat")); e != nil || string(b) != "sample world" {
+		t.Fatal(string(b), e)
+	}
+	if b, e := os.ReadFile(filepath.Join(dst, "saves", "notes.txt")); e != nil || string(b) != "not a folder" {
 		t.Fatal(string(b), e)
 	}
 	if err := CopyPrismInstance(t.Context(), p, dst, false, true, commit, nil); err == nil {
@@ -77,6 +87,16 @@ func TestPrismImportLimitsAndRechecksPreview(t *testing.T) {
 	}
 	if err := CopyPrismFiles(t.Context(), p, lostOutput, PrismFiles{}, commit, nil); err != nil {
 		t.Fatalf("change to an unselected directory list invalidated import: %v", err)
+	}
+	for _, name := range []string{"Island", "空目录"} {
+		if err := os.RemoveAll(filepath.Join(dir, "minecraft", "saves", name)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if filesOnly, err := ReadPrismInstance(t.Context(), dir); err != nil || !filesOnly.Worlds {
+		t.Fatal(filesOnly, err)
+	} else {
+		assertPrismWorldFolders(t, filesOnly)
 	}
 	write("instance.cfg", "name=Different")
 	changed := filepath.Join(t.TempDir(), "changed")
@@ -107,12 +127,21 @@ func TestPrismZIPRechecksAndStagesSelectedFiles(t *testing.T) {
 			"instance.cfg":                      {Data: []byte("name=Island\n")},
 			"mmc-pack.json":                     {Data: []byte(`{"formatVersion":1,"components":[{"uid":"net.minecraft","version":"1.21.4"}]}`)},
 			".minecraft/saves/Island/level.dat": {Data: []byte(world)},
+			".minecraft/saves/Empty":            {Mode: fs.ModeDir},
+			".minecraft/saves/notes.txt":        {Data: []byte("not a folder")},
 			".minecraft/options.txt":            {Data: []byte("music:0.25")},
 			".minecraft/servers.dat":            {Data: []byte(servers)},
 			".minecraft/servers.dat_old":        {Data: []byte("previous list")},
 			".minecraft/mods/notes.txt":         {Data: []byte("not selected")},
 		}
-		if err := errors.Join(z.AddFS(files), z.Close(), f.Close()); err != nil {
+		if err := z.AddFS(files); err != nil {
+			t.Fatal(err)
+		}
+		// A ZIP may have nested files without explicit directory entries.
+		if _, err := z.Create(".minecraft/saves/隐式/region/ordinary.dat"); err != nil {
+			t.Fatal(err)
+		}
+		if err := errors.Join(z.Close(), f.Close()); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -122,6 +151,7 @@ func TestPrismZIPRechecksAndStagesSelectedFiles(t *testing.T) {
 	if err != nil || !p.Worlds || !p.Options || !p.Servers || p.Version != "1.21.4" {
 		t.Fatal(p, err)
 	}
+	assertPrismWorldFolders(t, p, "Empty", "Island", "隐式")
 	parent := t.TempDir()
 	dst := filepath.Join(parent, "new")
 	commit := func() error { return nil }
@@ -180,5 +210,13 @@ func assertPrismServerList(t *testing.T, dir, want string) {
 	data, err := os.ReadFile(filepath.Join(dir, "servers.dat"))
 	if err != nil || string(data) != want {
 		t.Fatal(string(data), err)
+	}
+}
+
+func assertPrismWorldFolders(t *testing.T, preview PrismInstance, want ...string) {
+	t.Helper()
+	got, complete := preview.WorldFolders()
+	if !complete || !slices.Equal(got, want) {
+		t.Fatalf("WorldFolders = %q, %v, want %q and a complete list", got, complete, want)
 	}
 }
