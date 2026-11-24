@@ -15,7 +15,7 @@ type installDirectoryCheck struct {
 	err      error
 }
 
-func (a *desktop) installDestinationPreview(c *ui.Context, p *installView, loader string) bool {
+func (a *desktop) installDestinationPreview(c *ui.Context, p *installView, loader string) (string, bool) {
 	target, err := a.state.PreviewNewInstance(a.installDraftName(p, loader), p.version)
 	if target.GameDir != "" {
 		settingsRow(c, "目标目录（预览）", func() {
@@ -25,14 +25,14 @@ func (a *desktop) installDestinationPreview(c *ui.Context, p *installView, loade
 	if err != nil {
 		p.directory = nil
 		feedback.Alert(c, err.Error(), feedback.AlertProps{Type: feedback.Warning})
-		return false
+		return target.GameDir, false
 	}
 
 	check := p.directory
 	if check == nil || check.path != target.GameDir {
 		p.directory = nil
 		if a.ctx == nil {
-			return true
+			return target.GameDir, true
 		}
 		a.checkInstallDirectory(p, target.GameDir)
 		check = p.directory
@@ -60,7 +60,7 @@ func (a *desktop) installDestinationPreview(c *ui.Context, p *installView, loade
 		}
 		feedback.Alert(c, conflict, feedback.AlertProps{Type: feedback.Warning})
 	}
-	return !check.occupied
+	return target.GameDir, !check.occupied
 }
 
 func (a *desktop) checkInstallDirectory(p *installView, path string) {

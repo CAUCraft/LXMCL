@@ -105,6 +105,7 @@ type installView struct {
 	java                    *releaseJavaPreview
 	cache                   *installCachePreview
 	directory               *installDirectoryCheck
+	space                   *installSpaceCheck
 	existing                *installExistingView
 	scroll                  ui.ScrollState
 }
@@ -152,7 +153,7 @@ func (a *desktop) installPage(c *ui.Context) {
 			muted(c, "上次同步的正式版列表 · 仅可创建原版实例").FontSize(13)
 		}
 		if !hasMatches {
-			p.cache, p.directory = nil, nil
+			p.cache, p.directory, p.space = nil, nil, nil
 			ui.Column(c).Grow(1).MinWidth(0).Gap(10).Justify(ui.Center).Children(func() {
 				switch {
 				case a.catalogBusy && !cached:
@@ -263,7 +264,9 @@ func (a *desktop) installDetails(c *ui.Context, p *installView, versions []launc
 				p.err = ""
 			}
 			layout.Divider(c, layout.DividerProps{})
-			targetReady = a.installDestinationPreview(c, p, loader)
+			directory, ready := a.installDestinationPreview(c, p, loader)
+			targetReady = ready
+			a.installSpacePreview(c, p, directory)
 			a.releaseJavaDetails(c, p, versions, cached)
 			a.installCacheDetails(c, p, loader)
 			if !cached && a.catalogErr != "" {
