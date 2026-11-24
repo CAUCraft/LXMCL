@@ -196,18 +196,7 @@ func (a *desktop) configureLoader(i launcher.Instance) {
 }
 
 func (a *desktop) inspect(i launcher.Instance) {
-	if a.form.open && a.form.worlds != nil && a.form.target.ID != i.ID {
-		a.form.open = false
-	}
-	if a.content.savedPacks != nil {
-		a.closeSavedPacks()
-	}
-	if a.content.restoreMods != nil {
-		a.closeModRestore()
-	}
-	if a.content.packPreview != nil {
-		a.closePackPreview()
-	}
+	a.install.existing = nil
 	if !matchesInstanceSearch(i, strings.ToLower(strings.TrimSpace(a.query))) {
 		a.query, a.scroll.Y = "", 0
 	}
@@ -222,6 +211,22 @@ func (a *desktop) inspect(i launcher.Instance) {
 	}
 	if !a.matchesLibraryVersion(i) {
 		a.libraryVersion, a.scroll.Y = "", 0
+	}
+	a.openInstanceDetails(i)
+}
+
+func (a *desktop) openInstanceDetails(i launcher.Instance) {
+	if a.form.open && a.form.worlds != nil && a.form.target.ID != i.ID {
+		a.form.open = false
+	}
+	if a.content.savedPacks != nil {
+		a.closeSavedPacks()
+	}
+	if a.content.restoreMods != nil {
+		a.closeModRestore()
+	}
+	if a.content.packPreview != nil {
+		a.closePackPreview()
 	}
 	a.page, a.inspected = pageLibrary, i.ID
 	a.detailPage = detailOverview

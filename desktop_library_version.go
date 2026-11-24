@@ -11,7 +11,11 @@ import (
 )
 
 func (a *desktop) matchesLibraryVersion(i launcher.Instance) bool {
-	return a.libraryVersion == "" || i.Version == a.libraryVersion
+	return matchesInstanceVersion(i, a.libraryVersion)
+}
+
+func matchesInstanceVersion(i launcher.Instance, version string) bool {
+	return version == "" || i.Version == version
 }
 
 func (a *desktop) libraryVersionPicker(c *ui.Context) {
