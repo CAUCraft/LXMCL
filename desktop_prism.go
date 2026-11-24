@@ -19,12 +19,20 @@ import (
 	"github.com/lobehub/lobe-mygo/pkg/display"
 	"github.com/lobehub/lobe-mygo/pkg/feedback"
 	"github.com/lobehub/lobe-mygo/pkg/field"
+	"github.com/lobehub/lobe-mygo/pkg/overlay"
 )
 
 type prismDraft struct {
 	source                            content.PrismInstance
 	group                             string
 	worlds, options, servers, reading bool
+	worldPreview                      prismWorldPreview
+}
+
+type prismWorldPreview struct {
+	folders     []string
+	known, open bool
+	list        ui.ListState
 }
 
 func (a *desktop) startPrismImport() {
@@ -57,6 +65,7 @@ func (a *desktop) choosePrismSource(d *prismDraft, archive bool) {
 					return
 				}
 				d.source, d.worlds, d.options = p, p.Worlds, p.Options
+				d.worldPreview.folders, d.worldPreview.known = p.WorldFolders()
 				a.form.name = availableInstanceName(a.state, p.Name, "原版实例")
 			})
 		}()
@@ -90,7 +99,13 @@ func (a *desktop) prismEditor(c *ui.Context) {
 			}
 		})
 		if p.Worlds {
-			choice.Checkbox(c, &d.worlds, "存档（saves）", choice.CheckboxProps{})
+			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+				choice.Checkbox(c, &d.worlds, "存档（saves）", choice.CheckboxProps{})
+				ui.Spacer(c).Grow(1)
+				d.worldPreview.render(c.Key("prism-world-folders"), wait)
+			})
+		} else if p.Options || p.Servers {
+			muted(c, "没有存档目录").FontSize(12)
 		}
 		if p.Options {
 			choice.Checkbox(c, &d.options, "游戏选项（options.txt）", choice.CheckboxProps{})
@@ -132,6 +147,33 @@ func (a *desktop) prismEditor(c *ui.Context) {
 		if button(c, "确认导入", action.Primary, wait || p.Version == "" || groupMissing || strings.TrimSpace(a.form.name) == "") {
 			a.importPrism(d)
 		}
+	})
+}
+
+func (p *prismWorldPreview) render(c *ui.Context, disabled bool) {
+	if !p.known {
+		muted(c, "无法完整确认存档目录").FontSize(12)
+		return
+	}
+	if len(p.folders) == 0 {
+		muted(c, "没有存档目录").FontSize(12)
+		return
+	}
+	count := fmt.Sprintf("%d 个存档目录", len(p.folders))
+	anchor := action.Button(c, count, action.ButtonProps{Variant: action.Default}).Label("查看存档目录").Disabled(disabled)
+	overlay.Popover(c, anchor, &p.open, overlay.PopoverProps{Placement: overlay.Bottom}, func() {
+		const rowHeight = 28
+		p.list.Label = func(n int) string { return p.folders[n] }
+		ui.Column(c).Width(294).Children(func() {
+			ui.List(c, &p.list, len(p.folders)).
+				Height(float32(min(5, len(p.folders)) * rowHeight)).FillWidth().Rows(func(row ui.ListRow) {
+				rc := row.Context
+				folder := p.folders[row.Index]
+				ui.Row(rc).Height(rowHeight).Padding(0, 8).AlignItems(ui.Center).Children(func() {
+					ui.Text(rc, folder).SingleLine().Ellipsis("…").Tooltip(folder)
+				})
+			})
+		})
 	})
 }
 

@@ -10,12 +10,14 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/CAUCraft/LXMCL/internal/i18n"
 	"github.com/CAUCraft/LXMCL/internal/instance"
 	"github.com/CAUCraft/LXMCL/internal/nbt"
+	"github.com/CAUCraft/LXMCL/internal/storage"
 	"github.com/CAUCraft/LXMCL/internal/tasks"
 )
 
@@ -28,6 +30,15 @@ type PrismInstance struct {
 	archiveRoot                       string // "." or the single wrapper folder in a ZIP; empty for a directory.
 	archiveIndex                      [sha256.Size]byte
 	serverList                        fs.FileInfo // Directory source identity. ZIP previews bind the archive index instead.
+	worldFolders                      *[]string   // For display only. A nil pointer means enumeration was unavailable.
+}
+
+// WorldFolders returns the names of direct directories in saves and whether the list is complete.
+func (p PrismInstance) WorldFolders() ([]string, bool) {
+	if p.worldFolders == nil {
+		return nil, false
+	}
+	return slices.Clone(*p.worldFolders), true
 }
 
 // PrismFiles identifies the game files selected for an import or export.
@@ -45,7 +56,50 @@ func ReadPrismInstance(ctx context.Context, dir string) (PrismInstance, error) {
 		return p, err
 	}
 	defer root.Close()
-	return readPrismProfile(ctx, root.FS(), PrismInstance{Source: filepath.Clean(dir)}, filepath.Base(dir))
+	p, err = readPrismProfile(ctx, root.FS(), PrismInstance{Source: filepath.Clean(dir)}, filepath.Base(dir))
+	if err == nil && p.Worlds {
+		p.worldFolders = readPrismWorldFolders(ctx, root, filepath.Join(p.GameFolder, "saves"))
+		err = ctx.Err()
+	}
+	return p, err
+}
+
+func readPrismWorldFolders(ctx context.Context, root *os.Root, name string) *[]string {
+	dir, err := root.Open(name)
+	if err != nil {
+		return nil
+	}
+	defer dir.Close()
+	before, err := dir.Stat()
+	if err != nil || !before.IsDir() {
+		return nil
+	}
+	var folders []string
+	count := 0
+	for ctx.Err() == nil {
+		entries, err := dir.ReadDir(min(128, storage.MaxPackEntries+1-count))
+		count += len(entries)
+		if count > storage.MaxPackEntries || (err != nil && !errors.Is(err, io.EOF)) {
+			return nil
+		}
+		for _, entry := range entries {
+			if !storage.ValidPortablePath("saves/"+entry.Name()) || (!entry.IsDir() && !entry.Type().IsRegular()) {
+				return nil
+			}
+			if entry.IsDir() {
+				folders = append(folders, entry.Name())
+			}
+		}
+		if errors.Is(err, io.EOF) {
+			after, err := root.Lstat(name)
+			if err != nil || !after.IsDir() || !os.SameFile(before, after) || !after.ModTime().Equal(before.ModTime()) {
+				return nil
+			}
+			slices.Sort(folders)
+			return &folders
+		}
+	}
+	return nil
 }
 
 func readPrismProfile(ctx context.Context, root fs.FS, p PrismInstance, fallbackName string) (PrismInstance, error) {
@@ -223,6 +277,7 @@ func CopyPrismFiles(ctx context.Context, p PrismInstance, destination string, se
 	if (selected.Worlds && !p.Worlds) || (selected.Options && !p.Options) || (selected.Servers && !p.Servers) {
 		return i18n.Error("prism.changed")
 	}
+	p.worldFolders = nil // The display-only enumeration does not participate in the existing source check.
 	if p.archiveRoot != "" {
 		return copyPrismZIP(ctx, p, destination, selected, commit, report)
 	}

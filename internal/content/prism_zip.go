@@ -6,9 +6,11 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/CAUCraft/LXMCL/internal/distribution"
@@ -21,9 +23,25 @@ import (
 // ReadPrismZIP previews metadata without extracting to disk.
 func ReadPrismZIP(ctx context.Context, filename string) (PrismInstance, error) {
 	var preview PrismInstance
-	err := withPrismZIP(ctx, filename, func(p PrismInstance, _ *zip.Reader) error {
+	err := withPrismZIP(ctx, filename, func(p PrismInstance, z *zip.Reader) error {
+		if p.Worlds {
+			folders := make(map[string]struct{})
+			prefix := path.Join(p.archiveRoot, p.GameFolder, "saves") + "/"
+			for _, entry := range z.File {
+				if err := ctx.Err(); err != nil {
+					return err
+				}
+				if name, inSaves := strings.CutPrefix(entry.Name, prefix); inSaves {
+					if folder, _, inFolder := strings.Cut(name, "/"); inFolder {
+						folders[folder] = struct{}{}
+					}
+				}
+			}
+			names := slices.Sorted(maps.Keys(folders))
+			p.worldFolders = &names
+		}
 		preview = p
-		return nil
+		return ctx.Err()
 	})
 	return preview, err
 }
