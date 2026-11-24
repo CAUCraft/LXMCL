@@ -130,7 +130,8 @@ func (p *worldBrowser) filter() {
 	if query != "" {
 		p.visible = nil
 		for _, world := range p.entries {
-			if strings.Contains(strings.ToLower(world.Folder()), query) {
+			if strings.Contains(strings.ToLower(world.Folder()), query) ||
+				strings.Contains(strings.ToLower(world.LevelName()), query) {
 				p.visible = append(p.visible, world)
 			}
 		}
@@ -187,7 +188,7 @@ func (a *desktop) worldEditor(c *ui.Context) {
 			queryBefore, orderBefore := p.query, p.order
 			ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
 				ui.Column(c).Grow(1).MinWidth(0).Children(func() {
-					field.SearchBar(c, &p.query, field.SearchBarProps{Placeholder: "搜索世界目录"}).Label("搜索世界目录")
+					field.SearchBar(c, &p.query, field.SearchBarProps{Placeholder: "搜索世界名或目录名"}).Label("搜索世界名或目录名")
 				})
 				field.Select(c, &p.order, field.SelectProps{Options: []field.SelectOption{
 					{Value: "", Label: "按目录名"},
@@ -199,9 +200,10 @@ func (a *desktop) worldEditor(c *ui.Context) {
 			}
 		}
 		if len(p.visible) == 0 {
-			muted(c, "没有匹配的世界目录。")
+			muted(c, "没有匹配的世界。")
 		} else {
 			p.list.Selected = &p.selected
+			p.list.Key = func(idx int) any { return p.visible[idx].Folder() }
 			p.list.Label = func(idx int) string { return p.visible[idx].Folder() }
 			maxRows := 5
 			if p.openErr != "" {
