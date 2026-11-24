@@ -27,22 +27,32 @@ func failedOrCanceled(row taskRecord) bool {
 	return row.Status == taskFailed || row.Status == taskCanceled
 }
 
-func (a *desktop) noticeTaskFiltered() bool {
-	if a.taskFilter == 1 && a.noticeTaskKey != "" {
+func (a *desktop) noticeTask() (taskRecord, bool) {
+	if a.noticeTaskKey != "" {
 		for _, row := range a.history {
 			if taskKey(row) == a.noticeTaskKey {
-				return !failedOrCanceled(row)
+				return row, true
 			}
 		}
 	}
-	return false
+	return taskRecord{}, false
+}
+
+func (a *desktop) noticeTaskFiltered() bool {
+	row, ok := a.noticeTask()
+	return ok && !a.matchesTaskHistory(row)
 }
 
 func (a *desktop) openNoticeTask() {
 	if a.noticeTaskKey != "" {
 		a.browsedTask = a.noticeTaskKey
-		if a.noticeTaskFiltered() {
-			a.taskFilter = 0
+		if row, ok := a.noticeTask(); ok {
+			if a.taskFilter == 1 && !failedOrCanceled(row) {
+				a.taskFilter = 0
+			}
+			if a.taskInstanceFilter != row.InstanceID {
+				a.taskInstanceFilter = 0
+			}
 		}
 	}
 	a.openTasks()
@@ -103,20 +113,24 @@ func (a *desktop) tasks(c *ui.Context) {
 			ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
 				display.Text(c, "历史记录", display.TextProps{Heading: 4})
 				ui.Spacer(c).Grow(1)
+				a.taskHistoryInstancePicker(c.Key("task-instance-filter"))
 				action.Segmented(c, &a.taskFilter, []string{"全部任务", "失败 / 取消"},
 					action.SegmentedProps{Size: theme.Small}).Label("历史任务筛选")
 			})
-			visible := a.history
-			if a.taskFilter == 1 {
-				visible = nil
-				for _, row := range a.history {
-					if failedOrCanceled(row) {
-						visible = append(visible, row)
-					}
-				}
-			}
+			visible := a.visibleTaskHistory()
 			if len(visible) == 0 {
-				emptyPanel(c, lucide.CircleCheck(), "没有失败或取消的任务")
+				title := "没有匹配的历史任务"
+				if a.taskInstanceFilter == 0 {
+					title = "没有失败或取消的任务"
+				}
+				sectionPane(c).Padding(8, 14).Children(func() {
+					display.Empty(c, display.EmptyProps{Icon: lucide.SearchX(), Title: title, Action: func() {
+						if button(c, "清除筛选", action.Default, false) {
+							a.taskFilter, a.taskInstanceFilter = 0, 0
+							c.Invalidate()
+						}
+					}})
+				})
 				return
 			}
 			a.taskHistoryPane(c, visible)
