@@ -5,10 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/CAUCraft/LXMCL/internal/content"
+	"github.com/CAUCraft/LXMCL/internal/i18n"
 	"github.com/CAUCraft/LXMCL/internal/launcher"
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
@@ -21,6 +23,7 @@ import (
 
 type prismDraft struct {
 	source                   content.PrismInstance
+	group                    string
 	worlds, options, reading bool
 }
 
@@ -64,6 +67,7 @@ func (a *desktop) prismEditor(c *ui.Context) {
 	d := a.form.prism
 	wait := d.reading || a.pickerBusy || a.busy
 	p := d.source
+	groups := a.state.GroupNames()
 	ui.Row(c).Gap(8).Children(func() {
 		if button(c, "选择实例目录…", action.Default, wait) {
 			a.choosePrismSource(d, false)
@@ -76,10 +80,14 @@ func (a *desktop) prismEditor(c *ui.Context) {
 		flightLoading(c, "正在读取实例配置…")
 	} else if p.Version != "" {
 		display.Text(c, "Minecraft "+p.Version+" · 原版", display.TextProps{Strong: true})
-		muted(c, p.Source).FontSize(12).Ellipsis("…")
+		muted(c, p.Source).FontSize(12).SingleLine().Ellipsis("…")
 		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-			display.Text(c, "实例名称", display.TextProps{})
+			display.Text(c, "实例名称", display.TextProps{}).SingleLine().Shrink(0)
 			field.Input(c, &a.form.name, field.InputProps{Placeholder: "实例名称"}).Label("导入后的实例名称").Grow(1).MinWidth(0)
+			if len(groups) > 0 || d.group != "" {
+				display.Text(c, "分组", display.TextProps{}).SingleLine().Shrink(0)
+				groupDestinationPicker(c.Key("prism-group"), &d.group, groups, "选择导入实例分组", wait).Width(140).Shrink(0)
+			}
 		})
 		if p.Worlds {
 			choice.Checkbox(c, &d.worlds, "存档（saves）", choice.CheckboxProps{})
@@ -109,12 +117,16 @@ func (a *desktop) prismEditor(c *ui.Context) {
 	if a.form.err != "" {
 		feedback.Alert(c, a.form.err, feedback.AlertProps{Type: feedback.Error})
 	}
+	groupMissing := d.group != "" && !slices.Contains(groups, d.group)
+	if groupMissing {
+		feedback.Alert(c, i18n.Text("instance.group_missing"), feedback.AlertProps{Type: feedback.Warning})
+	}
 	muted(c, "创建独立实例。账号、Java 和启动命令保留在原启动器。").FontSize(12)
 	ui.Row(c).Gap(8).Justify(ui.End).Children(func() {
 		if button(c, "取消", action.Default, false) {
 			a.form.open = false
 		}
-		if button(c, "确认导入", action.Primary, wait || p.Version == "" || strings.TrimSpace(a.form.name) == "") {
+		if button(c, "确认导入", action.Primary, wait || p.Version == "" || groupMissing || strings.TrimSpace(a.form.name) == "") {
 			a.importPrism(d)
 		}
 	})
@@ -122,6 +134,9 @@ func (a *desktop) prismEditor(c *ui.Context) {
 
 func (a *desktop) importPrism(d *prismDraft) {
 	if a.ctx == nil || !a.ready || a.busy || a.pickerBusy || d.reading || !a.form.open || a.form.prism != d {
+		return
+	}
+	if d.group != "" && !slices.Contains(a.state.GroupNames(), d.group) {
 		return
 	}
 	p, worlds, opts := d.source, d.worlds, d.options
@@ -132,6 +147,9 @@ func (a *desktop) importPrism(d *prismDraft) {
 	}
 	target.Launch = p.Launch
 	next.Instances[len(next.Instances)-1] = target
+	if d.group != "" {
+		next.InstanceGroups[target.ID] = d.group
+	}
 	ctx, cancel := context.WithCancel(a.ctx)
 	store, game := a.store, a.game
 	a.form.open = false
