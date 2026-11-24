@@ -640,7 +640,7 @@ func (a *desktop) instanceStatus(i launcher.Instance) (string, display.TagColor)
 	case a.installed[i.ID]:
 		return "已缓存", display.TagSuccess
 	default:
-		return "尚未安装", display.TagGray
+		return "待下载", display.TagGray
 	}
 }
 

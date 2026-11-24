@@ -252,8 +252,11 @@ func (a *desktop) installDetails(c *ui.Context, p *installView) {
 	layout.Divider(c, layout.DividerProps{})
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Justify(ui.End).Children(func() {
 		locked := a.busy || a.running != nil || !p.validLoader() || groupMissing
+		if button(c, "仅创建实例", action.Default, locked) {
+			a.submitInstall(p, false)
+		}
 		if button(c, "安装实例", action.Primary, locked) {
-			a.submitInstall(p, a.installName(p))
+			a.submitInstall(p, true)
 		}
 	})
 }
@@ -272,13 +275,13 @@ func (a *desktop) installName(p *installView) string {
 	return candidate
 }
 
-func (a *desktop) submitInstall(p *installView, defaultName string) {
+func (a *desktop) submitInstall(p *installView, installNow bool) {
 	if a.busy || a.running != nil || a.ctx == nil {
 		return
 	}
 	if !strings.Contains(strings.ToLower(p.version), strings.ToLower(strings.TrimSpace(p.query))) ||
 		!slices.ContainsFunc(a.releases, func(v launcher.Version) bool { return v.ID == p.version }) {
-		p.err = "请从官方版本列表选择要安装的版本"
+		p.err = "请从官方版本列表选择游戏版本"
 		return
 	}
 	if p.group != "" && !slices.Contains(a.state.GroupNames(), p.group) {
@@ -286,7 +289,7 @@ func (a *desktop) submitInstall(p *installView, defaultName string) {
 	}
 	name, loaderVersion := strings.TrimSpace(p.name), ""
 	if name == "" {
-		name = defaultName
+		name = a.installName(p)
 	}
 	if p.loader != 0 {
 		if !p.validLoader() {
@@ -315,7 +318,12 @@ func (a *desktop) submitInstall(p *installView, defaultName string) {
 			a.query, a.instanceFilter = "", 0
 			a.inspect(instance)
 		}
-		a.play(instance, true)
+		if installNow {
+			a.play(instance, true)
+			return
+		}
+		status, _ := a.instanceStatus(instance)
+		a.message("已创建实例 · "+instance.Name+" · 游戏文件"+status, nil)
 	})
 }
 
