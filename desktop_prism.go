@@ -168,12 +168,7 @@ func prismTargetPreview(c *ui.Context, directory string, err error) {
 			muted(c, err.Error()).FontSize(12).SingleLine().Ellipsis("…").Tooltip(err.Error()).Grow(1).MinWidth(0)
 			return
 		}
-		base := filepath.Base(directory)
-		ui.Row(c).AlignItems(ui.Center).Grow(1).MinWidth(0).Tooltip(directory).Children(func() {
-			muted(c, strings.TrimSuffix(directory, base)).FontSize(12).SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
-			muted(c, base).FontSize(12).SingleLine().Shrink(0)
-		})
-		action.CopyButton(c, directory, action.CopyButtonProps{Size: theme.Small}).Label("复制目标目录").Shrink(0)
+		previewPath(c, directory, "复制目标目录")
 	})
 }
 

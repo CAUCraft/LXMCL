@@ -1,9 +1,11 @@
 package main
 
 import (
+	"path/filepath"
 	"runtime"
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/CAUCraft/LXMCL/internal/launcher"
 	"github.com/CAUCraft/LXMCL/internal/shortcut"
@@ -229,6 +231,15 @@ func settingsRow(c *ui.Context, label string, control func()) {
 		display.Text(c, label, display.TextProps{Strong: true, FontSize: 13}).Width(136).Shrink(0)
 		ui.Row(c).Grow(1).MinWidth(0).Gap(6).AlignItems(ui.Center).Children(control)
 	})
+}
+
+func previewPath(c *ui.Context, directory, copyLabel string) {
+	base := filepath.Base(directory)
+	ui.Row(c).AlignItems(ui.Center).Grow(1).MinWidth(0).Tooltip(directory).Children(func() {
+		muted(c, strings.TrimSuffix(directory, base)).FontSize(12).SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
+		muted(c, base).FontSize(12).SingleLine().Shrink(0)
+	})
+	action.CopyButton(c, directory, action.CopyButtonProps{Size: theme.Small}).Label(copyLabel).Shrink(0)
 }
 
 func settingsInput(c *ui.Context, label string, value *string, placeholder string, width float32, disabled bool) {
