@@ -103,6 +103,7 @@ func catalogListWidth(w float32) float32 { return min(256, max(158, (w-150)*0.24
 type installView struct {
 	loaderSelection
 	query, name, group, err string
+	java                    *releaseJavaPreview
 	scroll                  ui.ScrollState
 }
 
@@ -141,6 +142,9 @@ func (a *desktop) installPage(c *ui.Context) {
 			}
 		})
 		hasMatches = a.installVersions(c, p, versions, cached, p.query != previousQuery)
+		if p.java != nil && (!hasMatches || p.java.version != p.version) {
+			p.clearJavaPreview()
+		}
 	}, func() {
 		if cached {
 			muted(c, "上次同步的正式版列表 · 仅可创建原版实例").FontSize(13)
@@ -172,7 +176,7 @@ func (a *desktop) installPage(c *ui.Context) {
 			})
 			return
 		}
-		a.installDetails(c, p, cached)
+		a.installDetails(c, p, versions, cached)
 	})
 }
 
@@ -218,7 +222,7 @@ func (a *desktop) installVersions(c *ui.Context, p *installView, versions []laun
 	return true
 }
 
-func (a *desktop) installDetails(c *ui.Context, p *installView, cached bool) {
+func (a *desktop) installDetails(c *ui.Context, p *installView, versions []launcher.Version, cached bool) {
 	groups := a.state.GroupNames()
 	loader := p.kind()
 	if cached {
@@ -249,6 +253,7 @@ func (a *desktop) installDetails(c *ui.Context, p *installView, cached bool) {
 			} else if a.loaderFields(c, &p.loaderSelection, launcher.Instance{}, false) {
 				p.err = ""
 			}
+			a.releaseJavaDetails(c, p, versions, cached)
 			layout.Divider(c, layout.DividerProps{})
 			dir := filepath.Join(a.state.Settings.GameRoot, fmt.Sprintf("instance-%d", a.state.NextID))
 			settingsRow(c, "游戏目录", func() {

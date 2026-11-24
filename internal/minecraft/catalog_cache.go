@@ -88,16 +88,7 @@ func (g Runtime) CachedReleases(ctx context.Context) ([]Version, error) {
 // RefreshReleases fetches and validates the official catalog. An error with a
 // nonempty result means the fresh list is usable, but saving it failed.
 func (g Runtime) RefreshReleases(ctx context.Context) ([]Version, error) {
-	d := g.Client.downloads()
-	client := *d.http
-	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-		if len(via) >= 5 || !mojangMetadataURL(req.URL) || req.URL.Path != "/mc/game/version_manifest_v2.json" {
-			return i18n.Error("download.redirect_denied")
-		}
-		return nil
-	}
-	d.http = &client
-	releases, err := d.releases(ctx)
+	releases, err := g.Client.mojangMetadataDownloads(manifestPath).releases(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -118,17 +109,29 @@ func (g Runtime) RefreshReleases(ctx context.Context) ([]Version, error) {
 		}
 		ids = append(ids, release.ID)
 	}
-	versions, ok := browsingReleases(ids)
-	if !ok {
+	if _, ok := browsingReleases(ids); !ok {
 		return nil, i18n.Error("version.catalog_release_invalid")
 	}
 	if err := g.saveReleaseCatalog(ctx, releaseCatalogCache{Releases: ids}); err != nil {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-		return versions, i18n.Error("version.catalog_cache_save_failed", err)
+		return releases, i18n.Error("version.catalog_cache_save_failed", err)
 	}
-	return versions, nil
+	return releases, nil
+}
+
+func (c Client) mojangMetadataDownloads(exactPath string) *downloads {
+	d := c.downloads()
+	client := *d.http
+	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 5 || !mojangMetadataURL(req.URL) || (exactPath != "" && req.URL.Path != exactPath) {
+			return i18n.Error("download.redirect_denied")
+		}
+		return nil
+	}
+	d.http = &client
+	return d
 }
 
 func mojangMetadataURL(u *url.URL) bool {

@@ -15,3 +15,7 @@ func FindJava(ctx context.Context, path string, minimum int) (Java, error) {
 func (g Game) CheckJava(ctx context.Context, i Instance, globalPath string) (Java, int, error) {
 	return g.runtime().CheckJava(ctx, i, globalPath)
 }
+
+func (g Game) ReleaseJavaMajor(ctx context.Context, release Version) (int, error) {
+	return g.runtime().ReleaseJavaMajor(ctx, release)
+}

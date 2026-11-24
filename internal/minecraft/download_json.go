@@ -10,6 +10,10 @@ import (
 )
 
 func downloadJSON(ctx context.Context, d *downloads, source string, out any) error {
+	return downloadMetadata(ctx, d, source, func(body []byte) error { return json.Unmarshal(body, out) })
+}
+
+func downloadMetadata(ctx context.Context, d *downloads, source string, decode func([]byte) error) error {
 	return retry(ctx, func() error {
 		res, err := d.get(ctx, source)
 		if err != nil {
@@ -23,6 +27,6 @@ func downloadJSON(ctx context.Context, d *downloads, source string, out any) err
 		if len(body) > maxMetadata {
 			return i18n.Error("metadata.response_too_large")
 		}
-		return json.Unmarshal(body, out)
+		return decode(body)
 	})
 }
