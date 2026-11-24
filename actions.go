@@ -57,9 +57,13 @@ func (a *desktop) load() {
 		pending, queueErr := readDownloadQueue(a.store.Root, history)
 		curseForgeKey := launcher.LoadCurseForgeAPIKey(a.store.Root)
 		installed := readInstallStatus(a.game, s.Instances, "")
+		cachedReleases, _ := a.game.CachedReleases(a.ctx)
 		a.post(func() {
 			a.loading = false
 			a.state, a.draft, a.installed, a.ready = s, s.Settings, installed, true
+			if len(a.releases) == 0 {
+				a.cachedReleases = cachedReleases
+			}
 			a.playtimes, a.playtimeErr = played, playErr
 			a.instanceIcons = icons
 			a.libraryGroup, a.libraryVersion = s.LibraryGroup, s.LibraryVersion
@@ -391,20 +395,25 @@ func (a *desktop) refreshCatalog() {
 	if a.catalogBusy || a.ctx == nil {
 		return
 	}
-	a.catalogBusy, a.catalogErr = true, ""
-	go func() {
+	a.catalogBusy = true
+	game := a.game
+	a.writes.Go(func() {
 		ctx, cancel := context.WithTimeout(a.ctx, 15*time.Second)
 		defer cancel()
-		versions, err := launcher.Releases(ctx)
+		versions, err := game.RefreshReleases(ctx)
 		a.post(func() {
 			a.catalogBusy = false
-			if err != nil {
+			if err != nil && len(versions) == 0 {
 				a.catalogErr = "无法读取官方版本列表：" + err.Error()
-			} else {
-				a.releases = versions
+				return
+			}
+			a.releases, a.cachedReleases = versions, versions
+			a.catalogErr, a.catalogSaveErr = "", ""
+			if err != nil {
+				a.catalogSaveErr = err.Error()
 			}
 		})
-	}()
+	})
 }
 
 func (a *desktop) settingsDraft() (launcher.Settings, error) {

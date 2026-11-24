@@ -191,12 +191,12 @@ type desktop struct {
 	scroll                           ui.ScrollState
 	form                             editor
 	installed                        map[int]bool
-	releases                         []launcher.Version
+	releases, cachedReleases         []launcher.Version
 	queue                            resourceQueue
 	release                          releaseView
 	logDiagnosis                     launcherlog.Diagnosis
 	catalogBusy                      bool
-	catalogErr                       string
+	catalogErr, catalogSaveErr       string
 	javaInfo                         string
 	javaChecking, javaError          bool
 
