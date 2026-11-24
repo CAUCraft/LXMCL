@@ -15,16 +15,24 @@ import (
 
 	"github.com/CAUCraft/LXMCL/internal/i18n"
 	"github.com/CAUCraft/LXMCL/internal/instance"
+	"github.com/CAUCraft/LXMCL/internal/nbt"
 	"github.com/CAUCraft/LXMCL/internal/tasks"
 )
 
 // PrismInstance describes only a vanilla profile and the data offered in the preview.
 type PrismInstance struct {
 	Source, GameFolder, Name, Version string
-	Worlds, Options, SkippedSettings  bool
+	Worlds, Options, Servers          bool
+	SkippedSettings                   bool
 	Launch                            instance.LaunchOptions
 	archiveRoot                       string // "." or the single wrapper folder in a ZIP; empty for a directory.
 	archiveIndex                      [sha256.Size]byte
+	serverList                        fs.FileInfo // Directory source identity. ZIP previews bind the archive index instead.
+}
+
+// PrismFiles identifies the game files selected for an import.
+type PrismFiles struct {
+	Worlds, Options, Servers bool
 }
 
 func ReadPrismInstance(ctx context.Context, dir string) (PrismInstance, error) {
@@ -87,6 +95,12 @@ func readPrismProfile(ctx context.Context, root fs.FS, p PrismInstance, fallback
 			return p, i18n.Error("instance.duplicate_file_unsupported", item.name)
 		}
 		*item.present = true
+	}
+	if info, err := fs.Lstat(root, path.Join(p.GameFolder, serverListPath.name)); err == nil && info.Mode().IsRegular() && info.Size() <= nbt.MaxBytes {
+		p.Servers = true
+		if p.archiveRoot == "" {
+			p.serverList = info
+		}
 	}
 	return p, ctx.Err()
 }
@@ -201,25 +215,69 @@ func prismMetadata(ctx context.Context, root fs.FS, name string) ([]byte, error)
 
 // CopyPrismInstance rechecks the accepted preview before publishing a new directory.
 func CopyPrismInstance(ctx context.Context, p PrismInstance, destination string, worlds, options bool, commit func() error, report func(tasks.Progress)) error {
-	if (worlds && !p.Worlds) || (options && !p.Options) {
+	return CopyPrismFiles(ctx, p, destination, PrismFiles{Worlds: worlds, Options: options}, commit, report)
+}
+
+// CopyPrismFiles publishes a new instance with exactly the chosen game files.
+func CopyPrismFiles(ctx context.Context, p PrismInstance, destination string, selected PrismFiles, commit func() error, report func(tasks.Progress)) error {
+	if (selected.Worlds && !p.Worlds) || (selected.Options && !p.Options) || (selected.Servers && !p.Servers) {
 		return i18n.Error("prism.changed")
 	}
 	if p.archiveRoot != "" {
-		return copyPrismZIP(ctx, p, destination, worlds, options, commit, report)
+		return copyPrismZIP(ctx, p, destination, selected, commit, report)
 	}
-	now, err := ReadPrismInstance(ctx, p.Source)
+	if !filepath.IsAbs(p.Source) {
+		return i18n.Error("prism.select_root")
+	}
+	root, err := os.OpenRoot(p.Source)
 	if err != nil {
 		return err
 	}
-	if now != p {
+	defer root.Close()
+	now, err := readPrismProfile(ctx, root.FS(), PrismInstance{Source: p.Source}, filepath.Base(p.Source))
+	if err != nil {
+		return err
+	}
+	expected := p
+	expected.Servers, now.Servers = false, false
+	expected.serverList, now.serverList = nil, nil
+	if now != expected {
 		return i18n.Error("prism.changed")
 	}
 	var paths []setupPath
-	if worlds {
+	if selected.Worlds {
 		paths = append(paths, setupPath{"saves", true})
 	}
-	if options {
+	if selected.Options {
 		paths = append(paths, setupPath{"options.txt", false})
 	}
-	return copyNewDirectory(ctx, p.Source, filepath.Join(p.Source, p.GameFolder), destination, paths, false, commit, report)
+	src, err := root.OpenRoot(filepath.Join(".", now.GameFolder))
+	if err != nil {
+		return err
+	}
+	defer src.Close()
+	if selected.Servers && !currentPrismServerFile(src, p.serverList) {
+		return i18n.Error("prism.changed")
+	}
+	return stageNewDirectory(ctx, p.Source, destination, commit, report, func(dst *os.Root) error {
+		if err := copySetup(ctx, src, dst, paths, report); err != nil || !selected.Servers {
+			return err
+		}
+		if report != nil {
+			report(tasks.Progress{Stage: i18n.Text("progress.copy_instance_file", serverListPath.name)})
+		}
+		if err := copySetupFile(ctx, src, dst, serverListPath.name, p.serverList); err != nil {
+			return i18n.Error("instance.duplicate_file_failed", serverListPath.name, err)
+		}
+		if !currentPrismServerFile(src, p.serverList) {
+			return i18n.Error("prism.changed")
+		}
+		return nil
+	})
+}
+
+func currentPrismServerFile(root *os.Root, expected fs.FileInfo) bool {
+	info, err := root.Lstat(serverListPath.name)
+	return expected != nil && err == nil && info.Mode().IsRegular() && os.SameFile(info, expected) &&
+		info.Size() == expected.Size() && info.ModTime().Equal(expected.ModTime())
 }

@@ -32,9 +32,11 @@ func TestPrismImportLimitsAndRechecksPreview(t *testing.T) {
 	write("mmc-pack.json", pack("org.lwjgl3"))
 	write("minecraft/saves/Island/level.dat", "sample world")
 	write("minecraft/options.txt", "fov:0.5")
+	write("minecraft/servers.dat", "synthetic list bytes")
+	write("minecraft/servers.dat_old", "previous list")
 	write("minecraft/mods/marker", "not selected")
 	p, err := ReadPrismInstance(t.Context(), dir)
-	if err != nil || !p.Worlds || !p.Options || p.Name != "Island" || p.Version != "1.21.4" || p.Launch.Memory != 3072 || p.Launch.Width != 0 {
+	if err != nil || !p.Worlds || !p.Options || !p.Servers || p.Name != "Island" || p.Version != "1.21.4" || p.Launch.Memory != 3072 || p.Launch.Width != 0 {
 		t.Fatal(p, err)
 	}
 	dst := filepath.Join(t.TempDir(), "copy")
@@ -51,6 +53,30 @@ func TestPrismImportLimitsAndRechecksPreview(t *testing.T) {
 	}
 	if err := CopyPrismInstance(t.Context(), p, dst, false, true, commit, nil); err == nil {
 		t.Fatal("occupied target accepted")
+	}
+	selected := PrismFiles{Servers: true}
+	serverOutput := filepath.Join(t.TempDir(), "servers")
+	if err := CopyPrismFiles(t.Context(), p, serverOutput, selected, commit, nil); err != nil {
+		t.Fatal(err)
+	}
+	assertPrismServerList(t, serverOutput, "synthetic list bytes")
+	lostOutput := filepath.Join(t.TempDir(), "lost-server")
+	err = CopyPrismFiles(t.Context(), p, lostOutput, selected, func() error {
+		t.Fatal("partial import attempted to commit")
+		return nil
+	}, func(tasks.Progress) {
+		if err := os.Remove(filepath.Join(dir, "minecraft", "servers.dat")); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if err == nil {
+		t.Fatal("accepted a selected list that disappeared during staging")
+	}
+	if entries, err := os.ReadDir(filepath.Dir(lostOutput)); err != nil || len(entries) != 0 {
+		t.Fatal(entries, err)
+	}
+	if err := CopyPrismFiles(t.Context(), p, lostOutput, PrismFiles{}, commit, nil); err != nil {
+		t.Fatalf("change to an unselected directory list invalidated import: %v", err)
 	}
 	write("instance.cfg", "name=Different")
 	changed := filepath.Join(t.TempDir(), "changed")
@@ -70,7 +96,7 @@ func TestPrismImportLimitsAndRechecksPreview(t *testing.T) {
 
 func TestPrismZIPRechecksAndStagesSelectedFiles(t *testing.T) {
 	filename := filepath.Join(t.TempDir(), "Island.zip")
-	write := func(world string) {
+	write := func(world, servers string) {
 		t.Helper()
 		f, err := os.Create(filename)
 		if err != nil {
@@ -82,16 +108,18 @@ func TestPrismZIPRechecksAndStagesSelectedFiles(t *testing.T) {
 			"mmc-pack.json":                     {Data: []byte(`{"formatVersion":1,"components":[{"uid":"net.minecraft","version":"1.21.4"}]}`)},
 			".minecraft/saves/Island/level.dat": {Data: []byte(world)},
 			".minecraft/options.txt":            {Data: []byte("music:0.25")},
+			".minecraft/servers.dat":            {Data: []byte(servers)},
+			".minecraft/servers.dat_old":        {Data: []byte("previous list")},
 			".minecraft/mods/notes.txt":         {Data: []byte("not selected")},
 		}
 		if err := errors.Join(z.AddFS(files), z.Close(), f.Close()); err != nil {
 			t.Fatal(err)
 		}
 	}
-	write("first")
+	write("first", "archive server list")
 	ctx := t.Context()
 	p, err := ReadPrismZIP(ctx, filename)
-	if err != nil || !p.Worlds || !p.Options || p.Version != "1.21.4" {
+	if err != nil || !p.Worlds || !p.Options || !p.Servers || p.Version != "1.21.4" {
 		t.Fatal(p, err)
 	}
 	parent := t.TempDir()
@@ -107,7 +135,7 @@ func TestPrismZIPRechecksAndStagesSelectedFiles(t *testing.T) {
 	if !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
-	write("later")
+	write("later", "archive server list")
 	if err := CopyPrismInstance(ctx, p, dst, true, false, commit, nil); err == nil {
 		t.Fatal("stale world accepted")
 	}
@@ -127,5 +155,30 @@ func TestPrismZIPRechecksAndStagesSelectedFiles(t *testing.T) {
 	}
 	if entries, err := os.ReadDir(dst); err != nil || len(entries) != 1 {
 		t.Fatal(entries, err)
+	}
+	serverOutput := filepath.Join(parent, "servers")
+	if err := CopyPrismFiles(ctx, p, serverOutput, PrismFiles{Servers: true}, commit, nil); err != nil {
+		t.Fatal(err)
+	}
+	assertPrismServerList(t, serverOutput, "archive server list")
+	write("later", "edited server list")
+	changed := filepath.Join(parent, "changed")
+	if err := CopyPrismFiles(ctx, p, changed, PrismFiles{}, commit, nil); err == nil {
+		t.Fatal("a ZIP changed after preview must require a new preview")
+	}
+	if _, err := os.Stat(changed); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal(err)
+	}
+}
+
+func assertPrismServerList(t *testing.T, dir, want string) {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil || len(entries) != 1 || entries[0].Name() != "servers.dat" {
+		t.Fatal(entries, err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "servers.dat"))
+	if err != nil || string(data) != want {
+		t.Fatal(string(data), err)
 	}
 }

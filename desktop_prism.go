@@ -22,9 +22,9 @@ import (
 )
 
 type prismDraft struct {
-	source                   content.PrismInstance
-	group                    string
-	worlds, options, reading bool
+	source                            content.PrismInstance
+	group                             string
+	worlds, options, servers, reading bool
 }
 
 func (a *desktop) startPrismImport() {
@@ -95,6 +95,9 @@ func (a *desktop) prismEditor(c *ui.Context) {
 		if p.Options {
 			choice.Checkbox(c, &d.options, "游戏选项（options.txt）", choice.CheckboxProps{})
 		}
+		if p.Servers {
+			choice.Checkbox(c, &d.servers, "游戏内服务器列表", choice.CheckboxProps{})
+		}
 		var settings []string
 		if p.Launch.Memory != 0 {
 			settings = append(settings, fmt.Sprintf("内存上限 %d MiB", p.Launch.Memory))
@@ -108,7 +111,7 @@ func (a *desktop) prismEditor(c *ui.Context) {
 		if p.SkippedSettings {
 			muted(c, "未支持的内存或窗口值将继承启动器设置。").FontSize(12)
 		}
-		if !p.Worlds && !p.Options {
+		if !p.Worlds && !p.Options && !p.Servers {
 			muted(c, "此实例没有可复制的存档或游戏选项。").FontSize(12)
 		}
 	} else if a.form.err == "" {
@@ -139,7 +142,8 @@ func (a *desktop) importPrism(d *prismDraft) {
 	if d.group != "" && !slices.Contains(a.state.GroupNames(), d.group) {
 		return
 	}
-	p, worlds, opts := d.source, d.worlds, d.options
+	p := d.source
+	files := content.PrismFiles{Worlds: d.worlds, Options: d.options, Servers: d.servers}
 	next, target, err := a.state.PrepareInstallation(a.form.name, p.Version, launcher.LoaderVanilla, "")
 	if err != nil {
 		a.form.err = err.Error()
@@ -160,7 +164,7 @@ func (a *desktop) importPrism(d *prismDraft) {
 	a.writes.Go(func() {
 		defer cancel()
 		var last time.Time
-		err := store.ImportPrism(ctx, next, target, p, worlds, opts, func(progress launcher.Progress) {
+		err := store.ImportPrismFiles(ctx, next, target, p, files, func(progress launcher.Progress) {
 			if time.Since(last) >= 140*time.Millisecond {
 				last = time.Now()
 				a.post(func() { a.task = progress })
