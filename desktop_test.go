@@ -746,6 +746,26 @@ func TestSaveRestorePreviewKeepsTarget(t *testing.T) {
 	if err := tt.Click("红石实验"); err != nil || p.selected != 2 {
 		t.Fatalf("world selection: %d %v", p.selected, err)
 	}
+	if err := tt.Click("搜索世界目录"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Type("红石")
+	if p.selected != 2 || tt.HasText("社团生存") {
+		t.Fatalf("filter changed the selected archive slot or showed an unmatched world: %d %v", p.selected, tt.Texts())
+	}
+	tt.Type("无匹配")
+	if node, ok := tt.Access("恢复世界"); !ok || !node.Disabled || p.selected != -1 || !tt.HasText("没有匹配的世界目录。") {
+		t.Fatalf("hidden selection left an enabled restore: %d %v", p.selected, tt.Texts())
+	}
+	if err := tt.Click("Clear"); err != nil || p.selected != -1 || !tt.HasText("社团生存") {
+		t.Fatalf("clearing the filter changed the selection: %d %v", p.selected, err)
+	}
+	if err := tt.Click("全部世界（3 个）"); err != nil || p.selected != 0 || !tt.HasText("恢复全部世界") {
+		t.Fatalf("all worlds lost the full-archive slot: %d %v", p.selected, err)
+	}
+	if err := tt.Click("红石实验"); err != nil || p.selected != 2 {
+		t.Fatalf("world selection after clearing: %d %v", p.selected, err)
+	}
 	tt.SetSize(820, 530)
 	tt.SetDark(true)
 	tt.Frame()
