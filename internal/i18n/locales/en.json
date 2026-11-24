@@ -9,6 +9,7 @@
   "prism.component": "Extra component or custom patch %s. Choose a vanilla instance or install the required loader from Downloads.",
   "prism.game_folder": "Cannot identify the game folder. Select an instance using either minecraft or .minecraft.",
   "prism.changed": "The source changed after preview. Select the instance folder or ZIP again.",
+  "prism.worlds_changed": "The current world selection is unavailable. Select the instance folder or ZIP again, then choose the world folders.",
   "account.credentials_delete_failed": "Could not remove account credentials: %w",
   "account.credentials_save_failed": "Could not save account credentials; the latest credentials remain in this session for retry: %w",
   "account.offline_name_invalid": "An offline name must contain 3–16 letters, digits or underscores",

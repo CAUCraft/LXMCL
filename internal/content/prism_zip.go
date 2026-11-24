@@ -37,8 +37,7 @@ func ReadPrismZIP(ctx context.Context, filename string) (PrismInstance, error) {
 					}
 				}
 			}
-			names := slices.Sorted(maps.Keys(folders))
-			p.worldFolders = &names
+			p.worldFolders = &prismWorldPreview{names: slices.Sorted(maps.Keys(folders))}
 		}
 		preview = p
 		return ctx.Err()
@@ -113,11 +112,14 @@ func withPrismZIP(ctx context.Context, filename string, use func(PrismInstance, 
 	return use(p, z)
 }
 
-func copyPrismZIP(ctx context.Context, p PrismInstance, destination string, selected PrismFiles, commit func() error, report func(tasks.Progress)) error {
-	return withPrismZIP(ctx, p.Source, func(now PrismInstance, z *zip.Reader) error {
+func copyPrismZIP(ctx context.Context, p PrismInstance, destination string, selected PrismFiles, chosen map[string]struct{}, commit func() error, report func(tasks.Progress)) error {
+	p.worldFolders = nil
+	rechecked := false
+	err := withPrismZIP(ctx, p.Source, func(now PrismInstance, z *zip.Reader) error {
 		if now != p {
 			return i18n.Error("prism.changed")
 		}
+		rechecked = true
 		game := path.Join(p.archiveRoot, p.GameFolder) + "/"
 		return stageNewDirectory(ctx, p.Source, destination, commit, report, func(dst *os.Root) error {
 			done := 0
@@ -127,6 +129,11 @@ func copyPrismZIP(ctx context.Context, p PrismInstance, destination string, sele
 				}
 				name, inGame := strings.CutPrefix(entry.Name, game)
 				includeWorld := selected.Worlds && strings.HasPrefix(name, "saves/")
+				if includeWorld && chosen != nil {
+					folder, _, inFolder := strings.Cut(strings.TrimPrefix(name, "saves/"), "/")
+					_, selectedFolder := chosen[folder]
+					includeWorld = inFolder && selectedFolder
+				}
 				includeOptions := selected.Options && name == "options.txt"
 				includeServers := selected.Servers && name == serverListPath.name
 				if !inGame || (!includeWorld && !includeOptions && !includeServers) {
@@ -144,4 +151,5 @@ func copyPrismZIP(ctx context.Context, p PrismInstance, destination string, sele
 			return nil
 		})
 	})
+	return prismWorldSourceError(ctx, err, chosen != nil && !rechecked)
 }

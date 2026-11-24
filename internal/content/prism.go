@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"io/fs"
+	"maps"
 	"os"
 	"path"
 	"path/filepath"
@@ -30,20 +31,30 @@ type PrismInstance struct {
 	archiveRoot                       string // "." or the single wrapper folder in a ZIP; empty for a directory.
 	archiveIndex                      [sha256.Size]byte
 	serverList                        fs.FileInfo // Directory source identity. ZIP previews bind the archive index instead.
-	worldFolders                      *[]string   // For display only. A nil pointer means enumeration was unavailable.
+	worldFolders                      *prismWorldPreview
 }
+
+type prismWorldPreview struct {
+	names []string
+	saves fs.FileInfo
+	dirs  map[string]fs.FileInfo
+}
+
+// ErrPrismWorldsChanged indicates that a selection cannot be imported from the accepted preview.
+var ErrPrismWorldsChanged = i18n.Error("prism.worlds_changed")
 
 // WorldFolders returns the names of direct directories in saves and whether the list is complete.
 func (p PrismInstance) WorldFolders() ([]string, bool) {
 	if p.worldFolders == nil {
 		return nil, false
 	}
-	return slices.Clone(*p.worldFolders), true
+	return slices.Clone(p.worldFolders.names), true
 }
 
 // PrismFiles identifies the game files selected for an import or export.
 type PrismFiles struct {
 	Worlds, Options, Servers bool
+	WorldFolders             []string // For imports, nil uses Worlds as before. A non-nil slice selects exact folder names.
 }
 
 func ReadPrismInstance(ctx context.Context, dir string) (PrismInstance, error) {
@@ -64,7 +75,7 @@ func ReadPrismInstance(ctx context.Context, dir string) (PrismInstance, error) {
 	return p, err
 }
 
-func readPrismWorldFolders(ctx context.Context, root *os.Root, name string) *[]string {
+func readPrismWorldFolders(ctx context.Context, root *os.Root, name string) *prismWorldPreview {
 	dir, err := root.Open(name)
 	if err != nil {
 		return nil
@@ -74,7 +85,7 @@ func readPrismWorldFolders(ctx context.Context, root *os.Root, name string) *[]s
 	if err != nil || !before.IsDir() {
 		return nil
 	}
-	var folders []string
+	preview := &prismWorldPreview{saves: before, dirs: make(map[string]fs.FileInfo)}
 	count := 0
 	for ctx.Err() == nil {
 		entries, err := dir.ReadDir(min(128, storage.MaxPackEntries+1-count))
@@ -87,7 +98,12 @@ func readPrismWorldFolders(ctx context.Context, root *os.Root, name string) *[]s
 				return nil
 			}
 			if entry.IsDir() {
-				folders = append(folders, entry.Name())
+				// Windows directory listings do not always provide the identity used by SameFile.
+				info, err := root.Lstat(filepath.Join(name, entry.Name()))
+				if err != nil || !info.IsDir() {
+					return nil
+				}
+				preview.dirs[entry.Name()] = info
 			}
 		}
 		if errors.Is(err, io.EOF) {
@@ -95,8 +111,8 @@ func readPrismWorldFolders(ctx context.Context, root *os.Root, name string) *[]s
 			if err != nil || !after.IsDir() || !os.SameFile(before, after) || !after.ModTime().Equal(before.ModTime()) {
 				return nil
 			}
-			slices.Sort(folders)
-			return &folders
+			preview.names = slices.Sorted(maps.Keys(preview.dirs))
+			return preview
 		}
 	}
 	return nil
@@ -274,33 +290,41 @@ func CopyPrismInstance(ctx context.Context, p PrismInstance, destination string,
 
 // CopyPrismFiles publishes a new instance with exactly the chosen game files.
 func CopyPrismFiles(ctx context.Context, p PrismInstance, destination string, selected PrismFiles, commit func() error, report func(tasks.Progress)) error {
+	chosen, err := p.selectedWorldFolders(selected)
+	if err != nil {
+		return err
+	}
 	if (selected.Worlds && !p.Worlds) || (selected.Options && !p.Options) || (selected.Servers && !p.Servers) {
 		return i18n.Error("prism.changed")
 	}
-	p.worldFolders = nil // The display-only enumeration does not participate in the existing source check.
 	if p.archiveRoot != "" {
-		return copyPrismZIP(ctx, p, destination, selected, commit, report)
+		return copyPrismZIP(ctx, p, destination, selected, chosen, commit, report)
 	}
 	if !filepath.IsAbs(p.Source) {
 		return i18n.Error("prism.select_root")
 	}
 	root, err := os.OpenRoot(p.Source)
 	if err != nil {
-		return err
+		return prismWorldSourceError(ctx, err, chosen != nil)
 	}
 	defer root.Close()
 	now, err := readPrismProfile(ctx, root.FS(), PrismInstance{Source: p.Source}, filepath.Base(p.Source))
 	if err != nil {
-		return err
+		return prismWorldSourceError(ctx, err, chosen != nil)
 	}
 	expected := p
 	expected.Servers, now.Servers = false, false
 	expected.serverList, now.serverList = nil, nil
+	expected.worldFolders = nil
 	if now != expected {
-		return i18n.Error("prism.changed")
+		return prismWorldSourceError(ctx, i18n.Error("prism.changed"), chosen != nil)
 	}
 	var paths []setupPath
-	if selected.Worlds {
+	if chosen != nil {
+		for _, name := range slices.Sorted(maps.Keys(chosen)) {
+			paths = append(paths, setupPath{"saves/" + name, true})
+		}
+	} else if selected.Worlds {
 		paths = append(paths, setupPath{"saves", true})
 	}
 	if selected.Options {
@@ -308,15 +332,33 @@ func CopyPrismFiles(ctx context.Context, p PrismInstance, destination string, se
 	}
 	src, err := root.OpenRoot(filepath.Join(".", now.GameFolder))
 	if err != nil {
-		return err
+		return prismWorldSourceError(ctx, err, chosen != nil)
 	}
 	defer src.Close()
+	if err := p.worldFolders.check(ctx, src, chosen); err != nil {
+		return err
+	}
+	if chosen != nil && commit != nil {
+		save := commit
+		commit = func() error {
+			if err := p.worldFolders.check(ctx, src, chosen); err != nil {
+				return err
+			}
+			return save()
+		}
+	}
 	if selected.Servers && !currentPrismServerFile(src, p.serverList) {
 		return i18n.Error("prism.changed")
 	}
 	return stageNewDirectory(ctx, p.Source, destination, commit, report, func(dst *os.Root) error {
-		if err := copySetup(ctx, src, dst, paths, report); err != nil || !selected.Servers {
+		if err := copySetup(ctx, src, dst, paths, report); err != nil {
+			if checkErr := p.worldFolders.check(ctx, src, chosen); checkErr != nil {
+				return checkErr
+			}
 			return err
+		}
+		if !selected.Servers {
+			return nil
 		}
 		if report != nil {
 			report(tasks.Progress{Stage: i18n.Text("progress.copy_instance_file", serverListPath.name)})
@@ -329,6 +371,59 @@ func CopyPrismFiles(ctx context.Context, p PrismInstance, destination string, se
 		}
 		return nil
 	})
+}
+
+func (p PrismInstance) selectedWorldFolders(selected PrismFiles) (map[string]struct{}, error) {
+	if selected.WorldFolders == nil {
+		return nil, nil
+	}
+	if !selected.Worlds || !p.Worlds || p.worldFolders == nil || len(selected.WorldFolders) == 0 ||
+		len(selected.WorldFolders) > len(p.worldFolders.names) {
+		return nil, ErrPrismWorldsChanged
+	}
+	chosen := make(map[string]struct{}, len(selected.WorldFolders))
+	for _, name := range selected.WorldFolders {
+		if _, ok := slices.BinarySearch(p.worldFolders.names, name); !ok {
+			return nil, ErrPrismWorldsChanged
+		}
+		chosen[name] = struct{}{}
+	}
+	if len(chosen) != len(selected.WorldFolders) {
+		return nil, ErrPrismWorldsChanged
+	}
+	return chosen, nil
+}
+
+func prismWorldSourceError(ctx context.Context, err error, choosingWorlds bool) error {
+	if choosingWorlds && err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return ErrPrismWorldsChanged
+	}
+	return err
+}
+
+// Check only the accepted directory identities. Changes to other entries in saves do not invalidate a selection.
+func (p *prismWorldPreview) check(ctx context.Context, source *os.Root, chosen map[string]struct{}) error {
+	if chosen == nil {
+		return nil
+	}
+	saves, err := source.Lstat("saves")
+	if err != nil || !saves.IsDir() || !os.SameFile(p.saves, saves) {
+		return prismWorldSourceError(ctx, ErrPrismWorldsChanged, true)
+	}
+	for name := range chosen {
+		info, err := source.Lstat("saves/" + name)
+		want := p.dirs[name]
+		if err != nil || !info.IsDir() || !os.SameFile(want, info) || !info.ModTime().Equal(want.ModTime()) {
+			return prismWorldSourceError(ctx, ErrPrismWorldsChanged, true)
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func currentPrismServerFile(root *os.Root, expected fs.FileInfo) bool {

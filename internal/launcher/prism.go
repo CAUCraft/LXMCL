@@ -2,6 +2,8 @@ package launcher
 
 import (
 	"context"
+	"errors"
+	"os"
 
 	"github.com/CAUCraft/LXMCL/internal/content"
 	"github.com/CAUCraft/LXMCL/internal/i18n"
@@ -17,6 +19,14 @@ func (s Store) ImportPrismFiles(ctx context.Context, next State, target Instance
 		return i18n.Error("prism.changed")
 	}
 	if err := content.CheckSeparateDirectory(p.Source, s.Root); err != nil {
+		if selected.WorldFolders != nil && errors.Is(err, os.ErrNotExist) {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return ctxErr
+			}
+			if _, sourceErr := os.Stat(p.Source); errors.Is(sourceErr, os.ErrNotExist) {
+				return errors.Join(content.ErrPrismWorldsChanged, err)
+			}
+		}
 		return err
 	}
 	return content.CopyPrismFiles(ctx, p, target.GameDir, selected, func() error { return s.saveNewInstance(next, target) }, report)
