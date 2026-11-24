@@ -19,8 +19,10 @@ func TestInstallRejectsRenamedGroupAtSubmission(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := a.state.Clone()
-	a.submitInstall(&a.install, "新实例")
-	if a.busy || !reflect.DeepEqual(a.state, before) || a.install.group != "生存" {
-		t.Fatal("submission with an obsolete group started an installation or changed the draft")
+	for _, installNow := range []bool{false, true} {
+		a.submitInstall(&a.install, installNow)
+		if a.busy || !reflect.DeepEqual(a.state, before) || a.install.group != "生存" {
+			t.Fatalf("submission with an obsolete group changed state or started work (installNow = %v)", installNow)
+		}
 	}
 }

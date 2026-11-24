@@ -9,7 +9,7 @@ Windows x64 开发版在 [GitHub Actions](https://github.com/CAUCraft/LXMCL/acti
 ## 快速开始
 
 1. 在首页点「切换账号」，选择 Microsoft、第三方皮肤站（Yggdrasil）或离线账号。
-2. 打开「下载 → 游戏版本」，选择原版、Fabric、Forge、NeoForge 或 Quilt。可选已有分组，默认未分组。点「安装实例」。
+2. 打开「下载 → 游戏版本」，选择原版、Fabric、Forge、NeoForge 或 Quilt。可选已有分组，默认未分组。点「安装实例」，或点「仅创建实例」并在实例概览按需下载或校验游戏文件。
 3. 在主页选择实例，点「启动游戏」或「下载并启动」。首次启动会校验并补齐游戏文件。
 
 Windows x64 会优先使用兼容的本机 Java，必要时下载官方运行时。也可在设置中指定 Java。启动失败后，可在任务中心查看日志或重试。

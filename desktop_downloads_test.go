@@ -183,9 +183,11 @@ func TestDownloadPageSelectsVersionAndLoader(t *testing.T) {
 		t.Fatal("the install page did not retain the selected game and loader")
 	}
 	version, vOK := tt.Find("1.21.4")
+	create, cOK := tt.Find("仅创建实例")
 	install, iOK := tt.Find("安装实例")
-	if !vOK || !iOK || version.X+version.W >= install.X || install.Y+install.H > 530 {
-		t.Fatalf("the version list and install action do not fit in the compact window: %+v %+v", version, install)
+	if !vOK || !cOK || !iOK || version.X+version.W >= create.X || create.X+create.W > install.X ||
+		create.Y+create.H > 530 || install.Y+install.H > 530 {
+		t.Fatalf("the version list and creation actions do not fit in the compact window: %+v / %+v / %+v", version, create, install)
 	}
 	capture(t, tt, "download-game-dark")
 	next, instance, err := newLoaderInstallation(a.state, "下载测试", p.version, p.kind(), p.loaderVersion)
@@ -212,8 +214,10 @@ func TestDownloadPageSelectsVersionAndLoader(t *testing.T) {
 		t.Fatal(err)
 	}
 	tt.Type("1.7.10")
-	if _, ok := tt.Find("安装实例"); ok {
-		t.Fatal("a hidden version can still be installed")
+	for _, label := range []string{"仅创建实例", "安装实例"} {
+		if _, ok := tt.Find(label); ok {
+			t.Fatalf("a hidden version still offers %s", label)
+		}
 	}
 	capture(t, tt, "install-search-empty")
 	a.catalogErr = "连接超时"
