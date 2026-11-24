@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"path"
 	"slices"
@@ -24,15 +25,26 @@ func Restore(ctx context.Context, gameDir, source string) (int, error) {
 	return restore(ctx, gameDir, source, nil, "")
 }
 
-// Preview holds the validated world names and a signature of the ZIP directory.
-// Reading a preview never opens or creates the destination game directory.
+// WorldStats describes restorable regular files from the validated ZIP
+// directory. UncompressedBytes is declared by the archive.
+type WorldStats struct {
+	FileCount         int
+	UncompressedBytes uint64
+}
+
+// Preview holds validated world names and statistics and a ZIP directory
+// signature. Reading a preview never opens or creates the game directory.
 type Preview struct {
 	source    string
 	worlds    []string
+	stats     map[string]WorldStats
 	signature [sha256.Size]byte
 }
 
 func (p Preview) Worlds() []string { return slices.Clone(p.worlds) }
+
+// WorldStats returns a copy of the available statistics, keyed by world name.
+func (p Preview) WorldStats() map[string]WorldStats { return maps.Clone(p.stats) }
 
 func Inspect(ctx context.Context, source string) (Preview, error) {
 	z, plan, err := openRestorePlan(ctx, source)
@@ -40,7 +52,21 @@ func Inspect(ctx context.Context, source string) (Preview, error) {
 		return Preview{}, err
 	}
 	defer z.Close()
-	return Preview{source: source, worlds: plan.worlds, signature: plan.signature}, nil
+	stats := make(map[string]WorldStats, len(plan.worlds))
+	for _, entry := range plan.entries {
+		if err := ctx.Err(); err != nil {
+			return Preview{}, err
+		}
+		if !entry.file.Mode().IsRegular() {
+			continue
+		}
+		world, _, _ := strings.Cut(entry.name, "/")
+		current := stats[world]
+		current.FileCount++
+		current.UncompressedBytes += entry.file.UncompressedSize64
+		stats[world] = current
+	}
+	return Preview{source: source, worlds: plan.worlds, stats: stats, signature: plan.signature}, nil
 }
 
 // Restore revalidates the ZIP before extracting one world, or all worlds when
