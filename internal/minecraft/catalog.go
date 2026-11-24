@@ -8,7 +8,10 @@ import (
 	"github.com/CAUCraft/LXMCL/internal/instance"
 )
 
-const manifestURL = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
+const (
+	manifestPath = "/mc/game/version_manifest_v2.json"
+	manifestURL  = "https://piston-meta.mojang.com" + manifestPath
+)
 
 type Version struct {
 	ID   string `json:"id"`

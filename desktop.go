@@ -167,6 +167,7 @@ func (a *desktop) view(c *ui.Context) {
 		}
 		if a.page != pageDownloads || a.downloadPage != downloadGame {
 			a.install.group = ""
+			a.install.clearJavaPreview()
 		}
 		if a.task.Stage != "" && !(a.page == pageDownloads && a.downloadPage == downloadTasks) {
 			a.progress(c)

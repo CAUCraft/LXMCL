@@ -49,7 +49,11 @@ func TestReleaseCatalogCacheKeepsLastValidatedList(t *testing.T) {
 		t.Fatalf("missing local cache fetched or returned releases: %v %v (%d hits)", got, err, hits)
 	}
 	want := []minecraft.Version{{ID: "1.21.2", Type: "release"}, {ID: "1.21.1", Type: "release"}}
-	if got, err := runtime.RefreshReleases(ctx); !slices.Equal(got, want) || err != nil || hits != 1 {
+	live := []minecraft.Version{
+		{ID: second.ID, Type: second.Type, URL: second.URL, SHA: second.SHA},
+		{ID: fixture.Version.ID, Type: fixture.Version.Type, URL: fixture.Version.URL, SHA: fixture.Version.SHA},
+	}
+	if got, err := runtime.RefreshReleases(ctx); !slices.Equal(got, live) || err != nil || hits != 1 {
 		t.Fatalf("refresh = %v, %v (%d hits)", got, err, hits)
 	}
 	filename := filepath.Join(runtime.Cache, "official-releases.json")
@@ -109,7 +113,7 @@ func TestReleaseCatalogCacheKeepsLastValidatedList(t *testing.T) {
 	if got, err := offline.CachedReleases(ctx); len(got) != 0 || err == nil {
 		t.Fatalf("oversized local cache accepted: %v, %v", got, err)
 	}
-	if got, err := runtime.RefreshReleases(ctx); !slices.Equal(got, want[1:]) || err != nil {
+	if got, err := runtime.RefreshReleases(ctx); !slices.Equal(got, live[1:]) || err != nil {
 		t.Fatalf("refresh did not recover cache: %v, %v", got, err)
 	}
 	blocked := filepath.Join(t.TempDir(), "not-a-directory")
@@ -117,7 +121,7 @@ func TestReleaseCatalogCacheKeepsLastValidatedList(t *testing.T) {
 		t.Fatal(err)
 	}
 	runtime.Cache = blocked
-	if got, err := runtime.RefreshReleases(ctx); !slices.Equal(got, want[1:]) || err == nil {
+	if got, err := runtime.RefreshReleases(ctx); !slices.Equal(got, live[1:]) || err == nil {
 		t.Fatalf("saving failure lost fresh list or its error: %v, %v", got, err)
 	}
 }

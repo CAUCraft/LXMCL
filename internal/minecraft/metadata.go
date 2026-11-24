@@ -58,18 +58,9 @@ func (g Runtime) versionDir(id string) string { return filepath.Join(g.Cache, "v
 
 func (g Runtime) readVersion(id, expectedSHA string) (metadata, error) {
 	var m metadata
-	f, err := os.Open(filepath.Join(g.versionDir(id), "version.json"))
+	b, err := g.readVersionBytes(id, expectedSHA)
 	if err != nil {
 		return m, err
-	}
-	defer f.Close()
-	b, err := io.ReadAll(io.LimitReader(f, maxMetadata+1))
-	if err != nil {
-		return m, err
-	}
-	sum := sha1.Sum(b)
-	if len(b) > maxMetadata || (expectedSHA != "" && !strings.EqualFold(hex.EncodeToString(sum[:]), expectedSHA)) {
-		return m, i18n.Error("metadata.checksum_failed")
 	}
 	if err := json.Unmarshal(b, &m); err != nil {
 		return m, i18n.Error("metadata.read_failed", err)
@@ -78,4 +69,30 @@ func (g Runtime) readVersion(id, expectedSHA string) (metadata, error) {
 		return m, i18n.Error("metadata.version_invalid")
 	}
 	return m, nil
+}
+
+func (g Runtime) readVersionBytes(id, expectedSHA string) ([]byte, error) {
+	f, err := os.Open(filepath.Join(g.versionDir(id), "version.json"))
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	b, err := io.ReadAll(io.LimitReader(f, maxMetadata+1))
+	if err != nil {
+		return nil, err
+	}
+	if err := checkVersionSHA(b, expectedSHA); err != nil {
+		return nil, err
+	}
+	return b, nil
+}
+
+func checkVersionSHA(b []byte, expectedSHA string) error {
+	if len(b) <= maxMetadata {
+		sum := sha1.Sum(b)
+		if expectedSHA == "" || strings.EqualFold(hex.EncodeToString(sum[:]), expectedSHA) {
+			return nil
+		}
+	}
+	return i18n.Error("metadata.checksum_failed")
 }
