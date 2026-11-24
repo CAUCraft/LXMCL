@@ -737,12 +737,19 @@ func TestSaveRestorePreviewKeepsTarget(t *testing.T) {
 		t.Fatal("recent preview opened a different backup or changed the home target")
 	}
 	p.loading, p.worlds = false, []string{"建筑测试", "红石实验", "社团生存"}
+	p.stats = map[string]saves.WorldStats{
+		"建筑测试": {FileCount: 1, UncompressedBytes: 16},
+		"红石实验": {FileCount: 3, UncompressedBytes: 640},
+	}
 	tt.SetSize(1140, 720)
 	tt.SetDark(false)
 	tt.Frame()
 	tt.Advance(250 * time.Millisecond)
 	tt.Frame()
 	capture(t, tt, "restore-worlds-light")
+	if !tt.HasText("3 个文件 · 640 B") || tt.HasText("0 个文件 · 0 B") {
+		t.Fatal("missing or misleading world statistics", tt.Texts())
+	}
 	if err := tt.Click("红石实验"); err != nil || p.selected != 2 {
 		t.Fatalf("world selection: %d %v", p.selected, err)
 	}
@@ -750,7 +757,7 @@ func TestSaveRestorePreviewKeepsTarget(t *testing.T) {
 		t.Fatal(err)
 	}
 	tt.Type("红石")
-	if p.selected != 2 || tt.HasText("社团生存") {
+	if p.selected != 2 || tt.HasText("社团生存") || !tt.HasText("3 个文件 · 640 B") || tt.HasText("1 个文件 · 16 B") {
 		t.Fatalf("filter changed the selected archive slot or showed an unmatched world: %d %v", p.selected, tt.Texts())
 	}
 	tt.Type("无匹配")

@@ -26,6 +26,7 @@ type restoreView struct {
 	filename string
 	preview  launcher.SavePreview
 	worlds   []string
+	stats    map[string]saves.WorldStats
 	query    string
 	selected int // 0 restores all worlds, other rows use worlds[selected-1].
 	list     ui.ListState
@@ -103,6 +104,9 @@ func (a *desktop) readSavePreview(p *restoreView, inspect func(context.Context) 
 				return
 			}
 			p.worlds = preview.Worlds()
+			if len(p.worlds) > 1 {
+				p.stats = preview.WorldStats()
+			}
 			if !p.readOnly {
 				p.preview = preview
 			}
@@ -239,6 +243,8 @@ func (p *restoreView) worldList(c *ui.Context) {
 	}
 	if len(rows) == firstWorld {
 		muted(c, "没有匹配的世界目录。")
+	} else if len(p.stats) > 0 {
+		muted(c, "可恢复文件数与未压缩大小按 ZIP 目录统计。").FontSize(12)
 	}
 	if len(rows) == 0 {
 		return
@@ -258,14 +264,27 @@ func (p *restoreView) worldList(c *ui.Context) {
 	ui.List(c, &p.list, len(rows)).Height(float32(min(4, len(rows))) * 34).FillWidth().Rows(func(row ui.ListRow) {
 		rc := row.Context
 		ui.Row(rc).Height(34).Padding(0, 10).Gap(8).AlignItems(ui.Center).Children(func() {
+			slot := rows[row.Index]
 			glyph := lucide.Folder()
-			if rows[row.Index] == 0 {
+			if slot == 0 {
 				glyph = lucide.Layers()
 			}
 			ui.Icon(rc, glyph).FontSize(15)
-			ui.Text(rc, label(row.Index)).SingleLine().Grow(1).MinWidth(0).Ellipsis("…")
-			if row.Selected() {
-				ui.Icon(rc, lucide.Check()).FontSize(15)
+			name := label(row.Index)
+			ui.Text(rc, name).SingleLine().Grow(1).MinWidth(0).Ellipsis("…")
+			if stat, ok := p.stats[name]; slot > 0 && ok {
+				summary := fmt.Sprintf("%d 个文件 · %s", stat.FileCount, fileSizeLabel(int64(stat.UncompressedBytes)))
+				text := ui.Text(rc, summary).FontSize(12).SingleLine().Shrink(0)
+				if !row.Selected() {
+					text.TextColor(rc.Theme().TextMuted)
+				}
+			}
+			if !p.readOnly {
+				ui.Box(rc).Size(15, 15).Shrink(0).Children(func() {
+					if row.Selected() {
+						ui.Icon(rc, lucide.Check()).FontSize(15)
+					}
+				})
 			}
 		})
 	})
