@@ -8,6 +8,7 @@ import (
 	"github.com/CAUCraft/LXMCL/internal/i18n"
 	"github.com/CAUCraft/LXMCL/internal/launcher"
 	launcherlog "github.com/CAUCraft/LXMCL/internal/log"
+	"github.com/CAUCraft/LXMCL/internal/tasks"
 	"github.com/egoist/mygo/ui"
 	"github.com/lobehub/lobe-mygo/pkg/action"
 	"github.com/lobehub/lobe-mygo/pkg/display"
@@ -221,6 +222,7 @@ func (a *desktop) taskRow(c *ui.Context, row taskRecord) {
 		tone = display.TagProcessing
 	}
 	backup := row.Action == taskBackup && row.Status == taskCompleted && row.InstanceID > 0
+	exportPath := row.PrismExportPath()
 	failed := failedOrCanceled(row)
 	target, retry := launcher.RetryTarget(row, a.state)
 	folderRetry := failed && row.Folder != "" && row.Resource != nil &&
@@ -241,6 +243,15 @@ func (a *desktop) taskRow(c *ui.Context, row taskRecord) {
 		})
 		if row.Folder != "" {
 			muted(c, row.Folder).FontSize(13).Selectable()
+		}
+		if exportPath != "" {
+			ui.Column(c).Gap(3).MinWidth(0).Children(func() {
+				muted(c, "ZIP · "+filepath.Base(exportPath)).FontSize(13).SingleLine().Ellipsis("…").Selectable().Tooltip(exportPath)
+				folder := filepath.Dir(exportPath)
+				muted(c, folder).FontSize(12).SingleLine().Ellipsis("…").Selectable().Tooltip(folder)
+			})
+		} else if row.Action == tasks.PrismExportAction && row.Status == taskCompleted {
+			muted(c, "此任务没有记录导出的 ZIP。").FontSize(12)
 		}
 		if row.World != "" {
 			muted(c, "单人世界 · "+row.World).FontSize(13).Selectable()
@@ -343,6 +354,9 @@ func (a *desktop) taskRow(c *ui.Context, row taskRecord) {
 			}
 			if backup && button(c, "打开备份目录", action.Default, false) {
 				a.openPath(launcher.BackupsDir(a.store.Root, row.InstanceID), false)
+			}
+			if exportPath != "" && button(c, "定位导出 ZIP", action.Default, a.ctx == nil) {
+				a.locatePrismExport(row)
 			}
 			if row.Folder != "" && button(c, "打开文件夹", action.Default, false) {
 				a.openPath(row.Folder, false)

@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -37,12 +38,31 @@ func ExportPrismFiles(ctx context.Context, i instance.Instance, filename string,
 	if selected.WorldFolders != nil {
 		return ErrPrismExportWorldsChanged
 	}
-	return exportPrismFiles(ctx, i, filename, selected, nil, report)
+	return exportPrismFiles(ctx, i, filename, selected, nil, nil, report)
 }
 
 type prismExportAdd func(root *os.Root, source, relative string, info fs.FileInfo) error
 
-func exportPrismFiles(ctx context.Context, i instance.Instance, filename string, selected PrismFiles, selectedWorlds func(prismExportAdd) error, report func(tasks.Progress)) error {
+// ExportPrismTaskZIP also records the exact published ZIP when its identity is available.
+// A nil selection keeps the existing all-or-no-worlds behavior.
+func ExportPrismTaskZIP(ctx context.Context, i instance.Instance, filename string, files PrismFiles, preview *PrismExportWorlds, selected []string, report func(tasks.Progress)) (tasks.PrismExport, error) {
+	var artifact tasks.PrismExport
+	var selectedWorlds func(prismExportAdd) error
+	if files.WorldFolders != nil {
+		return artifact, ErrPrismExportWorldsChanged
+	}
+	if selected != nil {
+		var err error
+		selectedWorlds, err = prismSelectedWorldWriter(ctx, i, files, preview, selected)
+		if err != nil {
+			return artifact, err
+		}
+	}
+	err := exportPrismFiles(ctx, i, filename, files, selectedWorlds, &artifact, report)
+	return artifact, err
+}
+
+func exportPrismFiles(ctx context.Context, i instance.Instance, filename string, selected PrismFiles, selectedWorlds func(prismExportAdd) error, artifact *tasks.PrismExport, report func(tasks.Progress)) error {
 	if err := i.Validate(); err != nil {
 		return err
 	}
@@ -56,7 +76,7 @@ func exportPrismFiles(ctx context.Context, i instance.Instance, filename string,
 	if strings.TrimSpace(i.Name) == "" || strings.ContainsAny(i.Name, "\x00\r") {
 		return i18n.Error("prism.export_name")
 	}
-	return publishInstanceZIP(ctx, i.GameDir, filename, func(f *os.File) error {
+	prepare := func(f *os.File) error {
 		z := zip.NewWriter(&limitedZIPWriter{file: f, remaining: storage.MaxPackSize})
 		total, err := writePrismMetadata(z, i)
 		if err != nil {
@@ -112,6 +132,16 @@ func exportPrismFiles(ctx context.Context, i instance.Instance, filename string,
 			return err
 		}
 		return ctx.Err()
+	}
+	if artifact == nil {
+		return publishInstanceZIP(ctx, i.GameDir, filename, prepare)
+	}
+	return withInstanceZIPDestination(i.GameDir, filename, func(out *os.Root, name string) error {
+		stamp, err := storage.PublishNewStamped(ctx, out, name, 0600, prepare)
+		if err == nil && stamp.Valid() && storage.CheckFileStamp(filename, stamp) == nil {
+			*artifact = tasks.PrismExport{Path: filepath.Clean(filename), Stamp: stamp}
+		}
+		return err
 	})
 }
 

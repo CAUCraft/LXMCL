@@ -10,6 +10,7 @@ import (
 	"github.com/CAUCraft/LXMCL/internal/instance"
 	"github.com/CAUCraft/LXMCL/internal/launcher"
 	"github.com/CAUCraft/LXMCL/internal/storage"
+	"github.com/CAUCraft/LXMCL/internal/tasks"
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"github.com/lobehub/lobe-mygo/pkg/action"
@@ -169,12 +170,30 @@ func (a *desktop) savePrismExport(d *prismExportDraft) {
 				return
 			}
 			a.form.open = false
-			a.runContentTask(i, "导出实例 ZIP", nil, func(ctx context.Context, report func(launcher.Progress)) error {
-				if selected != nil {
-					return content.ExportPrismSelectedWorlds(ctx, i, filename, files, preview, selected, report)
-				}
-				return content.ExportPrismFiles(ctx, i, filename, files, report)
+			var artifact tasks.PrismExport
+			a.runContentTaskWithResult(i, tasks.PrismExportAction, nil, func(ctx context.Context, report func(launcher.Progress)) error {
+				result, err := content.ExportPrismTaskZIP(ctx, i, filename, files, preview, selected, report)
+				artifact = result
+				return err
+			}, func(row *taskRecord) {
+				row.PrismExport = artifact
 			})
+		})
+	}()
+}
+
+func (a *desktop) locatePrismExport(row taskRecord) {
+	if a.ctx == nil || row.PrismExportPath() == "" {
+		return
+	}
+	go func() {
+		filename, err := row.LocatePrismExport()
+		a.post(func() {
+			if err != nil {
+				a.message("无法定位导出 ZIP", err)
+				return
+			}
+			mygo.Shell.ShowItemInFolder(filename)
 		})
 	}()
 }
