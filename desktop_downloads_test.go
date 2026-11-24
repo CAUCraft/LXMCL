@@ -163,6 +163,43 @@ func TestCompactModpackRetryKeepsActionsAboveFailureNotice(t *testing.T) {
 	}
 }
 
+func TestInstallExistingInstancesKeepsDraftAndLibraryFilter(t *testing.T) {
+	a, tt := testDesktop(t)
+	a.state.Instances[0].Version, a.state.Instances[1].Version = "1.21.11", "1.21.1"
+	a.state.Instances[1].Loader, a.state.Instances[1].LoaderVersion = launcher.LoaderFabric, "0.16.14"
+	a.state.InstanceGroups = map[int]string{1: "朋友"}
+	a.libraryVersion, a.state.LibraryVersion = "1.21.11", "1.21.11"
+	a.releases = []launcher.Version{{ID: "1.21.11"}, {ID: "1.21.1"}}
+	a.openInstall("1.21.1", false)
+	p := &a.install
+	p.name, p.group, p.query = "新草稿", "朋友", "1.21.1"
+	tt.SetSize(820, 530)
+	tt.Frame()
+
+	if err := tt.Click("查看已有实例"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !tt.HasText("建筑测试") || tt.HasText("生存世界") {
+		t.Fatal("scoped list mixed versions or applied the saved library filter", tt.Texts())
+	}
+	if err := tt.Click("建筑测试"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if a.inspected != 2 || a.state.Selected != 1 || a.libraryVersion != "1.21.11" || a.state.LibraryVersion != "1.21.11" {
+		t.Fatal("browsing changed the launch target or the library filter")
+	}
+	if err := tt.Click("返回安装"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if a.page != pageDownloads || a.downloadPage != downloadGame || p.existing != nil ||
+		p.version != "1.21.1" || p.name != "新草稿" || p.group != "朋友" || p.query != "1.21.1" {
+		t.Fatal("returning did not preserve the install draft")
+	}
+}
+
 func TestDownloadPageSelectsVersionAndLoader(t *testing.T) {
 	a, tt := testDesktop(t)
 	a.releases = []launcher.Version{{ID: "26.3"}, {ID: "1.21.11"}, {ID: "1.21.4"}, {ID: "1.21.1"}}

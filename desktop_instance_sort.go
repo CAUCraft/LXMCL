@@ -67,6 +67,10 @@ func (a *desktop) libraryInstances() []launcher.Instance {
 			rows = append(rows, i)
 		}
 	}
+	return a.orderLibraryInstances(rows)
+}
+
+func (a *desktop) orderLibraryInstances(rows []launcher.Instance) []launcher.Instance {
 	if a.state.LibrarySort == "" && len(a.state.PinnedInstances) == 0 {
 		return rows
 	}

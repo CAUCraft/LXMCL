@@ -91,19 +91,24 @@ func (a *desktop) view(c *ui.Context) {
 		(a.microsoft == nil || !a.microsoft.open) {
 		if mods, key, ok := display.HotkeyBinding(searchHotkey, display.HotkeyAuto); ok && c.Shortcut(mods, key) {
 			a.page, a.inspected = pageLibrary, 0
+			a.install.existing = nil
 			a.instanceFilter, a.libraryGroup, a.libraryLoader, a.libraryVersion = 0, nil, "", ""
 			a.focusSearch = len(a.state.Instances) > 0
 		}
 		if mods, key, ok := display.HotkeyBinding(tasksHotkey, display.HotkeyAuto); ok && c.Shortcut(mods, key) {
 			a.openTasks()
 		}
-		if a.page == pageLibrary && a.inspected != 0 {
-			if c.Shortcut(0, ui.KeyEscape) {
-				a.backFromDetail()
-			} else if !a.busy && c.Shortcut(0, ui.KeyF2) {
-				if i, ok := a.state.Find(a.inspected); ok {
-					a.edit(i)
+		if a.page == pageLibrary {
+			if a.inspected != 0 {
+				if c.Shortcut(0, ui.KeyEscape) {
+					a.backFromDetail()
+				} else if !a.busy && c.Shortcut(0, ui.KeyF2) {
+					if i, ok := a.state.Find(a.inspected); ok {
+						a.edit(i)
+					}
 				}
+			} else if a.install.existing != nil && c.Shortcut(0, ui.KeyEscape) {
+				a.returnToInstallDraft()
 			}
 		}
 		if a.page == pageAccount && c.Shortcut(0, ui.KeyEscape) {
@@ -165,8 +170,13 @@ func (a *desktop) view(c *ui.Context) {
 				a.accounts(c.Key("accounts"))
 			}
 		}
+		if a.page != pageLibrary {
+			a.install.existing = nil
+		}
 		if a.page != pageDownloads || a.downloadPage != downloadGame {
-			a.install.group = ""
+			if a.install.existing == nil {
+				a.install.group = ""
+			}
 			a.install.clearJavaPreview()
 			a.install.cache = nil
 			a.install.directory = nil
@@ -459,6 +469,10 @@ func (a *desktop) library(c *ui.Context) {
 			}
 			a.closeScreenshots()
 		}
+		if view := a.install.existing; view != nil {
+			a.existingVersionLibrary(c.Key("existing-version"), view)
+			return
+		}
 		if len(a.state.Instances) == 0 {
 			ui.Column(c).Grow(1).Center().Children(func() {
 				display.Empty(c, display.EmptyProps{Icon: lucide.PackageOpen(), Title: "暂无实例",
@@ -514,28 +528,37 @@ func (a *desktop) library(c *ui.Context) {
 		if a.query != query || a.instanceFilter != filter {
 			a.scroll.Y = 0
 		}
-		splitWorkspace(c, listWidth(w), func() {
-			ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
-				muted(c, "实例列表").Grow(1)
+		a.libraryWorkspace(c, a.libraryInstances(), nil)
+	})
+}
+
+func (a *desktop) libraryWorkspace(c *ui.Context, rows []launcher.Instance, existing *installExistingView) {
+	w, _ := c.Size()
+	i, inspecting := a.state.Find(a.inspected)
+	if existing != nil && (!inspecting || !matchesInstanceVersion(i, existing.version)) {
+		a.inspected = 0
+		inspecting = false
+	}
+	splitWorkspace(c, listWidth(w), func() {
+		ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
+			muted(c, "实例列表").Grow(1)
+			if existing == nil {
 				a.librarySortPicker(c)
-			})
-			_, inspecting := a.state.Find(a.inspected)
-			a.instanceList(c, inspecting)
-			if inspecting {
-				layout.Divider(c, layout.DividerProps{})
-				sidebarNavigation(c.Key("instance-nav"), &a.detailPage, instanceDetailTabs)
 			}
-		}, func() {
-			i, ok := a.state.Find(a.inspected)
-			detailPane(c.Key(a.inspected), func() {
-				switch {
-				case ok:
-					a.details(c, i)
-				default:
-					ui.Column(c).Grow(1).Center().Children(func() {
-						display.Empty(c, display.EmptyProps{Icon: lucide.Package(), Title: "选择一个实例查看详情"})
-					})
-				}
+		})
+		a.instanceList(c, rows, inspecting, existing)
+		if inspecting {
+			layout.Divider(c, layout.DividerProps{})
+			sidebarNavigation(c.Key("instance-nav"), &a.detailPage, instanceDetailTabs)
+		}
+	}, func() {
+		detailPane(c.Key(a.inspected), func() {
+			if i, ok := a.state.Find(a.inspected); ok {
+				a.details(c, i)
+				return
+			}
+			ui.Column(c).Grow(1).Center().Children(func() {
+				display.Empty(c, display.EmptyProps{Icon: lucide.Package(), Title: "选择一个实例查看详情"})
 			})
 		})
 	})
@@ -556,9 +579,9 @@ func (a *desktop) matchesCacheFilter(i launcher.Instance) bool {
 	}
 }
 
-func (a *desktop) instanceList(c *ui.Context, inspecting bool) {
+func (a *desktop) instanceList(c *ui.Context, instances []launcher.Instance, inspecting bool, existing *installExistingView) {
 	var items []display.ListItem
-	for _, i := range a.libraryInstances() {
+	for _, i := range instances {
 		detail := i.Version + " · " + loaderName(i)
 		if a.state.PinnedInstances[i.ID] {
 			detail = "已置顶 · " + detail
@@ -572,8 +595,10 @@ func (a *desktop) instanceList(c *ui.Context, inspecting bool) {
 		item := display.ListItem{
 			Key: strconv.Itoa(i.ID), Label: i.Name,
 			Description: detail, Icon: loaderIcon(i),
-			Actions:    func() { a.instanceMenu(c.Key("list-"+strconv.Itoa(i.ID)), i, true) },
-			ShowAction: i.ID == a.listMenuID,
+		}
+		if existing == nil {
+			item.Actions = func() { a.instanceMenu(c.Key("list-"+strconv.Itoa(i.ID)), i, true) }
+			item.ShowAction = i.ID == a.listMenuID
 		}
 		if picture := a.instanceIcons[i.ID]; picture != nil {
 			item.Avatar = func() { instanceIcon(c, i, picture, 20, "列表图标 "+i.Name) }
@@ -602,7 +627,11 @@ func (a *desktop) instanceList(c *ui.Context, inspecting bool) {
 	if inspecting && len(items) <= 3 {
 		rows()
 	} else {
-		list := layout.ScrollArea(c, layout.ScrollAreaProps{State: &a.scroll}, rows).MinHeight(0)
+		scroll := &a.scroll
+		if existing != nil {
+			scroll = &existing.scroll
+		}
+		list := layout.ScrollArea(c, layout.ScrollAreaProps{State: scroll}, rows).MinHeight(0)
 		if inspecting {
 			list.Height(188).Shrink(1)
 		} else {
@@ -611,7 +640,11 @@ func (a *desktop) instanceList(c *ui.Context, inspecting bool) {
 	}
 	if id, err := strconv.Atoi(clicked); err == nil && id != a.inspected {
 		if i, ok := a.state.Find(id); ok {
-			a.inspect(i)
+			if existing == nil {
+				a.inspect(i)
+			} else if matchesInstanceVersion(i, existing.version) {
+				a.openInstanceDetails(i)
+			}
 			c.Invalidate()
 		}
 	}

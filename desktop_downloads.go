@@ -105,6 +105,7 @@ type installView struct {
 	java                    *releaseJavaPreview
 	cache                   *installCachePreview
 	directory               *installDirectoryCheck
+	existing                *installExistingView
 	scroll                  ui.ScrollState
 }
 
@@ -231,7 +232,12 @@ func (a *desktop) installDetails(c *ui.Context, p *installView, versions []launc
 		loader = launcher.LoaderVanilla
 	}
 	targetReady := false
-	heading(c, "Minecraft "+p.version)
+	heading(c, "Minecraft "+p.version, func() {
+		if button(c, "查看已有实例", action.Default, false) {
+			a.browseExistingVersion(p.version)
+			c.Invalidate()
+		}
+	})
 	layout.Divider(c, layout.DividerProps{})
 	layout.ScrollArea(c, layout.ScrollAreaProps{}, func() {
 		ui.Column(c).Gap(8).Padding(4, 2).Children(func() {
