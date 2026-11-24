@@ -644,9 +644,16 @@ func (a *desktop) editor(c *ui.Context) {
 	width := float32(480)
 	switch a.form.mode {
 	case "worlds":
-		title, width = "本地存档", 552
-		if a.form.worlds != nil && a.form.worlds.copy != nil {
-			title = "复制世界"
+		title, width = "本地存档", 640
+		if p := a.form.worlds; p != nil {
+			switch {
+			case p.copy != nil:
+				title, width = "复制世界", 552
+			case p.packs != nil:
+				title, width = "世界数据包", 552
+			case p.retry != nil:
+				width = 552
+			}
 		}
 	case "prism":
 		title = "导入 Prism / MultiMC 实例"
@@ -808,6 +815,7 @@ func (a *desktop) editor(c *ui.Context) {
 	}
 	if p := a.form.worlds; !a.form.open && p != nil {
 		p.closeWorldCopy()
+		p.closeWorldPacks()
 		if p.cancel != nil {
 			p.cancel()
 			p.cancel = nil
