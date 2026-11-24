@@ -98,7 +98,8 @@ func readPrismWorldFolders(ctx context.Context, root *os.Root, name string) *pri
 				return nil
 			}
 			if entry.IsDir() {
-				info, err := entry.Info()
+				// Windows directory listings do not always provide the identity used by SameFile.
+				info, err := root.Lstat(filepath.Join(name, entry.Name()))
 				if err != nil || !info.IsDir() {
 					return nil
 				}
