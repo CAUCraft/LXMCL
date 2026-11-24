@@ -18,8 +18,12 @@ func TestInstallationDraftIsIndependentAndKeepsLaunchSelection(t *testing.T) {
 		Instances:      []instance.Instance{{ID: 1, Name: "existing", Version: "1.21.1", GameDir: filepath.Join(root, "instance-1")}},
 		OfflinePlayers: []string{"Player"}, StationProfiles: []account.StationProfile{{Key: "station"}}, Servers: []server.Server{{Name: "server", Address: "example.com"}}}
 	before := state.Clone()
+	preview, err := state.PreviewNewInstance(" new ", "1.21.1")
+	if err != nil || preview.Name != "new" || preview.GameDir != filepath.Join(root, "instance-2") || !reflect.DeepEqual(before, state) {
+		t.Fatalf("invalid instance preview: %+v %v", preview, err)
+	}
 	next, target, err := state.PrepareInstallation("new", "1.21.1", instance.LoaderForge, "1.21.1-52.1.14")
-	if err != nil || next.Selected != 1 || target.ID != 2 || target.LoaderVersion != "52.1.14" || target.Revision != 2 || !reflect.DeepEqual(before, state) {
+	if err != nil || next.Selected != 1 || target.ID != preview.ID || target.GameDir != preview.GameDir || target.LoaderVersion != "52.1.14" || target.Revision != 2 || !reflect.DeepEqual(before, state) {
 		t.Fatalf("invalid installation draft: %+v %+v %v", next, target, err)
 	}
 	if _, err := os.Stat(root); !os.IsNotExist(err) {

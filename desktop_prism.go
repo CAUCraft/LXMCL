@@ -87,6 +87,7 @@ func (a *desktop) prismEditor(c *ui.Context) {
 	wait := d.reading || a.pickerBusy || a.busy
 	p := d.source
 	groups := a.state.GroupNames()
+	targetReady := false
 	ui.Row(c).Gap(8).Children(func() {
 		if button(c, "选择实例目录…", action.Default, wait) {
 			a.choosePrismSource(d, false)
@@ -99,7 +100,7 @@ func (a *desktop) prismEditor(c *ui.Context) {
 		flightLoading(c, "正在读取实例配置…")
 	} else if p.Version != "" {
 		display.Text(c, "Minecraft "+p.Version+" · 原版", display.TextProps{Strong: true})
-		muted(c, p.Source).FontSize(12).SingleLine().Ellipsis("…")
+		muted(c, "来源 · "+p.Source).FontSize(12).SingleLine().Ellipsis("…").Tooltip(p.Source)
 		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
 			display.Text(c, "实例名称", display.TextProps{}).SingleLine().Shrink(0)
 			field.Input(c, &a.form.name, field.InputProps{Placeholder: "实例名称"}).Label("导入后的实例名称").Grow(1).MinWidth(0)
@@ -108,6 +109,9 @@ func (a *desktop) prismEditor(c *ui.Context) {
 				groupDestinationPicker(c.Key("prism-group"), &d.group, groups, "选择导入实例分组", wait).Width(140).Shrink(0)
 			}
 		})
+		target, err := a.state.PreviewNewInstance(a.form.name, p.Version)
+		targetReady = err == nil
+		prismTargetPreview(c, target.GameDir, err)
 		if p.Worlds || d.worldMode == prismSelectedWorlds {
 			d.renderWorlds(c, wait)
 		} else if p.Options || p.Servers {
@@ -151,9 +155,25 @@ func (a *desktop) prismEditor(c *ui.Context) {
 			a.form.open = false
 		}
 		worldsMissing := d.worldMode == prismSelectedWorlds && len(d.worldPreview.selected) == 0
-		if button(c, "确认导入", action.Primary, wait || p.Version == "" || groupMissing || worldsMissing || strings.TrimSpace(a.form.name) == "") {
+		if button(c, "确认导入", action.Primary, wait || !targetReady || groupMissing || worldsMissing) {
 			a.importPrism(d)
 		}
+	})
+}
+
+func prismTargetPreview(c *ui.Context, directory string, err error) {
+	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+		display.Text(c, "目标目录（预览）", display.TextProps{}).SingleLine().Shrink(0)
+		if err != nil {
+			muted(c, err.Error()).FontSize(12).SingleLine().Ellipsis("…").Tooltip(err.Error()).Grow(1).MinWidth(0)
+			return
+		}
+		base := filepath.Base(directory)
+		ui.Row(c).AlignItems(ui.Center).Grow(1).MinWidth(0).Tooltip(directory).Children(func() {
+			muted(c, strings.TrimSuffix(directory, base)).FontSize(12).SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
+			muted(c, base).FontSize(12).SingleLine().Shrink(0)
+		})
+		action.CopyButton(c, directory, action.CopyButtonProps{Size: theme.Small}).Label("复制目标目录").Shrink(0)
 	})
 }
 
