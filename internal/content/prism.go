@@ -30,7 +30,7 @@ type PrismInstance struct {
 	serverList                        fs.FileInfo // Directory source identity. ZIP previews bind the archive index instead.
 }
 
-// PrismFiles identifies the game files selected for an import.
+// PrismFiles identifies the game files selected for an import or export.
 type PrismFiles struct {
 	Worlds, Options, Servers bool
 }
