@@ -180,6 +180,7 @@ func (a *desktop) view(c *ui.Context) {
 			a.install.clearJavaPreview()
 			a.install.cache = nil
 			a.install.directory = nil
+			a.install.space = nil
 		}
 		if a.task.Stage != "" && !(a.page == pageDownloads && a.downloadPage == downloadTasks) {
 			a.progress(c)

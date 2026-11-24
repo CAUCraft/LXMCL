@@ -1,8 +1,10 @@
 package launcher
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -48,6 +50,54 @@ func TestCheckNewInstanceDirectoryIsReadOnly(t *testing.T) {
 		}
 		if occupied, err := CheckNewInstanceDirectory(filepath.Join(link, "instance-1")); err == nil || occupied {
 			t.Fatalf("candidate under dangling link = %t, %v", occupied, err)
+		}
+	})
+}
+
+func TestAvailableDiskSpaceIsReadOnly(t *testing.T) {
+	root := t.TempDir()
+	parent := filepath.Join(root, "尚未创建")
+	target := filepath.Join(parent, "instance-1")
+	check := func(t *testing.T, path string) {
+		t.Helper()
+		bytes, err := AvailableDiskSpace(path)
+		if runtime.GOOS == "linux" || runtime.GOOS == "windows" {
+			if err != nil {
+				t.Fatalf("available bytes for %q = %d, %v", path, bytes, err)
+			}
+		} else if !errors.Is(err, errors.ErrUnsupported) {
+			t.Fatalf("available bytes for %q = %d, %v, want unsupported", path, bytes, err)
+		}
+	}
+
+	check(t, root)
+	check(t, target)
+	if got, err := nearestInstanceDirectory(target); got != root || err != nil {
+		t.Fatalf("nearest directory for %q = %q, %v, want %q", target, got, err, root)
+	}
+	if _, err := os.Lstat(parent); !os.IsNotExist(err) {
+		t.Fatalf("checking created the missing parent: %v", err)
+	}
+	file := filepath.Join(root, "file")
+	if err := os.WriteFile(file, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"relative", file, filepath.Join(file, "instance-1")} {
+		if bytes, err := AvailableDiskSpace(path); err == nil {
+			t.Fatalf("available bytes for invalid path %q = %d, no error", path, bytes)
+		}
+	}
+
+	t.Run("linked directory", func(t *testing.T) {
+		dest := t.TempDir()
+		link := filepath.Join(root, "linked")
+		if err := os.Symlink(dest, link); err != nil {
+			t.Skipf("cannot create a link in this environment: %v", err)
+		}
+		target := filepath.Join(link, "instance-1")
+		check(t, target)
+		if got, err := nearestInstanceDirectory(target); got != link || err != nil {
+			t.Fatalf("nearest directory for %q = %q, %v, want %q", target, got, err, link)
 		}
 	})
 }

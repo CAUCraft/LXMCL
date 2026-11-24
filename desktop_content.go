@@ -553,7 +553,7 @@ func (a *desktop) runFileTaskWithResult(row taskRecord, work func(context.Contex
 	})
 }
 
-func fileSizeLabel(bytes int64) string {
+func fileSizeLabel[T int64 | uint64](bytes T) string {
 	switch {
 	case bytes >= 1<<30:
 		return fmt.Sprintf("%.1f GiB", float64(bytes)/(1<<30))
