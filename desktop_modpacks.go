@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/CAUCraft/LXMCL/internal/i18n"
 	"github.com/CAUCraft/LXMCL/internal/launcher"
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
@@ -33,7 +34,7 @@ const (
 type modpackView struct {
 	retry                          *packRetry
 	feedURL, feedStatus            string
-	target                         string
+	target, group                  string
 	update                         *launcher.PackUpdate
 	changePage                     int
 	mode                           int
@@ -82,7 +83,7 @@ func (p *modpackView) begin(parent context.Context, timeout time.Duration) (cont
 }
 
 func (p *modpackView) clearPreview() {
-	p.target, p.update, p.changePage = "", nil, 0
+	p.target, p.group, p.update, p.changePage = "", "", nil, 0
 	p.feedStatus = ""
 	p.retry = nil
 	p.prepared = launcher.PreparedModpack{}
@@ -476,6 +477,9 @@ func (a *desktop) modpackConfirmation(c *ui.Context, p *modpackView) {
 		display.Text(c, "安装到", display.TextProps{Strong: true})
 		catalogPicker(c.Key("pack-target"), &p.target, options, "整合包安装目标", "", a.busy || p.retry != nil).Grow(1).MinWidth(0).MaxWidth(300)
 	})
+	if p.target != "" {
+		p.group = ""
+	}
 	id, _ := strconv.Atoi(p.target)
 	target, exists := a.state.Find(id)
 	if before != p.target || p.update != nil && !p.update.Matches(p.prepared, target) {
@@ -484,6 +488,13 @@ func (a *desktop) modpackConfirmation(c *ui.Context, p *modpackView) {
 		p.installErr = nil
 	}
 	needsKey := info.Source == launcher.CurseForgeModpacks && info.Downloads > 0 && p.key == ""
+	groups := a.state.GroupNames()
+	if p.target == "" && (len(groups) > 0 || p.group != "") {
+		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+			display.Text(c, "分组", display.TextProps{Strong: true}).Width(43).Shrink(0)
+			groupDestinationPicker(c.Key("pack-group"), &p.group, groups, "选择整合包实例分组", a.busy).Grow(1).MinWidth(0).MaxWidth(300)
+		})
+	}
 	layout.Divider(c, layout.DividerProps{})
 	layout.ScrollArea(c.Key("modpack-install-config"), layout.ScrollAreaProps{}, func() {
 		ui.Column(c).Gap(8).Children(func() {
@@ -510,6 +521,10 @@ func (a *desktop) modpackConfirmation(c *ui.Context, p *modpackView) {
 			}
 		})
 	}).Grow(1).MinHeight(0)
+	groupMissing := p.group != "" && !slices.Contains(groups, p.group)
+	if groupMissing {
+		feedback.Alert(c, i18n.Text("instance.group_missing"), feedback.AlertProps{Type: feedback.Warning})
+	}
 	layout.Divider(c, layout.DividerProps{})
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 		if errors.Is(p.installErr, launcher.ErrCurseForgeAccessDenied) {
@@ -532,7 +547,7 @@ func (a *desktop) modpackConfirmation(c *ui.Context, p *modpackView) {
 			return
 		}
 		muted(c, "安装到新实例，使用独立游戏目录").FontSize(12).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-		if button(c, "安装整合包", action.Primary, a.busy || a.running != nil || needsKey || strings.TrimSpace(p.name) == "") {
+		if button(c, "安装整合包", action.Primary, a.busy || a.running != nil || needsKey || groupMissing || strings.TrimSpace(p.name) == "") {
 			a.installModpack()
 		}
 	})
@@ -580,14 +595,20 @@ func (a *desktop) installModpack() {
 	p := &a.modpacks
 	pack, key := p.prepared, p.key
 	info := pack.Info()
-	if a.ctx == nil || !a.ready || a.busy || a.running != nil || info.Source == "" ||
+	if a.ctx == nil || !a.ready || a.busy || a.running != nil || info.Source == "" || p.target != "" ||
 		(info.Source == launcher.CurseForgeModpacks && info.Downloads > 0 && key == "") {
+		return
+	}
+	if p.group != "" && !slices.Contains(a.state.GroupNames(), p.group) {
 		return
 	}
 	next, i, err := newLoaderInstallation(a.state, p.name, info.Minecraft, info.Loader, info.LoaderVersion)
 	if err != nil {
 		p.installErr = err
 		return
+	}
+	if p.group != "" {
+		next.InstanceGroups[i.ID] = p.group
 	}
 	i.PackFeed, i.PackDigest = pack.Feed()
 	for n := range next.Instances {
