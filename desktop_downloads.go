@@ -104,6 +104,7 @@ type installView struct {
 	loaderSelection
 	query, name, group, err string
 	java                    *releaseJavaPreview
+	cache                   *installCachePreview
 	scroll                  ui.ScrollState
 }
 
@@ -150,6 +151,7 @@ func (a *desktop) installPage(c *ui.Context) {
 			muted(c, "上次同步的正式版列表 · 仅可创建原版实例").FontSize(13)
 		}
 		if !hasMatches {
+			p.cache = nil
 			ui.Column(c).Grow(1).MinWidth(0).Gap(10).Justify(ui.Center).Children(func() {
 				switch {
 				case a.catalogBusy && !cached:
@@ -254,6 +256,7 @@ func (a *desktop) installDetails(c *ui.Context, p *installView, versions []launc
 				p.err = ""
 			}
 			a.releaseJavaDetails(c, p, versions, cached)
+			a.installCacheDetails(c, p, loader)
 			layout.Divider(c, layout.DividerProps{})
 			dir := filepath.Join(a.state.Settings.GameRoot, fmt.Sprintf("instance-%d", a.state.NextID))
 			settingsRow(c, "游戏目录", func() {

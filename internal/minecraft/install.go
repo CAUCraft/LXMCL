@@ -14,18 +14,41 @@ import (
 // Installed is a cheap presence check. Start verifies all referenced files before
 // launching; callers may explicitly Install again to repair damaged cache entries.
 func (g Runtime) Installed(i instance.Instance) bool {
-	if i.Validate() != nil {
+	return i.Validate() == nil && g.gameCached(i.Version) && g.loaderCached(i)
+}
+
+// CacheStatus reports local cache presence separately for a game and its loader.
+// The vanilla Loader field is true because there is no separate loader to cache.
+type CacheStatus struct {
+	Game, Loader bool
+}
+
+// CacheStatus checks the version and loader without requiring an instance directory.
+// Like Installed, it relies on receipts and does not verify all game or loader files.
+func (g Runtime) CacheStatus(version, loader, loaderVersion string) (CacheStatus, error) {
+	kind, number, err := instance.NormalizeLoader(version, loader, loaderVersion)
+	if err != nil {
+		return CacheStatus{}, err
+	}
+	i := instance.Instance{Version: version, Loader: kind, LoaderVersion: number}
+	return CacheStatus{Game: g.gameCached(version), Loader: g.loaderCached(i)}, nil
+}
+
+func (g Runtime) gameCached(version string) bool {
+	if _, err := g.readReceipt(version); err != nil {
 		return false
 	}
-	if _, err := g.readReceipt(i.Version); err != nil {
-		return false
-	}
+	dir := g.versionDir(version)
 	for _, name := range []string{"version.json", "client.jar"} {
-		st, err := os.Stat(filepath.Join(g.versionDir(i.Version), name))
+		st, err := os.Stat(filepath.Join(dir, name))
 		if err != nil || !st.Mode().IsRegular() || st.Size() == 0 {
 			return false
 		}
 	}
+	return true
+}
+
+func (g Runtime) loaderCached(i instance.Instance) bool {
 	if i.UsesKnot() {
 		_, err := g.readKnot(i)
 		return err == nil

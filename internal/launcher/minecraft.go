@@ -19,6 +19,7 @@ type Game struct {
 	Transport http.RoundTripper
 }
 type Progress = tasks.Progress
+type CacheStatus = minecraft.CacheStatus
 
 func (g Game) runtime() minecraft.Runtime {
 	return minecraft.Runtime{Cache: g.Cache, Client: minecraft.Client{Transport: g.Transport}}
@@ -27,6 +28,9 @@ func (g Game) downloads() distribution.Cache {
 	return distribution.Cache{Root: g.Cache, Client: &http.Client{Transport: g.Transport}}
 }
 func (g Game) Installed(i Instance) bool { return g.runtime().Installed(i) }
+func (g Game) CacheStatus(version, loader, loaderVersion string) (CacheStatus, error) {
+	return g.runtime().CacheStatus(version, loader, loaderVersion)
+}
 func (g Game) Install(ctx context.Context, i Instance, report func(Progress)) error {
 	return g.runtime().Install(ctx, i, report)
 }
