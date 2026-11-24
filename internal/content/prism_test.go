@@ -12,6 +12,7 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/CAUCraft/LXMCL/internal/i18n"
 	"github.com/CAUCraft/LXMCL/internal/tasks"
 )
 
@@ -33,6 +34,7 @@ func TestPrismImportLimitsAndRechecksPreview(t *testing.T) {
 	write("instance.cfg", "[General]\nname=Island\nOverrideMemory=true\nMaxMemAlloc=3072\nOverrideWindow=false\nMinecraftWinWidth=1600\n")
 	write("mmc-pack.json", pack("org.lwjgl3"))
 	write("minecraft/saves/Island/level.dat", "sample world")
+	write("minecraft/saves/Island-copy/level.dat", "unselected world")
 	write("minecraft/saves/notes.txt", "not a folder")
 	if err := os.Mkdir(filepath.Join(dir, "minecraft", "saves", "空目录"), 0700); err != nil {
 		t.Fatal(err)
@@ -45,7 +47,7 @@ func TestPrismImportLimitsAndRechecksPreview(t *testing.T) {
 	if err != nil || !p.Worlds || !p.Options || !p.Servers || p.Name != "Island" || p.Version != "1.21.4" || p.Launch.Memory != 3072 || p.Launch.Width != 0 {
 		t.Fatal(p, err)
 	}
-	assertPrismWorldFolders(t, p, "Island", "空目录")
+	assertPrismWorldFolders(t, p, "Island", "Island-copy", "空目录")
 	dst := filepath.Join(t.TempDir(), "copy")
 	commit := func() error { return nil }
 	if err := CopyPrismInstance(t.Context(), p, dst, true, false, commit, nil); err != nil {
@@ -60,6 +62,45 @@ func TestPrismImportLimitsAndRechecksPreview(t *testing.T) {
 	}
 	if b, e := os.ReadFile(filepath.Join(dst, "saves", "notes.txt")); e != nil || string(b) != "not a folder" {
 		t.Fatal(string(b), e)
+	}
+	picked := PrismFiles{Worlds: true, WorldFolders: []string{"空目录", "Island"}}
+	selectedOutput := filepath.Join(t.TempDir(), "picked")
+	if err := CopyPrismFiles(t.Context(), p, selectedOutput, picked, commit, nil); err != nil {
+		t.Fatal(err)
+	}
+	assertPrismCopiedWorlds(t, selectedOutput, "Island", "空目录")
+
+	failedOutput := filepath.Join(t.TempDir(), "must-not-publish")
+	rejectCommit := func() error {
+		t.Fatal("invalid selection attempted to commit")
+		return nil
+	}
+	for _, files := range []PrismFiles{
+		{Worlds: true, WorldFolders: []string{}},
+		{WorldFolders: []string{"Island"}},
+		{Worlds: true, WorldFolders: []string{"ISLAND"}},
+		{Worlds: true, WorldFolders: []string{"Island", "Island"}},
+	} {
+		if err := CopyPrismFiles(t.Context(), p, failedOutput, files, rejectCommit, nil); !errors.Is(err, ErrPrismWorldsChanged) {
+			t.Fatalf("invalid selection %v: %v", files, err)
+		}
+	}
+
+	island := filepath.Join(dir, "minecraft", "saves", "Island")
+	heldIsland := filepath.Join(t.TempDir(), "Island")
+	err = CopyPrismFiles(t.Context(), p, failedOutput, picked, rejectCommit, func(progress tasks.Progress) {
+		if progress.Stage == i18n.Text("progress.save_instance") {
+			if err := os.Rename(island, heldIsland); err != nil {
+				t.Fatal(err)
+			}
+			write("minecraft/saves/Island/level.dat", "replacement world")
+		}
+	})
+	if !errors.Is(err, ErrPrismWorldsChanged) {
+		t.Fatalf("a replaced source directory was accepted: %v", err)
+	}
+	if entries, err := os.ReadDir(filepath.Dir(failedOutput)); err != nil || len(entries) != 0 {
+		t.Fatal(entries, err)
 	}
 	if err := CopyPrismInstance(t.Context(), p, dst, false, true, commit, nil); err == nil {
 		t.Fatal("occupied target accepted")
@@ -88,7 +129,7 @@ func TestPrismImportLimitsAndRechecksPreview(t *testing.T) {
 	if err := CopyPrismFiles(t.Context(), p, lostOutput, PrismFiles{}, commit, nil); err != nil {
 		t.Fatalf("change to an unselected directory list invalidated import: %v", err)
 	}
-	for _, name := range []string{"Island", "空目录"} {
+	for _, name := range []string{"Island", "Island-copy", "空目录"} {
 		if err := os.RemoveAll(filepath.Join(dir, "minecraft", "saves", name)); err != nil {
 			t.Fatal(err)
 		}
@@ -176,6 +217,15 @@ func TestPrismZIPRechecksAndStagesSelectedFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	selectedWorlds := PrismFiles{Worlds: true, WorldFolders: []string{"Empty", "隐式"}}
+	selectedOutput := filepath.Join(parent, "picked")
+	if err := CopyPrismFiles(ctx, p, selectedOutput, selectedWorlds, commit, nil); err != nil {
+		t.Fatal(err)
+	}
+	assertPrismCopiedWorlds(t, selectedOutput, "Empty", "隐式")
+	if _, err := os.Stat(filepath.Join(selectedOutput, "saves", "隐式", "region", "ordinary.dat")); err != nil {
+		t.Fatal(err)
+	}
 	if err := CopyPrismInstance(ctx, p, dst, false, true, commit, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -193,6 +243,9 @@ func TestPrismZIPRechecksAndStagesSelectedFiles(t *testing.T) {
 	assertPrismServerList(t, serverOutput, "archive server list")
 	write("later", "edited server list")
 	changed := filepath.Join(parent, "changed")
+	if err := CopyPrismFiles(ctx, p, changed, selectedWorlds, commit, nil); !errors.Is(err, ErrPrismWorldsChanged) {
+		t.Fatalf("a changed ZIP still accepted world selections: %v", err)
+	}
 	if err := CopyPrismFiles(ctx, p, changed, PrismFiles{}, commit, nil); err == nil {
 		t.Fatal("a ZIP changed after preview must require a new preview")
 	}
@@ -218,5 +271,23 @@ func assertPrismWorldFolders(t *testing.T, preview PrismInstance, want ...string
 	got, complete := preview.WorldFolders()
 	if !complete || !slices.Equal(got, want) {
 		t.Fatalf("WorldFolders = %q, %v, want %q and a complete list", got, complete, want)
+	}
+}
+
+func assertPrismCopiedWorlds(t *testing.T, dir string, want ...string) {
+	t.Helper()
+	entries, err := os.ReadDir(filepath.Join(dir, "saves"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			t.Fatalf("unexpected root file: %s", entry.Name())
+		}
+		names = append(names, entry.Name())
+	}
+	if !slices.Equal(names, want) {
+		t.Fatalf("copied worlds = %q, want %q", names, want)
 	}
 }

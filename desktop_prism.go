@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -20,17 +21,26 @@ import (
 	"github.com/lobehub/lobe-mygo/pkg/feedback"
 	"github.com/lobehub/lobe-mygo/pkg/field"
 	"github.com/lobehub/lobe-mygo/pkg/overlay"
+	"github.com/lobehub/lobe-mygo/pkg/theme"
+)
+
+const (
+	prismAllWorlds = iota
+	prismSelectedWorlds
+	prismNoWorlds
 )
 
 type prismDraft struct {
-	source                            content.PrismInstance
-	group                             string
-	worlds, options, servers, reading bool
-	worldPreview                      prismWorldPreview
+	source                    content.PrismInstance
+	group                     string
+	worldMode                 int
+	options, servers, reading bool
+	worldPreview              prismWorldPreview
 }
 
 type prismWorldPreview struct {
 	folders     []string
+	selected    map[string]bool
 	known, open bool
 	list        ui.ListState
 }
@@ -51,7 +61,7 @@ func (a *desktop) choosePrismSource(d *prismDraft, archive bool) {
 		if !a.form.open || a.form.prism != d {
 			return
 		}
-		*d = prismDraft{reading: true}
+		*d = prismDraft{reading: true, worldMode: d.worldMode}
 		a.form.err = ""
 		go func() {
 			p, err := read(a.ctx, path)
@@ -64,7 +74,7 @@ func (a *desktop) choosePrismSource(d *prismDraft, archive bool) {
 					a.form.err = err.Error()
 					return
 				}
-				d.source, d.worlds, d.options = p, p.Worlds, p.Options
+				d.source, d.options = p, p.Options
 				d.worldPreview.folders, d.worldPreview.known = p.WorldFolders()
 				a.form.name = availableInstanceName(a.state, p.Name, "原版实例")
 			})
@@ -98,12 +108,8 @@ func (a *desktop) prismEditor(c *ui.Context) {
 				groupDestinationPicker(c.Key("prism-group"), &d.group, groups, "选择导入实例分组", wait).Width(140).Shrink(0)
 			}
 		})
-		if p.Worlds {
-			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-				choice.Checkbox(c, &d.worlds, "存档（saves）", choice.CheckboxProps{})
-				ui.Spacer(c).Grow(1)
-				d.worldPreview.render(c.Key("prism-world-folders"), wait)
-			})
+		if p.Worlds || d.worldMode == prismSelectedWorlds {
+			d.renderWorlds(c, wait)
 		} else if p.Options || p.Servers {
 			muted(c, "没有存档目录").FontSize(12)
 		}
@@ -144,13 +150,34 @@ func (a *desktop) prismEditor(c *ui.Context) {
 		if button(c, "取消", action.Default, false) {
 			a.form.open = false
 		}
-		if button(c, "确认导入", action.Primary, wait || p.Version == "" || groupMissing || strings.TrimSpace(a.form.name) == "") {
+		worldsMissing := d.worldMode == prismSelectedWorlds && len(d.worldPreview.selected) == 0
+		if button(c, "确认导入", action.Primary, wait || p.Version == "" || groupMissing || worldsMissing || strings.TrimSpace(a.form.name) == "") {
 			a.importPrism(d)
 		}
 	})
 }
 
-func (p *prismWorldPreview) render(c *ui.Context, disabled bool) {
+func (d *prismDraft) renderWorlds(c *ui.Context, disabled bool) {
+	p := &d.worldPreview
+	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+		display.Text(c, "存档", display.TextProps{}).SingleLine().Shrink(0)
+		previous := d.worldMode
+		action.Segmented(c, &d.worldMode, []string{"全部导入", "只导入所选", "不导入"},
+			action.SegmentedProps{Size: theme.Small}).Label("存档导入范围").Disabled(disabled).Shrink(0)
+		if d.worldMode != previous {
+			p.open, p.list = false, ui.ListState{}
+			clear(p.selected)
+		}
+		ui.Spacer(c).Grow(1)
+		if !d.source.Worlds {
+			muted(c, "没有存档目录").FontSize(12)
+			return
+		}
+		p.render(c.Key("prism-world-folders"), d.worldMode == prismSelectedWorlds, disabled)
+	})
+}
+
+func (p *prismWorldPreview) render(c *ui.Context, picking, disabled bool) {
 	if !p.known {
 		muted(c, "无法完整确认存档目录").FontSize(12)
 		return
@@ -159,20 +186,51 @@ func (p *prismWorldPreview) render(c *ui.Context, disabled bool) {
 		muted(c, "没有存档目录").FontSize(12)
 		return
 	}
-	count := fmt.Sprintf("%d 个存档目录", len(p.folders))
-	anchor := action.Button(c, count, action.ButtonProps{Variant: action.Default}).Label("查看存档目录").Disabled(disabled)
+	title, label := fmt.Sprintf("%d 个存档目录", len(p.folders)), "查看存档目录"
+	if picking {
+		title, label = "选择存档目录…", "选择存档目录"
+		if n := len(p.selected); n > 0 {
+			title = fmt.Sprintf("已选 %d 项", n)
+		}
+	}
+	anchor := action.Button(c, title, action.ButtonProps{Variant: action.Default}).Label(label).Disabled(disabled).Shrink(0)
 	overlay.Popover(c, anchor, &p.open, overlay.PopoverProps{Placement: overlay.Bottom}, func() {
 		const rowHeight = 28
 		p.list.Label = func(n int) string { return p.folders[n] }
-		ui.Column(c).Width(294).Children(func() {
+		ui.Column(c).Width(294).Gap(6).Children(func() {
+			if picking {
+				muted(c, "仅复制勾选目录及其内容").FontSize(12)
+			}
 			ui.List(c, &p.list, len(p.folders)).
 				Height(float32(min(5, len(p.folders)) * rowHeight)).FillWidth().Rows(func(row ui.ListRow) {
 				rc := row.Context
 				folder := p.folders[row.Index]
 				ui.Row(rc).Height(rowHeight).Padding(0, 8).AlignItems(ui.Center).Children(func() {
-					ui.Text(rc, folder).SingleLine().Ellipsis("…").Tooltip(folder)
+					if !picking {
+						ui.Text(rc, folder).SingleLine().Ellipsis("…").Tooltip(folder)
+						return
+					}
+					checked := p.selected[folder]
+					if choice.Checkbox(rc, &checked, folder, choice.CheckboxProps{}).
+						Label("选择存档 " + folder).Tooltip(folder).MinWidth(0).Grow(1).Clip().Changed() {
+						if checked {
+							if p.selected == nil {
+								p.selected = make(map[string]bool)
+							}
+							p.selected[folder] = true
+						} else {
+							delete(p.selected, folder)
+						}
+					}
 				})
 			})
+			if picking {
+				ui.Row(c).Justify(ui.End).Children(func() {
+					if button(c, "完成", action.Default, false) {
+						p.open = false
+					}
+				})
+			}
 		})
 	})
 }
@@ -185,7 +243,20 @@ func (a *desktop) importPrism(d *prismDraft) {
 		return
 	}
 	p := d.source
-	files := content.PrismFiles{Worlds: d.worlds, Options: d.options, Servers: d.servers}
+	files := content.PrismFiles{Options: d.options, Servers: d.servers}
+	switch d.worldMode {
+	case prismNoWorlds:
+	case prismAllWorlds:
+		files.Worlds = p.Worlds
+	case prismSelectedWorlds:
+		if !p.Worlds || len(d.worldPreview.selected) == 0 {
+			return
+		}
+		files.Worlds = true
+		files.WorldFolders = slices.Sorted(maps.Keys(d.worldPreview.selected))
+	default:
+		return
+	}
 	next, target, err := a.state.PrepareInstallation(a.form.name, p.Version, launcher.LoaderVanilla, "")
 	if err != nil {
 		a.form.err = err.Error()
@@ -220,9 +291,14 @@ func (a *desktop) importPrism(d *prismDraft) {
 		render := func() {
 			a.busy, a.cancelTask, a.task, a.taskCanceling = false, nil, launcher.Progress{}, false
 			if err != nil {
-				if errors.Is(err, context.Canceled) {
+				switch {
+				case errors.Is(err, context.Canceled):
 					a.message("本地实例导入已取消", nil)
-				} else {
+				case errors.Is(err, content.ErrPrismWorldsChanged) &&
+					a.page == fromPage && a.inspected == fromID && !a.form.open && a.form.prism == d:
+					*d = prismDraft{worldMode: prismSelectedWorlds}
+					a.form.open, a.form.err = true, content.ErrPrismWorldsChanged.Error()
+				default:
 					a.message("无法导入本地实例", err)
 				}
 				return
