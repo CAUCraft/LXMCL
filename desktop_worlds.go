@@ -30,6 +30,7 @@ type worldBrowser struct {
 	openErr  string
 	retry    *taskRecord
 	copy     *worldCopyView
+	packs    *worldPacksView
 }
 
 func (a *desktop) browseWorlds(i launcher.Instance, retry *taskRecord) {
@@ -38,6 +39,7 @@ func (a *desktop) browseWorlds(i launcher.Instance, retry *taskRecord) {
 	}
 	if old := a.form.worlds; old != nil {
 		old.closeWorldCopy()
+		old.closeWorldPacks()
 		if old.cancel != nil {
 			old.cancel()
 		}
@@ -154,6 +156,10 @@ func (a *desktop) worldEditor(c *ui.Context) {
 		a.worldCopyEditor(c, p, i, p.copy)
 		return
 	}
+	if p.packs != nil {
+		a.worldPacksEditor(c, p, i, p.packs)
+		return
+	}
 	current, ok := a.state.Find(i.ID)
 	stale := !ok || current != i
 	if p.retry != nil {
@@ -246,6 +252,9 @@ func (a *desktop) worldEditor(c *ui.Context) {
 		}
 		if p.retry == nil && button(c, "复制世界…", action.Default, disabled || a.ctx == nil) {
 			p.copy = &worldCopyView{world: world}
+		}
+		if p.retry == nil && button(c, "查看数据包", action.Default, disabled || a.ctx == nil) {
+			a.openWorldPacks(p, i, world)
 		}
 		if canBackup && button(c, "备份所选世界", action.Default, disabled) {
 			a.form.open = false
