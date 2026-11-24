@@ -19,14 +19,13 @@ import (
 // four-digit range displayed by the launcher.
 const maxLastPlayedMillis = 253402300799999
 
-func readWorldMetadata(ctx context.Context, root *os.Root, world World) (string, time.Time) {
-	var name string
+func readWorldMetadata(ctx context.Context, root *os.Root, world World) (string, time.Time, string) {
+	var name, version string
 	var lastPlayed time.Time
 	err := readWorldData(ctx, root, world, func(r *nbt.Reader, tag byte, key string) {
 		switch {
 		case tag == 8 && key == "LevelName":
-			value, valid := r.JavaString()
-			if valid && strings.TrimSpace(value) != "" && !strings.ContainsFunc(value, unicode.IsControl) {
+			if value := worldMetadataString(r); value != "" {
 				name = value
 			}
 		case tag == 4 && key == "LastPlayed":
@@ -34,14 +33,38 @@ func readWorldMetadata(ctx context.Context, root *os.Root, world World) (string,
 			if ms > 0 && ms <= maxLastPlayedMillis {
 				lastPlayed = time.UnixMilli(ms).UTC()
 			}
+		case key == "Version":
+			version = ""
+			if tag != 10 {
+				r.Skip(tag)
+				return
+			}
+			r.Compound(func(tag byte, key string) {
+				if key == "Name" {
+					version = ""
+					if tag == 8 {
+						version = worldMetadataString(r)
+						return
+					}
+				}
+				r.Skip(tag)
+			})
 		default:
 			r.Skip(tag)
 		}
 	})
 	if err != nil {
-		return "", time.Time{}
+		return "", time.Time{}, ""
 	}
-	return name, lastPlayed
+	return name, lastPlayed, version
+}
+
+func worldMetadataString(r *nbt.Reader) string {
+	value, valid := r.JavaString()
+	if !valid || strings.TrimSpace(value) == "" || strings.ContainsFunc(value, unicode.IsControl) {
+		return ""
+	}
+	return value
 }
 
 // readWorldData reads the saved Data compound from the captured level.dat.

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"path/filepath"
 	"slices"
@@ -150,6 +151,10 @@ func (p *worldBrowser) filter() {
 	}
 }
 
+func worldSavedVersionLabel(world saves.World) string {
+	return "存档保存版本 · " + cmp.Or(world.SavedVersion(), "未知")
+}
+
 func (a *desktop) worldEditor(c *ui.Context) {
 	p, i := a.form.worlds, a.form.target
 	if p.copy != nil {
@@ -167,7 +172,7 @@ func (a *desktop) worldEditor(c *ui.Context) {
 		stale = stale || !canRetry
 	}
 	previous, _ := p.selectedWorld()
-	panelHeading(c, lucide.FolderOpen(), i.Name, "Minecraft "+i.Version+" · "+loaderName(i))
+	panelHeading(c, lucide.FolderOpen(), i.Name, "实例配置版本 · Minecraft "+i.Version+" · "+loaderName(i))
 	switch {
 	case stale:
 		feedback.Alert(c, "实例或启动身份已更改，请关闭列表并重新选择。", feedback.AlertProps{Type: feedback.Warning})
@@ -235,6 +240,9 @@ func (a *desktop) worldEditor(c *ui.Context) {
 	world, selected := p.selectedWorld()
 	if previous.Folder() != world.Folder() {
 		p.openErr = ""
+	}
+	if selected && !stale && !p.loading && a.form.err == "" {
+		muted(c, worldSavedVersionLabel(world)).FontSize(12).SingleLine().Ellipsis("…")
 	}
 	if p.openErr != "" && !stale {
 		feedback.Alert(c, "无法打开世界目录", feedback.AlertProps{Type: feedback.Warning, Variant: feedback.Plain, Description: p.openErr})
