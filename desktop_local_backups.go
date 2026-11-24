@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"strings"
 
 	"github.com/CAUCraft/LXMCL/internal/launcher"
 	"github.com/CAUCraft/LXMCL/internal/saves"
@@ -9,12 +10,14 @@ import (
 	"github.com/lobehub/lobe-mygo/pkg/action"
 	"github.com/lobehub/lobe-mygo/pkg/display"
 	"github.com/lobehub/lobe-mygo/pkg/feedback"
+	"github.com/lobehub/lobe-mygo/pkg/field"
 	"github.com/lobehub/lobe-mygo/pkg/lucide"
 )
 
 type localBackupView struct {
 	target  launcher.Instance
 	entries []saves.BackupEntry
+	query   string
 	list    ui.ListState
 	cancel  context.CancelFunc
 	loading bool
@@ -23,6 +26,20 @@ type localBackupView struct {
 	exportCancel context.CancelFunc
 	exportErr    string
 	exported     string
+}
+
+func (p *localBackupView) visibleEntries() []saves.BackupEntry {
+	query := strings.ToLower(strings.TrimSpace(p.query))
+	if query == "" {
+		return p.entries
+	}
+	var visible []saves.BackupEntry
+	for _, entry := range p.entries {
+		if strings.Contains(strings.ToLower(entry.Name), query) {
+			visible = append(visible, entry)
+		}
+	}
+	return visible
 }
 
 func (a *desktop) backupRecords(id int) []saves.BackupRecord {
@@ -46,9 +63,13 @@ func (a *desktop) closeLocalBackups() {
 }
 
 func (a *desktop) refreshLocalBackups(i launcher.Instance) {
+	query := ""
+	if previous := a.localBackups; previous != nil && previous.target == i {
+		query = previous.query
+	}
 	a.closeLocalBackups()
 	ctx, cancel := context.WithCancel(a.ctx)
-	p := &localBackupView{target: i, cancel: cancel, loading: true}
+	p := &localBackupView{target: i, query: query, cancel: cancel, loading: true}
 	a.localBackups = p
 	root, known := a.store.Root, a.backupRecords(i.ID)
 	go func() {
@@ -102,10 +123,18 @@ func (a *desktop) localBackupDialog(c *ui.Context) {
 		ui.Column(c).Gap(10).Children(func() {
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 				display.Text(c, current.Name, display.TextProps{Strong: true, Rows: 1}).Grow(1).MinWidth(0).Ellipsis("…")
+				ui.Column(c).Width(236).Children(func() {
+					previous := p.query
+					field.SearchBar(c, &p.query, field.SearchBarProps{Placeholder: "搜索备份文件名"}).Label("搜索备份文件名")
+					if p.query != previous {
+						p.list = ui.ListState{}
+					}
+				})
 				if icon(c, lucide.RefreshCw(), "刷新本地备份", p.loading || a.pickerBusy || exporting) {
 					a.refreshLocalBackups(current)
 				}
 			})
+			entries := p.visibleEntries()
 			switch {
 			case p.loading:
 				flightLoading(c, "正在读取本地备份…")
@@ -113,14 +142,17 @@ func (a *desktop) localBackupDialog(c *ui.Context) {
 				feedback.Alert(c, "无法读取本地备份", feedback.AlertProps{Type: feedback.Warning, Description: p.err.Error()})
 			case len(p.entries) == 0:
 				muted(c, "此实例还没有本地备份。")
+			case len(entries) == 0:
+				muted(c, "没有匹配的备份文件。")
 			default:
 				const rowHeight = 45
 				rows := 5
 				if p.exportErr != "" {
 					rows = 4
 				}
-				ui.List(c, &p.list, len(p.entries)).Height(float32(min(rows, len(p.entries)) * rowHeight)).FillWidth().Rows(func(r ui.ListRow) {
-					entry := p.entries[r.Index]
+				p.list.Key = func(index int) any { return entries[index].Name }
+				ui.List(c, &p.list, len(entries)).Height(float32(min(rows, len(entries)) * rowHeight)).FillWidth().Rows(func(r ui.ListRow) {
+					entry := entries[r.Index]
 					ui.Row(r.Context).Height(rowHeight).AlignItems(ui.Center).Gap(10).Padding(0, 6).Children(func() {
 						ui.Icon(r.Context, lucide.Archive()).FontSize(16)
 						ui.Column(r.Context).Grow(1).MinWidth(0).Gap(2).Children(func() {
