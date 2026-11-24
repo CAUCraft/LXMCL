@@ -2,6 +2,8 @@
   "archive.export_target": "Choose a new .zip file outside the source instance.",
   "archive.export_exists": "A file with this name already exists. Choose a different ZIP filename. %w",
   "prism.export_name": "Rename the instance using a non-empty name without carriage returns or NUL characters.",
+  "prism.export_worlds_changed": "The selected worlds have changed or are unavailable. Reopen the export and select the world folders again.",
+  "prism.export_worlds_preview_limit": "The world preview exceeds the number of files that can be checked.",
   "prism.select_root": "Choose a Prism or MultiMC instance folder containing instance.cfg and mmc-pack.json",
   "prism.zip_layout": "Choose a ZIP containing one vanilla instance, with instance.cfg and mmc-pack.json at the root or in the same top-level folder",
   "prism.format": "Unrecognized instance metadata. Select an instance using format version 1",

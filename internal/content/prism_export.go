@@ -34,6 +34,15 @@ func ExportPrismZIP(ctx context.Context, i instance.Instance, filename string, w
 
 // ExportPrismFiles writes the selected game files to a new Prism or MultiMC ZIP.
 func ExportPrismFiles(ctx context.Context, i instance.Instance, filename string, selected PrismFiles, report func(tasks.Progress)) error {
+	if selected.WorldFolders != nil {
+		return ErrPrismExportWorldsChanged
+	}
+	return exportPrismFiles(ctx, i, filename, selected, nil, report)
+}
+
+type prismExportAdd func(root *os.Root, source, relative string, info fs.FileInfo) error
+
+func exportPrismFiles(ctx context.Context, i instance.Instance, filename string, selected PrismFiles, selectedWorlds func(prismExportAdd) error, report func(tasks.Progress)) error {
 	if err := i.Validate(); err != nil {
 		return err
 	}
@@ -83,7 +92,11 @@ func ExportPrismFiles(ctx context.Context, i instance.Instance, filename string,
 				return i18n.Error("instance.duplicate_file_failed", serverListPath.name, err)
 			}
 		}
-		if selected.Worlds {
+		if selectedWorlds != nil {
+			if err := selectedWorlds(add); err != nil {
+				return err
+			}
+		} else if selected.Worlds {
 			err := saves.VisitWorldFiles(ctx, i.GameDir, func(root *os.Root, name string, info fs.FileInfo) error {
 				_, relative, _ := strings.Cut(name, "/")
 				if !prismWorldData(relative) {
@@ -179,9 +192,7 @@ func prismWorldData(name string) bool {
 	}
 	top, _, _ := strings.Cut(name, "/")
 	ext := path.Ext(name)
-	switch top {
-	case "region", "poi", "entities", "DIM-1", "DIM1", "dimensions", "data", "playerdata", "players", "generated", "advancements", "stats":
-	default:
+	if !prismWorldDataFolder(top) {
 		return false
 	}
 	switch path.Base(path.Dir(name)) {
@@ -195,4 +206,13 @@ func prismWorldData(name string) bool {
 		}
 	}
 	return ext == ".dat" || ext == ".dat_old" || ext == ".nbt"
+}
+
+func prismWorldDataFolder(name string) bool {
+	switch name {
+	case "region", "poi", "entities", "DIM-1", "DIM1", "dimensions", "data", "playerdata", "players", "generated", "advancements", "stats":
+		return true
+	default:
+		return false
+	}
 }

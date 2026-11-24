@@ -145,3 +145,110 @@ func TestPrismExportDoesNotPublishMissingServerList(t *testing.T) {
 		t.Fatalf("default export depends on the unselected list: %v", err)
 	}
 }
+
+func TestPrismExportSelectedWorlds(t *testing.T) {
+	ctx := t.Context()
+	i := instance.Instance{Name: "Worlds", Version: "1.21.4", GameDir: t.TempDir()}
+	write := func(name string) {
+		t.Helper()
+		filename := filepath.Join(i.GameDir, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(filename), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filename, []byte(name), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, name := range []string{
+		"saves/Island/level.dat", "saves/Island/region/r.0.0.mca", "saves/Island/notes.txt",
+		"saves/Island Annex/level.dat", "saves/Not a world/notes.txt",
+		"options.txt", "servers.dat",
+	} {
+		write(name)
+	}
+	preview, err := PreviewPrismExportWorlds(ctx, i)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := preview.WorldFolders(); !slices.Equal(got, []string{"Island", "Island Annex"}) {
+		t.Fatal(got)
+	}
+	selected := []string{"Island"}
+	files := PrismFiles{Worlds: true, Options: true, Servers: true}
+	write("saves/Island Annex/region/r.1.1.mca")
+	filename := filepath.Join(t.TempDir(), "selected.zip")
+	if err := ExportPrismSelectedWorlds(ctx, i, filename, files, preview, selected, nil); err != nil {
+		t.Fatal(err)
+	}
+	z, err := zip.OpenReader(filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var members []string
+	for _, entry := range z.File {
+		members = append(members, entry.Name)
+	}
+	if err := z.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"instance/instance.cfg", "instance/mmc-pack.json", "instance/.minecraft/options.txt",
+		"instance/.minecraft/servers.dat", "instance/.minecraft/saves/Island/level.dat", "instance/.minecraft/saves/Island/region/r.0.0.mca"}; !slices.Equal(members, want) {
+		t.Fatalf("ZIP members = %q, want %q", members, want)
+	}
+	imported, err := ReadPrismZIP(ctx, filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertPrismWorldFolders(t, imported, "Island")
+	dst := filepath.Join(t.TempDir(), "reimport")
+	importFiles := files
+	importFiles.WorldFolders = selected
+	if err := CopyPrismFiles(ctx, imported, dst, importFiles, func() error { return nil }, nil); err != nil {
+		t.Fatal(err)
+	}
+	if b, err := os.ReadFile(filepath.Join(dst, "saves", "Island", "region", "r.0.0.mca")); err != nil || string(b) != "saves/Island/region/r.0.0.mca" {
+		t.Fatal(string(b), err)
+	}
+
+	failureDir := t.TempDir()
+	failed := filepath.Join(failureDir, "failed.zip")
+	for _, bad := range [][]string{{}, {"ISLAND"}, {"Island", "Island"}} {
+		if err := ExportPrismSelectedWorlds(ctx, i, failed, files, preview, bad, nil); !errors.Is(err, ErrPrismExportWorldsChanged) {
+			t.Fatalf("invalid selection %q: %v", bad, err)
+		}
+	}
+	importSelection := PrismFiles{Worlds: true, WorldFolders: []string{"Island"}}
+	if err := ExportPrismFiles(ctx, i, failed, importSelection, nil); !errors.Is(err, ErrPrismExportWorldsChanged) {
+		t.Fatalf("legacy export accepted import-only selection: %v", err)
+	}
+	if err := ExportPrismSelectedWorlds(ctx, i, failed, importSelection, preview, selected, nil); !errors.Is(err, ErrPrismExportWorldsChanged) {
+		t.Fatalf("selected export accepted import-only selection: %v", err)
+	}
+	worldsOnly := PrismFiles{Worlds: true}
+	cancelCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	if err := ExportPrismSelectedWorlds(cancelCtx, i, failed, worldsOnly, preview, selected, func(tasks.Progress) {
+		cancel()
+	}); !errors.Is(err, context.Canceled) {
+		t.Fatal(err)
+	}
+	if err := ExportPrismSelectedWorlds(ctx, i, failed, worldsOnly, preview, selected, func(tasks.Progress) {
+		write("saves/Island/region/r.2.2.mca")
+	}); !errors.Is(err, ErrPrismExportWorldsChanged) {
+		t.Fatalf("changed selected files accepted: %v", err)
+	}
+	preview, err = PreviewPrismExportWorlds(ctx, i)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(filepath.Join(i.GameDir, "saves", "Island"), filepath.Join(t.TempDir(), "old")); err != nil {
+		t.Fatal(err)
+	}
+	write("saves/Island/level.dat")
+	if err := ExportPrismSelectedWorlds(ctx, i, failed, worldsOnly, preview, selected, nil); !errors.Is(err, ErrPrismExportWorldsChanged) {
+		t.Fatalf("same-name replacement accepted: %v", err)
+	}
+	if entries, err := os.ReadDir(failureDir); err != nil || len(entries) != 0 {
+		t.Fatal(entries, err)
+	}
+}
