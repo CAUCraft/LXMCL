@@ -828,6 +828,7 @@ func (a *desktop) editor(c *ui.Context) {
 		p.closeWorldCopy()
 		p.closeWorldPacks()
 		p.closeWorldThumbnail()
+		p.closeWorldUsage()
 		if p.cancel != nil {
 			p.cancel()
 			p.cancel = nil
