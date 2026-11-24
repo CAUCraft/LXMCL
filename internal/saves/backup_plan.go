@@ -16,6 +16,30 @@ type backupFile struct {
 	info fs.FileInfo
 }
 
+type backupFilePlan struct {
+	files []backupFile
+	size  uint64
+	paths storage.ArchivePaths
+}
+
+func (p *backupFilePlan) add(name string, info fs.FileInfo) error {
+	if !info.Mode().IsRegular() {
+		return i18n.Error("saves.backup_file_unsupported", name)
+	}
+	if len(p.files) >= maxSaveEntries {
+		return i18n.Error("saves.backup_too_many_files")
+	}
+	if uint64(info.Size()) > maxSaveBytes-p.size {
+		return i18n.Error("saves.backup_too_large")
+	}
+	if err := p.paths.Add(name, false); err != nil {
+		return err
+	}
+	p.size += uint64(info.Size())
+	p.files = append(p.files, backupFile{name, info})
+	return nil
+}
+
 // VisitWorldFiles visits the same recognized worlds and stable file snapshots as a backup.
 func VisitWorldFiles(ctx context.Context, gameDir string, visit func(*os.Root, string, fs.FileInfo) error) error {
 	root, err := savesRoot(gameDir, false)
@@ -53,9 +77,7 @@ func planBackup(ctx context.Context, root *os.Root, selected *World) ([]backupFi
 			return nil, err
 		}
 	}
-	var files []backupFile
-	var size uint64
-	paths := make(storage.ArchivePaths)
+	plan := backupFilePlan{paths: make(storage.ArchivePaths)}
 	for _, world := range entries {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -96,20 +118,9 @@ func planBackup(ctx context.Context, root *os.Root, selected *World) ([]backupFi
 			if err != nil {
 				return err
 			}
-			if !info.Mode().IsRegular() {
-				return i18n.Error("saves.backup_file_unsupported", name)
-			}
-			if len(files) >= maxSaveEntries {
-				return i18n.Error("saves.backup_too_many_files")
-			}
-			if uint64(info.Size()) > maxSaveBytes-size {
-				return i18n.Error("saves.backup_too_large")
-			}
-			if err := paths.Add(name, false); err != nil {
+			if err := plan.add(name, info); err != nil {
 				return err
 			}
-			size += uint64(info.Size())
-			files = append(files, backupFile{name, info})
 			levelFound = levelFound || name == world.Name()+"/level.dat"
 			return nil
 		}); err != nil {
@@ -119,8 +130,8 @@ func planBackup(ctx context.Context, root *os.Root, selected *World) ([]backupFi
 			return nil, i18n.Error("saves.backup_file_changed", world.Name()+"/level.dat")
 		}
 	}
-	if len(files) == 0 {
+	if len(plan.files) == 0 {
 		return nil, i18n.Error("saves.no_worlds_to_back_up")
 	}
-	return files, nil
+	return plan.files, nil
 }

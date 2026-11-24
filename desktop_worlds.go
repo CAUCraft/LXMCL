@@ -33,6 +33,7 @@ type worldBrowser struct {
 	copy      *worldCopyView
 	packs     *worldPacksView
 	thumbnail *worldThumbnail
+	usage     *worldUsage
 }
 
 func (a *desktop) browseWorlds(i launcher.Instance, retry *taskRecord) {
@@ -43,6 +44,7 @@ func (a *desktop) browseWorlds(i launcher.Instance, retry *taskRecord) {
 		old.closeWorldCopy()
 		old.closeWorldPacks()
 		old.closeWorldThumbnail()
+		old.closeWorldUsage()
 		if old.cancel != nil {
 			old.cancel()
 		}
@@ -161,10 +163,12 @@ func worldSavedVersionLabel(world saves.World) string {
 func (a *desktop) worldEditor(c *ui.Context) {
 	p, i := a.form.worlds, a.form.target
 	if p.copy != nil {
+		p.closeWorldUsage()
 		a.worldCopyEditor(c, p, i, p.copy)
 		return
 	}
 	if p.packs != nil {
+		p.closeWorldUsage()
 		a.worldPacksEditor(c, p, i, p.packs)
 		return
 	}
@@ -249,6 +253,7 @@ func (a *desktop) worldEditor(c *ui.Context) {
 		a.worldSelectionDetails(c, p, i, world)
 	} else {
 		p.closeWorldThumbnail()
+		p.closeWorldUsage()
 	}
 	if p.openErr != "" && !stale {
 		feedback.Alert(c, "无法打开世界目录", feedback.AlertProps{Type: feedback.Warning, Variant: feedback.Plain, Description: p.openErr})

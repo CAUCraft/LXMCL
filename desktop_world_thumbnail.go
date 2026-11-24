@@ -60,6 +60,7 @@ func (a *desktop) worldSelectionDetails(c *ui.Context, p *worldBrowser, i launch
 				ui.Icon(c, lucide.Folder()).FontSize(20).Label("世界文件夹图标")
 			})
 		}
-		muted(c, worldSavedVersionLabel(world)).FontSize(12).SingleLine().Ellipsis("…")
+		muted(c, worldSavedVersionLabel(world)).FontSize(12).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+		a.worldUsageDetails(c, p, i, world)
 	})
 }
