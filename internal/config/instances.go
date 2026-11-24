@@ -22,31 +22,40 @@ func (s State) Find(id int) (instance.Instance, bool) {
 }
 
 func (s *State) Create(name, version string) error {
-	name, err := s.checkName(0, name)
+	i, err := s.PreviewNewInstance(name, version)
 	if err != nil {
 		return err
 	}
+	s.NextID = i.ID + 1
+	s.Instances = append(s.Instances, i)
+	s.Selected = i.ID
+	return nil
+}
+
+// PreviewNewInstance returns the proposed instance without changing state or
+// checking the filesystem.
+func (s State) PreviewNewInstance(name, version string) (instance.Instance, error) {
+	name, err := s.checkName(0, name)
+	if err != nil {
+		return instance.Instance{}, err
+	}
 	if !instance.SupportedRelease(version) {
-		return i18n.Error("instance.release_required")
+		return instance.Instance{}, i18n.Error("instance.release_required")
 	}
 	if !filepath.IsAbs(s.Settings.GameRoot) {
-		return i18n.Error("instance.game_root_required")
+		return instance.Instance{}, i18n.Error("instance.game_root_required")
 	}
 	id := s.nextInstanceID()
 	if id == math.MaxInt {
-		return i18n.Error("instance.id_exhausted")
+		return instance.Instance{}, i18n.Error("instance.id_exhausted")
 	}
 	dir := filepath.Join(s.Settings.GameRoot, fmt.Sprintf("instance-%d", id))
 	for _, other := range s.Instances {
 		if filepath.Clean(other.GameDir) == dir {
-			return i18n.Error("instance.directory_occupied")
+			return instance.Instance{}, i18n.Error("instance.directory_occupied")
 		}
 	}
-	i := instance.Instance{ID: id, Name: name, Version: version, Loader: instance.LoaderVanilla, Revision: 1, GameDir: dir}
-	s.NextID = id + 1
-	s.Instances = append(s.Instances, i)
-	s.Selected = i.ID
-	return nil
+	return instance.Instance{ID: id, Name: name, Version: version, Loader: instance.LoaderVanilla, Revision: 1, GameDir: dir}, nil
 }
 
 func (s *State) Duplicate(id int, revision uint64, name, group string) (instance.Instance, error) {
