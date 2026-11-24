@@ -11,6 +11,15 @@ type LoaderRelease = minecraft.LoaderRelease
 
 func Catalog(ctx context.Context) ([]Version, error)  { return (minecraft.Client{}).Catalog(ctx) }
 func Releases(ctx context.Context) ([]Version, error) { return (minecraft.Client{}).Releases(ctx) }
+
+func (g Game) CachedReleases(ctx context.Context) ([]Version, error) {
+	return g.runtime().CachedReleases(ctx)
+}
+
+func (g Game) RefreshReleases(ctx context.Context) ([]Version, error) {
+	return g.runtime().RefreshReleases(ctx)
+}
+
 func FabricVersions(ctx context.Context, gameVersion string) ([]string, error) {
 	return (minecraft.Client{}).FabricVersions(ctx, gameVersion)
 }

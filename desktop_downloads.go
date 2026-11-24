@@ -116,11 +116,20 @@ func (a *desktop) openInstall(version string, fabric bool) {
 	}
 }
 
+// The cached selection is confined to the game installation page.
+func (a *desktop) installReleases() ([]launcher.Version, bool) {
+	if len(a.cachedReleases) > 0 && (len(a.releases) == 0 || a.catalogErr != "") {
+		return a.cachedReleases, true
+	}
+	return a.releases, false
+}
+
 func (a *desktop) installPage(c *ui.Context) {
 	p := &a.install
 	if len(a.releases) == 0 && a.catalogErr == "" {
 		a.refreshCatalog()
 	}
+	versions, cached := a.installReleases()
 	hasMatches := false
 	w, _ := c.Size()
 	splitWorkspace(c, catalogListWidth(w), func() {
@@ -131,25 +140,28 @@ func (a *desktop) installPage(c *ui.Context) {
 				a.refreshCatalog()
 			}
 		})
-		hasMatches = a.installVersions(c, p, p.query != previousQuery)
+		hasMatches = a.installVersions(c, p, versions, cached, p.query != previousQuery)
 	}, func() {
+		if cached {
+			muted(c, "上次同步的正式版列表 · 仅可创建原版实例").FontSize(13)
+		}
 		if !hasMatches {
 			ui.Column(c).Grow(1).MinWidth(0).Gap(10).Justify(ui.Center).Children(func() {
 				switch {
-				case a.catalogBusy:
+				case a.catalogBusy && !cached:
 					flightLoading(c, "正在读取官方版本…")
-				case a.catalogErr != "":
+				case a.catalogErr != "" && !cached:
 					title := "无法读取游戏版本列表"
-					if len(a.releases) > 0 {
+					if len(versions) > 0 {
 						title = "版本列表未更新，上次读取的列表中没有匹配项"
 					}
 					if catalogRetry(c, title, a.catalogErr, "重试读取版本", "复制版本列表错误") {
 						a.refreshCatalog()
 					}
-				case len(a.releases) > 0:
+				case len(versions) > 0:
 					display.Empty(c, display.EmptyProps{Icon: lucide.Search(), Title: "没有匹配的游戏版本", Description: "支持 Minecraft 1.20.1 及之后的正式版。"})
 				}
-				if len(a.releases) > 0 {
+				if len(versions) > 0 {
 					ui.Row(c).Justify(ui.Center).Children(func() {
 						if button(c, "清除搜索", action.Default, false) {
 							p.query, p.scroll.Y = "", 0
@@ -160,19 +172,19 @@ func (a *desktop) installPage(c *ui.Context) {
 			})
 			return
 		}
-		a.installDetails(c, p)
+		a.installDetails(c, p, cached)
 	})
 }
 
-func (a *desktop) installVersions(c *ui.Context, p *installView, queryChanged bool) bool {
+func (a *desktop) installVersions(c *ui.Context, p *installView, versions []launcher.Version, cached, queryChanged bool) bool {
 	q := strings.ToLower(strings.TrimSpace(p.query))
 	if queryChanged {
 		p.scroll.Y = 0
 	}
-	items := make([]display.ListItem, 0, len(a.releases))
+	items := make([]display.ListItem, 0, len(versions))
 	selectedVisible := false
 	exact := ""
-	for idx, v := range a.releases {
+	for idx, v := range versions {
 		if q != "" && !strings.Contains(strings.ToLower(v.ID), q) {
 			continue
 		}
@@ -183,7 +195,7 @@ func (a *desktop) installVersions(c *ui.Context, p *installView, queryChanged bo
 			exact = v.ID
 		}
 		item := display.ListItem{Key: v.ID, Label: v.ID, Icon: lucide.Package()}
-		if idx == 0 {
+		if idx == 0 && !cached {
 			item.Extra = "最新正式版"
 		}
 		items = append(items, item)
@@ -206,15 +218,19 @@ func (a *desktop) installVersions(c *ui.Context, p *installView, queryChanged bo
 	return true
 }
 
-func (a *desktop) installDetails(c *ui.Context, p *installView) {
+func (a *desktop) installDetails(c *ui.Context, p *installView, cached bool) {
 	groups := a.state.GroupNames()
+	loader := p.kind()
+	if cached {
+		loader = launcher.LoaderVanilla
+	}
 	heading(c, "Minecraft "+p.version)
 	layout.Divider(c, layout.DividerProps{})
 	layout.ScrollArea(c, layout.ScrollAreaProps{}, func() {
 		ui.Column(c).Gap(8).Padding(4, 2).Children(func() {
 			settingsRow(c, "实例名称", func() {
 				before := p.name
-				settingsInput(c, "实例名称", &p.name, a.installName(p), 0, false)
+				settingsInput(c, "实例名称", &p.name, a.installName(p.version, loader), 0, false)
 				if before != p.name {
 					p.err = ""
 				}
@@ -228,7 +244,9 @@ func (a *desktop) installDetails(c *ui.Context, p *installView) {
 					}
 				})
 			}
-			if a.loaderFields(c, &p.loaderSelection, launcher.Instance{}, false) {
+			if cached {
+				settingsRow(c, "加载器", func() { muted(c, "原版") })
+			} else if a.loaderFields(c, &p.loaderSelection, launcher.Instance{}, false) {
 				p.err = ""
 			}
 			layout.Divider(c, layout.DividerProps{})
@@ -237,8 +255,11 @@ func (a *desktop) installDetails(c *ui.Context, p *installView) {
 				muted(c, dir).Grow(1).MinWidth(0).SingleLine().Ellipsis("…").Selectable()
 				action.CopyButton(c, dir, action.CopyButtonProps{}).Label("复制新实例目录")
 			})
-			if a.catalogErr != "" {
+			if !cached && a.catalogErr != "" {
 				feedback.Alert(c, a.catalogErr, feedback.AlertProps{Type: feedback.Warning})
+			}
+			if !cached && a.catalogSaveErr != "" {
+				feedback.Alert(c, a.catalogSaveErr, feedback.AlertProps{Type: feedback.Warning})
 			}
 			if p.err != "" {
 				feedback.Alert(c, p.err, feedback.AlertProps{Type: feedback.Error})
@@ -251,20 +272,20 @@ func (a *desktop) installDetails(c *ui.Context, p *installView) {
 	}
 	layout.Divider(c, layout.DividerProps{})
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Justify(ui.End).Children(func() {
-		locked := a.busy || a.running != nil || !p.validLoader() || groupMissing
+		locked := a.busy || a.running != nil || groupMissing || (!cached && !p.validLoader())
 		if button(c, "仅创建实例", action.Default, locked) {
 			a.submitInstall(p, false)
 		}
-		if button(c, "安装实例", action.Primary, locked) {
+		if button(c, "安装实例", action.Primary, locked || cached) {
 			a.submitInstall(p, true)
 		}
 	})
 }
 
-func (a *desktop) installName(p *installView) string {
-	base := p.version
-	if p.loader != 0 {
-		base += " " + p.kind()
+func (a *desktop) installName(version, loader string) string {
+	base := version
+	if loader != launcher.LoaderVanilla {
+		base += " " + loader
 	}
 	candidate := base
 	for n := 2; slices.ContainsFunc(a.state.Instances, func(i launcher.Instance) bool {
@@ -279,26 +300,34 @@ func (a *desktop) submitInstall(p *installView, installNow bool) {
 	if a.busy || a.running != nil || a.ctx == nil {
 		return
 	}
+	versions, cached := a.installReleases()
+	if cached && installNow {
+		p.err = "联网刷新游戏版本后可安装。"
+		return
+	}
 	if !strings.Contains(strings.ToLower(p.version), strings.ToLower(strings.TrimSpace(p.query))) ||
-		!slices.ContainsFunc(a.releases, func(v launcher.Version) bool { return v.ID == p.version }) {
+		!slices.ContainsFunc(versions, func(v launcher.Version) bool { return v.ID == p.version }) {
 		p.err = "请从官方版本列表选择游戏版本"
 		return
 	}
 	if p.group != "" && !slices.Contains(a.state.GroupNames(), p.group) {
 		return
 	}
-	name, loaderVersion := strings.TrimSpace(p.name), ""
-	if name == "" {
-		name = a.installName(p)
-	}
-	if p.loader != 0 {
+	loader, loaderVersion := p.kind(), ""
+	if cached {
+		loader = launcher.LoaderVanilla
+	} else if p.loader != 0 {
 		if !p.validLoader() {
 			p.err = "请选择兼容的 " + p.kind() + " 版本"
 			return
 		}
 		loaderVersion = p.loaderVersion
 	}
-	next, instance, err := newLoaderInstallation(a.state, name, p.version, p.kind(), loaderVersion)
+	name := strings.TrimSpace(p.name)
+	if name == "" {
+		name = a.installName(p.version, loader)
+	}
+	next, instance, err := newLoaderInstallation(a.state, name, p.version, loader, loaderVersion)
 	if err != nil {
 		p.err = err.Error()
 		return
