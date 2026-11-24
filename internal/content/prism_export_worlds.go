@@ -126,23 +126,31 @@ func PreviewPrismExportWorlds(ctx context.Context, i instance.Instance) (*PrismE
 
 // ExportPrismSelectedWorlds exports only the accepted worlds and optional instance files.
 func ExportPrismSelectedWorlds(ctx context.Context, i instance.Instance, filename string, files PrismFiles, preview *PrismExportWorlds, selected []string, report func(tasks.Progress)) error {
-	if err := ctx.Err(); err != nil {
+	write, err := prismSelectedWorldWriter(ctx, i, files, preview, selected)
+	if err != nil {
 		return err
+	}
+	return exportPrismFiles(ctx, i, filename, files, write, nil, report)
+}
+
+func prismSelectedWorldWriter(ctx context.Context, i instance.Instance, files PrismFiles, preview *PrismExportWorlds, selected []string) (func(prismExportAdd) error, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 	if preview == nil || preview.instance != i || !files.Worlds || files.WorldFolders != nil ||
 		len(selected) == 0 || len(selected) > len(preview.worlds) {
-		return ErrPrismExportWorldsChanged
+		return nil, ErrPrismExportWorldsChanged
 	}
 	names := slices.Clone(selected)
 	slices.Sort(names)
 	for n, name := range names {
 		if _, found := preview.worlds[name]; !found || (n > 0 && name == names[n-1]) {
-			return ErrPrismExportWorldsChanged
+			return nil, ErrPrismExportWorldsChanged
 		}
 	}
-	return exportPrismFiles(ctx, i, filename, files, func(add prismExportAdd) error {
+	return func(add prismExportAdd) error {
 		return preview.write(ctx, names, add)
-	}, report)
+	}, nil
 }
 
 func (p *PrismExportWorlds) write(ctx context.Context, names []string, add prismExportAdd) error {

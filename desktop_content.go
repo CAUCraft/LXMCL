@@ -485,12 +485,16 @@ func (a *desktop) runInstanceTask(i launcher.Instance, label string, kind launch
 }
 
 func (a *desktop) runContentTask(i launcher.Instance, label string, resource *resourceTask, work func(context.Context, func(launcher.Progress)) error) {
+	a.runContentTaskWithResult(i, label, resource, work, nil)
+}
+
+func (a *desktop) runContentTaskWithResult(i launcher.Instance, label string, resource *resourceTask, work func(context.Context, func(launcher.Progress)) error, result func(*taskRecord)) {
 	current, ok := a.state.Find(i.ID)
 	if !ok || current.Revision != i.Revision || a.busy || a.running != nil || a.ctx == nil {
 		return
 	}
 	row := taskRecord{InstanceID: i.ID, Revision: i.Revision, Name: i.Name, Version: i.Version, Action: label, At: time.Now(), Resource: resource}
-	a.runFileTask(row, work, func(error) {
+	a.runFileTaskWithResult(row, work, result, func(error) {
 		if a.content.id == i.ID && a.content.revision == i.Revision {
 			a.refreshContent(i)
 		}

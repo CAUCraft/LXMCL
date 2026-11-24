@@ -22,6 +22,10 @@ func ValidFilename(name string) bool {
 // publication; a committed file remains successful if cancellation arrives later.
 // A process crash may leave a .part file, which does not block a subsequent retry.
 func PublishNew(ctx context.Context, root *os.Root, name string, perm fs.FileMode, prepare func(*os.File) error) error {
+	return publishNewObserved(ctx, root, name, perm, prepare, nil)
+}
+
+func publishNewObserved(ctx context.Context, root *os.Root, name string, perm fs.FileMode, prepare func(*os.File) error, observe func(string, *os.File)) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -35,6 +39,9 @@ func PublishNew(ctx context.Context, root *os.Root, name string, perm fs.FileMod
 		return &os.PathError{Op: "publish", Path: name, Err: fs.ErrExist}
 	}
 	return prepareAndCommit(ctx, root, perm, prepare, func(stage string, file *os.File) error {
+		if observe != nil {
+			observe(stage, file)
+		}
 		return publishNew(ctx, root, stage, name, file)
 	})
 }

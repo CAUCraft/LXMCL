@@ -14,6 +14,12 @@ import (
 
 // publishInstanceZIP writes a new ZIP at the chosen path outside the source instance.
 func publishInstanceZIP(ctx context.Context, gameDir, filename string, prepare func(*os.File) error) error {
+	return withInstanceZIPDestination(gameDir, filename, func(out *os.Root, name string) error {
+		return storage.PublishNew(ctx, out, name, 0600, prepare)
+	})
+}
+
+func withInstanceZIPDestination(gameDir, filename string, publish func(*os.Root, string) error) error {
 	parent, name := filepath.Dir(filename), filepath.Base(filename)
 	if !filepath.IsAbs(filename) || !storage.ValidFilename(name) || !strings.EqualFold(filepath.Ext(name), ".zip") {
 		return i18n.Error("archive.export_target")
@@ -26,7 +32,7 @@ func publishInstanceZIP(ctx context.Context, gameDir, filename string, prepare f
 		return err
 	}
 	defer out.Close()
-	err = storage.PublishNew(ctx, out, name, 0600, prepare)
+	err = publish(out, name)
 	if errors.Is(err, fs.ErrExist) {
 		return i18n.Error("archive.export_exists", err)
 	}

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"testing"
 
@@ -250,5 +251,97 @@ func TestPrismExportSelectedWorlds(t *testing.T) {
 	}
 	if entries, err := os.ReadDir(failureDir); err != nil || len(entries) != 0 {
 		t.Fatal(entries, err)
+	}
+}
+
+func TestPrismTaskExportLocatesOnlyPublishedZIP(t *testing.T) {
+	if runtime.GOOS != "windows" && runtime.GOOS != "linux" {
+		t.Skip("persistent local file identity is available on Windows and Linux")
+	}
+	ctx := t.Context()
+	i := instance.Instance{Name: "Island", Version: "1.21.4", GameDir: t.TempDir()}
+	firstPath := filepath.Join(t.TempDir(), "岛.zip")
+	secondPath := filepath.Join(t.TempDir(), "岛.zip")
+	first, err := ExportPrismTaskZIP(ctx, i, firstPath, PrismFiles{}, nil, nil, nil)
+	if err != nil || first.Path != firstPath {
+		t.Fatal(first, err)
+	}
+	second, err := ExportPrismTaskZIP(ctx, i, secondPath, PrismFiles{}, nil, nil, nil)
+	if err != nil || second.Path != secondPath {
+		t.Fatal(second, err)
+	}
+	root := t.TempDir()
+	record := func(artifact tasks.PrismExport) tasks.Record {
+		return (tasks.Record{Action: tasks.PrismExportAction, Status: tasks.Completed, PrismExport: artifact}).Submitted()
+	}
+	legacy := record(tasks.PrismExport{})
+	failed := record(first)
+	failed.Status = tasks.Failed
+	if err := tasks.Save(root, []tasks.Record{record(first), record(second), legacy, failed}); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := tasks.Load(root)
+	if err != nil || len(rows) != 4 {
+		t.Fatal(rows, err)
+	}
+	for index, want := range []string{firstPath, secondPath} {
+		got, err := rows[index].LocatePrismExport()
+		if err != nil || got != want || rows[index].PrismExportPath() != want {
+			t.Fatalf("artifact %d: got %q, %v", index, got, err)
+		}
+	}
+	for _, row := range rows[2:] {
+		if row.PrismExportPath() != "" {
+			t.Fatalf("legacy or failed task exposed an artifact: %+v", row)
+		}
+	}
+	nonCanonical := first
+	nonCanonical.Path = filepath.Dir(firstPath) + string(filepath.Separator) + "." + string(filepath.Separator) + filepath.Base(firstPath)
+	if got := record(nonCanonical).PrismExportPath(); got != "" {
+		t.Fatalf("non-canonical history path was accepted: %q", got)
+	}
+	if result, err := ExportPrismTaskZIP(ctx, i, firstPath, PrismFiles{}, nil, nil, nil); !errors.Is(err, os.ErrExist) || result.Path != "" {
+		t.Fatalf("collision published a task artifact: %+v %v", result, err)
+	}
+
+	original, err := os.Stat(firstPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	moved := filepath.Join(filepath.Dir(firstPath), "moved.zip")
+	if err := os.Rename(firstPath, moved); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := rows[0].LocatePrismExport(); err == nil || got != "" {
+		t.Fatalf("moved ZIP was still located: %q, %v", got, err)
+	}
+	data, err := os.ReadFile(moved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(firstPath, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(firstPath, original.ModTime(), original.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := rows[0].LocatePrismExport(); err == nil || got != "" {
+		t.Fatalf("same-size replacement was located: %q, %v", got, err)
+	}
+	if got, err := rows[1].LocatePrismExport(); err != nil || got != secondPath {
+		t.Fatalf("unrelated same-name artifact was affected: %q, %v", got, err)
+	}
+
+	cancelPath := filepath.Join(t.TempDir(), "canceled.zip")
+	cancelCtx, cancel := context.WithCancel(ctx)
+	cancel()
+	if artifact, err := ExportPrismTaskZIP(cancelCtx, i, cancelPath, PrismFiles{}, nil, nil, nil); !errors.Is(err, context.Canceled) || artifact.Path != "" {
+		t.Fatalf("canceled task returned an artifact: %+v %v", artifact, err)
+	}
+	if artifact, err := ExportPrismTaskZIP(ctx, i, cancelPath, PrismFiles{Worlds: true}, nil, []string{}, nil); !errors.Is(err, ErrPrismExportWorldsChanged) || artifact.Path != "" {
+		t.Fatalf("empty explicit selection returned an artifact: %+v %v", artifact, err)
+	}
+	if _, err := os.Stat(cancelPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal(err)
 	}
 }
