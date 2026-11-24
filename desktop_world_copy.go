@@ -66,7 +66,8 @@ func (a *desktop) worldCopyEditor(c *ui.Context, browser *worldBrowser, source l
 	target, ok := a.state.Find(p.target.ID)
 	valid := ok && target == p.target
 	panelHeading(c, lucide.Copy(), p.world.Folder(), fmt.Sprintf("来源实例 · %s · #%d", source.Name, source.ID))
-	muted(c, "来源版本 · Minecraft "+source.Version+" · "+loaderName(source)).FontSize(12)
+	muted(c, worldSavedVersionLabel(p.world)).FontSize(12).SingleLine().Ellipsis("…")
+	muted(c, "源实例配置版本 · Minecraft "+source.Version+" · "+loaderName(source)).FontSize(12)
 
 	options := make([]field.SelectOption, 0, len(a.state.Instances))
 	for _, i := range a.state.Instances {
@@ -94,7 +95,7 @@ func (a *desktop) worldCopyEditor(c *ui.Context, browser *worldBrowser, source l
 		return
 	}
 	if valid {
-		muted(c, "目标版本 · Minecraft "+target.Version+" · "+loaderName(target)).FontSize(12)
+		muted(c, "目标实例配置版本 · Minecraft "+target.Version+" · "+loaderName(target)).FontSize(12)
 	}
 	switch {
 	case stale:
@@ -115,7 +116,7 @@ func (a *desktop) worldCopyEditor(c *ui.Context, browser *worldBrowser, source l
 		if filepath.Base(p.plan.Destination()) != p.world.Folder() {
 			muted(c, "同名存档保留，复制到新目录。").FontSize(12)
 		}
-		muted(c, "版本一致。模组依赖仍需自行核对。").FontSize(12)
+		muted(c, "实例配置的游戏版本与加载器一致。模组依赖仍需自行核对。").FontSize(12)
 	}
 	if p.canceled {
 		muted(c, "复制已取消，确认后可重试。").FontSize(12)

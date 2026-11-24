@@ -18,6 +18,7 @@ type World struct {
 	directory, level fs.FileInfo
 	levelName        string
 	lastPlayed       time.Time
+	savedVersion     string
 }
 
 func (w World) Folder() string { return w.folder }
@@ -27,6 +28,9 @@ func (w World) LevelName() string { return w.levelName }
 
 // LastPlayed is the timestamp saved by the game, or zero when unavailable.
 func (w World) LastPlayed() time.Time { return w.lastPlayed }
+
+// SavedVersion is the version name recorded in level.dat, or empty when unknown.
+func (w World) SavedVersion() string { return w.savedVersion }
 
 // Worlds lists immediate world directories without creating an absent saves folder.
 func Worlds(ctx context.Context, gameDir string) ([]World, error) {
@@ -57,7 +61,7 @@ func Worlds(ctx context.Context, gameDir string) ([]World, error) {
 		if err != nil {
 			return nil, err
 		}
-		world.levelName, world.lastPlayed = readWorldMetadata(ctx, root, world)
+		world.levelName, world.lastPlayed, world.savedVersion = readWorldMetadata(ctx, root, world)
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
