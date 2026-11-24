@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/CAUCraft/LXMCL/internal/i18n"
 	"github.com/CAUCraft/LXMCL/internal/launcher"
 	"github.com/egoist/mygo/ui"
 	"github.com/lobehub/lobe-mygo/pkg/action"
@@ -101,8 +102,8 @@ func catalogListWidth(w float32) float32 { return min(256, max(158, (w-150)*0.24
 
 type installView struct {
 	loaderSelection
-	query, name, err string
-	scroll           ui.ScrollState
+	query, name, group, err string
+	scroll                  ui.ScrollState
 }
 
 func (a *desktop) openInstall(version string, fabric bool) {
@@ -206,6 +207,7 @@ func (a *desktop) installVersions(c *ui.Context, p *installView, queryChanged bo
 }
 
 func (a *desktop) installDetails(c *ui.Context, p *installView) {
+	groups := a.state.GroupNames()
 	heading(c, "Minecraft "+p.version)
 	layout.Divider(c, layout.DividerProps{})
 	layout.ScrollArea(c, layout.ScrollAreaProps{}, func() {
@@ -217,6 +219,15 @@ func (a *desktop) installDetails(c *ui.Context, p *installView) {
 					p.err = ""
 				}
 			})
+			if len(groups) > 0 || p.group != "" {
+				settingsRow(c, "实例分组", func() {
+					previous := p.group
+					groupDestinationPicker(c, &p.group, groups, "选择安装分组", a.busy).Grow(1).MinWidth(0)
+					if previous != p.group {
+						p.err = ""
+					}
+				})
+			}
 			if a.loaderFields(c, &p.loaderSelection, launcher.Instance{}, false) {
 				p.err = ""
 			}
@@ -234,9 +245,13 @@ func (a *desktop) installDetails(c *ui.Context, p *installView) {
 			}
 		})
 	}).Grow(1).MinHeight(0)
+	groupMissing := p.group != "" && !slices.Contains(groups, p.group)
+	if groupMissing {
+		feedback.Alert(c, i18n.Text("instance.group_missing"), feedback.AlertProps{Type: feedback.Warning})
+	}
 	layout.Divider(c, layout.DividerProps{})
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Justify(ui.End).Children(func() {
-		locked := a.busy || a.running != nil || !p.validLoader()
+		locked := a.busy || a.running != nil || !p.validLoader() || groupMissing
 		if button(c, "安装实例", action.Primary, locked) {
 			a.submitInstall(p, a.installName(p))
 		}
@@ -266,6 +281,9 @@ func (a *desktop) submitInstall(p *installView, defaultName string) {
 		p.err = "请从官方版本列表选择要安装的版本"
 		return
 	}
+	if p.group != "" && !slices.Contains(a.state.GroupNames(), p.group) {
+		return
+	}
 	name, loaderVersion := strings.TrimSpace(p.name), ""
 	if name == "" {
 		name = defaultName
@@ -282,6 +300,9 @@ func (a *desktop) submitInstall(p *installView, defaultName string) {
 		p.err = err.Error()
 		return
 	}
+	if p.group != "" {
+		next.InstanceGroups[instance.ID] = p.group
+	}
 	p.err = ""
 	a.save(next, instance.ID, func(err error) {
 		if err != nil {
@@ -289,7 +310,7 @@ func (a *desktop) submitInstall(p *installView, defaultName string) {
 			a.message("无法保存新实例", err)
 			return
 		}
-		p.name = ""
+		p.name, p.group = "", ""
 		if a.page == pageDownloads && a.downloadPage == downloadGame {
 			a.query, a.instanceFilter = "", 0
 			a.inspect(instance)

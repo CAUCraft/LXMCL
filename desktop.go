@@ -165,6 +165,9 @@ func (a *desktop) view(c *ui.Context) {
 				a.accounts(c.Key("accounts"))
 			}
 		}
+		if a.page != pageDownloads || a.downloadPage != downloadGame {
+			a.install.group = ""
+		}
 		if a.task.Stage != "" && !(a.page == pageDownloads && a.downloadPage == downloadTasks) {
 			a.progress(c)
 		} else if a.notice != "" && a.task.Stage == "" {
