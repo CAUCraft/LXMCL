@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/CAUCraft/LXMCL/internal/launcher"
 	"github.com/CAUCraft/LXMCL/internal/saves"
@@ -15,6 +16,7 @@ import (
 	"github.com/lobehub/lobe-mygo/pkg/action"
 	"github.com/lobehub/lobe-mygo/pkg/display"
 	"github.com/lobehub/lobe-mygo/pkg/feedback"
+	"github.com/lobehub/lobe-mygo/pkg/field"
 	"github.com/lobehub/lobe-mygo/pkg/layout"
 	"github.com/lobehub/lobe-mygo/pkg/lucide"
 )
@@ -24,6 +26,7 @@ type restoreView struct {
 	filename string
 	preview  launcher.SavePreview
 	worlds   []string
+	query    string
 	selected int // 0 restores all worlds, other rows use worlds[selected-1].
 	list     ui.ListState
 	loading  bool
@@ -211,24 +214,52 @@ func (a *desktop) startRestore(p *restoreView) bool {
 }
 
 func (p *restoreView) worldList(c *ui.Context) {
-	count := len(p.worlds)
-	label := func(row int) string { return p.worlds[row] }
+	previous := p.query
+	field.SearchBar(c, &p.query, field.SearchBarProps{Placeholder: "搜索世界目录"}).Label("搜索世界目录")
+	query := strings.ToLower(strings.TrimSpace(p.query))
+	// Each visible row points to an original archive slot, including the
+	// complete-archive option in a writable preview.
+	rows := make([]int, 0, len(p.worlds)+1)
 	if !p.readOnly {
-		count++
-		label = func(row int) string {
-			if row == 0 {
-				return fmt.Sprintf("全部世界（%d 个）", len(p.worlds))
-			}
-			return p.worlds[row-1]
+		rows = append(rows, 0)
+	}
+	firstWorld := len(rows)
+	for i, world := range p.worlds {
+		if query == "" || strings.Contains(strings.ToLower(world), query) {
+			rows = append(rows, i+1)
 		}
-		p.list.Selected = &p.selected
+	}
+
+	selected := slices.Index(rows, p.selected)
+	if p.query != previous {
+		p.list = ui.ListState{}
+		if !p.readOnly && selected >= 0 {
+			p.list.ScrollIntoView(selected)
+		}
+	}
+	if len(rows) == firstWorld {
+		muted(c, "没有匹配的世界目录。")
+	}
+	if len(rows) == 0 {
+		return
+	}
+	if !p.readOnly {
+		p.list.Selected = &selected
+	}
+	p.list.Key = func(row int) any { return rows[row] }
+	label := func(row int) string {
+		slot := rows[row]
+		if slot == 0 {
+			return fmt.Sprintf("全部世界（%d 个）", len(p.worlds))
+		}
+		return p.worlds[slot-1]
 	}
 	p.list.Label = label
-	ui.List(c, &p.list, count).Height(float32(min(4, count)) * 34).FillWidth().Rows(func(row ui.ListRow) {
+	ui.List(c, &p.list, len(rows)).Height(float32(min(4, len(rows))) * 34).FillWidth().Rows(func(row ui.ListRow) {
 		rc := row.Context
 		ui.Row(rc).Height(34).Padding(0, 10).Gap(8).AlignItems(ui.Center).Children(func() {
 			glyph := lucide.Folder()
-			if row.Index == 0 && !p.readOnly {
+			if rows[row.Index] == 0 {
 				glyph = lucide.Layers()
 			}
 			ui.Icon(rc, glyph).FontSize(15)
@@ -238,6 +269,12 @@ func (p *restoreView) worldList(c *ui.Context) {
 			}
 		})
 	})
+	if !p.readOnly {
+		p.selected = -1
+		if selected >= 0 && selected < len(rows) {
+			p.selected = rows[selected]
+		}
+	}
 }
 
 type backupView struct {
