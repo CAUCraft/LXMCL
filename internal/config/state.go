@@ -25,6 +25,7 @@ type State struct {
 	PinnedInstances  map[int]bool             `json:"pinned_instances,omitempty"`
 	InstanceGroups   map[int]string           `json:"instance_groups,omitempty"`
 	LibraryLoader    string                   `json:"library_loader,omitempty"`
+	LibraryVersion   string                   `json:"library_version,omitempty"`
 	LibrarySort      string                   `json:"library_sort,omitempty"`
 	LibraryGroup     *string                  `json:"library_group,omitempty"` // nil shows all groups, empty selects ungrouped instances.
 	OfflinePlayers   []string                 `json:"offline_players,omitempty"`

@@ -91,7 +91,7 @@ func (a *desktop) view(c *ui.Context) {
 		(a.microsoft == nil || !a.microsoft.open) {
 		if mods, key, ok := display.HotkeyBinding(searchHotkey, display.HotkeyAuto); ok && c.Shortcut(mods, key) {
 			a.page, a.inspected = pageLibrary, 0
-			a.instanceFilter, a.libraryGroup, a.libraryLoader = 0, nil, ""
+			a.instanceFilter, a.libraryGroup, a.libraryLoader, a.libraryVersion = 0, nil, "", ""
 			a.focusSearch = len(a.state.Instances) > 0
 		}
 		if mods, key, ok := display.HotkeyBinding(tasksHotkey, display.HotkeyAuto); ok && c.Shortcut(mods, key) {
@@ -470,6 +470,14 @@ func (a *desktop) library(c *ui.Context) {
 		}
 		w, _ := c.Size()
 		query, filter := a.query, a.instanceFilter
+		compact := w < 960
+		filters := func() {
+			a.libraryGroupPicker(c)
+			a.libraryLoaderPicker(c)
+			a.libraryVersionPicker(c)
+			action.Segmented(c, &a.instanceFilter, []string{"全部", "已缓存", "待下载"},
+				action.SegmentedProps{Size: theme.Small}).Label("实例筛选")
+		}
 		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
 			ui.Column(c).Grow(1).MinWidth(0).Children(func() {
 				hotkey := searchHotkey
@@ -484,10 +492,9 @@ func (a *desktop) library(c *ui.Context) {
 					a.focusSearch = false
 				}
 			})
-			a.libraryGroupPicker(c)
-			a.libraryLoaderPicker(c)
-			action.Segmented(c, &a.instanceFilter, []string{"全部", "已缓存", "待下载"},
-				action.SegmentedProps{Size: theme.Small}).Label("实例筛选")
+			if !compact {
+				filters()
+			}
 			if button(c, "导入本地实例…", action.Default, a.busy || a.pickerBusy) {
 				a.startPrismImport()
 			}
@@ -495,6 +502,9 @@ func (a *desktop) library(c *ui.Context) {
 				a.create()
 			}
 		})
+		if compact {
+			ui.Row(c).Gap(10).AlignItems(ui.Center).Children(filters)
+		}
 		if a.query != query || a.instanceFilter != filter {
 			a.scroll.Y = 0
 		}
@@ -566,12 +576,13 @@ func (a *desktop) instanceList(c *ui.Context, inspecting bool) {
 	}
 	if len(items) == 0 {
 		display.Empty(c, display.EmptyProps{Icon: lucide.SearchX(), Title: "未找到实例", Action: func() {
-			hasPreference := a.state.LibraryGroup != nil || a.state.LibraryLoader != "" || a.libraryGroup != nil || a.libraryLoader != ""
+			hasPreference := a.state.LibraryGroup != nil || a.state.LibraryLoader != "" || a.state.LibraryVersion != "" ||
+				a.libraryGroup != nil || a.libraryLoader != "" || a.libraryVersion != ""
 			if button(c, "清除筛选", action.Default, a.busy && hasPreference) {
 				if hasPreference {
 					next := a.state.Clone()
-					next.LibraryGroup, next.LibraryLoader = nil, ""
-					a.saveLibraryFilters(next, nil, "")
+					next.LibraryGroup, next.LibraryLoader, next.LibraryVersion = nil, "", ""
+					a.saveLibraryFilters(next, nil, "", "")
 				}
 				a.query, a.instanceFilter, a.scroll.Y = "", 0, 0
 			}

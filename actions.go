@@ -62,7 +62,7 @@ func (a *desktop) load() {
 			a.state, a.draft, a.installed, a.ready = s, s.Settings, installed, true
 			a.playtimes, a.playtimeErr = played, playErr
 			a.instanceIcons = icons
-			a.libraryGroup = s.LibraryGroup
+			a.libraryGroup, a.libraryVersion = s.LibraryGroup, s.LibraryVersion
 			if slices.Contains(installLoaders, s.LibraryLoader) || s.LibraryLoader == unknownLibraryLoader {
 				a.libraryLoader = s.LibraryLoader
 			}
@@ -215,6 +215,9 @@ func (a *desktop) inspect(i launcher.Instance) {
 	}
 	if !a.matchesGroup(i.ID) {
 		a.libraryGroup, a.scroll.Y = nil, 0
+	}
+	if !a.matchesLibraryVersion(i) {
+		a.libraryVersion, a.scroll.Y = "", 0
 	}
 	a.page, a.inspected = pageLibrary, i.ID
 	a.detailPage = detailOverview

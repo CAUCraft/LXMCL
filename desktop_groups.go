@@ -18,9 +18,9 @@ func (a *desktop) matchesGroup(id int) bool {
 
 // History and other direct navigation can reveal an instance temporarily.
 // Only an explicit filter choice changes the preference restored on restart.
-func (a *desktop) saveLibraryFilters(next launcher.State, group *string, loader string) {
-	previousGroup, previousLoader := a.libraryGroup, a.libraryLoader
-	a.libraryGroup, a.libraryLoader = group, loader
+func (a *desktop) saveLibraryFilters(next launcher.State, group *string, loader, version string) {
+	previousGroup, previousLoader, previousVersion := a.libraryGroup, a.libraryLoader, a.libraryVersion
+	a.libraryGroup, a.libraryLoader, a.libraryVersion = group, loader, version
 	a.scroll.Y = 0
 	a.save(next, 0, func(err error) {
 		if err != nil {
@@ -30,11 +30,15 @@ func (a *desktop) saveLibraryFilters(next launcher.State, group *string, loader 
 			if a.libraryLoader == loader {
 				a.libraryLoader = previousLoader
 			}
+			if a.libraryVersion == version {
+				a.libraryVersion = previousVersion
+			}
 			a.message("保存实例筛选失败", err)
 			return
 		}
 		i, ok := a.state.Find(a.inspected)
-		if a.page == pageLibrary && ok && (!a.matchesGroup(i.ID) || !a.matchesLibraryLoader(i)) {
+		if (previousGroup != group || previousLoader != loader) && a.page == pageLibrary && ok &&
+			(!a.matchesGroup(i.ID) || !a.matchesLibraryLoader(i)) {
 			a.inspected = 0
 		}
 	})
@@ -86,7 +90,7 @@ func (a *desktop) libraryGroupPicker(c *ui.Context) {
 		if name, ok := strings.CutPrefix(selected, "group:"); ok {
 			next.LibraryGroup = &name
 		}
-		a.saveLibraryFilters(next, next.LibraryGroup, a.libraryLoader)
+		a.saveLibraryFilters(next, next.LibraryGroup, a.libraryLoader, a.libraryVersion)
 	}
 }
 

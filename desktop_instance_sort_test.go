@@ -18,6 +18,9 @@ func TestLibrarySortPreservesTargetsAndCombinesFilters(t *testing.T) {
 		t.Fatal(err)
 	}
 	a.state.Instances[2].Loader = "Custom Fabric"
+	a.state.Instances[0].Version = "1.21.10"
+	a.state.Instances[1].Version = "1.21.1"
+	a.state.Instances[2].Version = "25w05a"
 	a.state.Selected = 1
 	original := slices.Clone(a.state.Instances)
 	now := time.Now()
@@ -61,6 +64,12 @@ func TestLibrarySortPreservesTargetsAndCombinesFilters(t *testing.T) {
 	check(sortName, 3)
 	a.libraryLoader = ""
 	check(sortName, 3, 2, 1)
+	a.libraryVersion = "1.21.1"
+	check(sortName, 2)
+	a.libraryVersion = "25w05a"
+	check(sortName, 3)
+	a.libraryLoader = "Fabric"
+	check(sortName)
 	if a.state.Selected != 1 || !slices.Equal(a.state.Instances, original) {
 		t.Fatal("presentation reordered stored instances or changed the home target")
 	}
