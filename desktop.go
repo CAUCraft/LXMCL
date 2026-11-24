@@ -641,9 +641,13 @@ func (a *desktop) editor(c *ui.Context) {
 		return
 	}
 	title, okText := "重命名实例", "保存"
+	width := float32(480)
 	switch a.form.mode {
 	case "worlds":
-		title = "本地存档"
+		title, width = "本地存档", 552
+		if a.form.worlds != nil && a.form.worlds.copy != nil {
+			title = "复制世界"
+		}
 	case "prism":
 		title = "导入 Prism / MultiMC 实例"
 	case "icon":
@@ -671,7 +675,7 @@ func (a *desktop) editor(c *ui.Context) {
 	}
 	submit := false
 	if feedback.Modal(c, &a.form.open, feedback.ModalProps{
-		Title: title, OkText: okText, CancelText: "取消", Width: 480, NoFooter: a.form.loaders != nil || a.form.icon != nil || a.form.prism != nil || a.form.worlds != nil || a.form.groupMove != nil,
+		Title: title, OkText: okText, CancelText: "取消", Width: width, NoFooter: a.form.loaders != nil || a.form.icon != nil || a.form.prism != nil || a.form.worlds != nil || a.form.groupMove != nil,
 	}, func() {
 		ui.Column(c).Gap(12).Children(func() {
 			if p := a.form.groupMove; p != nil {
@@ -802,9 +806,12 @@ func (a *desktop) editor(c *ui.Context) {
 	if p := a.form.loaders; !a.form.open && p != nil && p.loaderCancel != nil {
 		p.cancelLoaders()
 	}
-	if p := a.form.worlds; !a.form.open && p != nil && p.cancel != nil {
-		p.cancel()
-		p.cancel = nil
+	if p := a.form.worlds; !a.form.open && p != nil {
+		p.closeWorldCopy()
+		if p.cancel != nil {
+			p.cancel()
+			p.cancel = nil
+		}
 	}
 }
 

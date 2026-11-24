@@ -29,14 +29,18 @@ type worldBrowser struct {
 	opening  bool
 	openErr  string
 	retry    *taskRecord
+	copy     *worldCopyView
 }
 
 func (a *desktop) browseWorlds(i launcher.Instance, retry *taskRecord) {
 	if a.ctx == nil || !a.ready || a.busy || a.running != nil {
 		return
 	}
-	if old := a.form.worlds; old != nil && old.cancel != nil {
-		old.cancel()
+	if old := a.form.worlds; old != nil {
+		old.closeWorldCopy()
+		if old.cancel != nil {
+			old.cancel()
+		}
 	}
 	ctx, cancel := context.WithCancel(a.ctx)
 	p := &worldBrowser{loading: true, cancel: cancel, selected: -1, retry: retry}
@@ -146,6 +150,10 @@ func (p *worldBrowser) filter() {
 
 func (a *desktop) worldEditor(c *ui.Context) {
 	p, i := a.form.worlds, a.form.target
+	if p.copy != nil {
+		a.worldCopyEditor(c, p, i, p.copy)
+		return
+	}
 	current, ok := a.state.Find(i.ID)
 	stale := !ok || current != i
 	if p.retry != nil {
@@ -235,6 +243,9 @@ func (a *desktop) worldEditor(c *ui.Context) {
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 		if p.retry == nil && button(c, "打开世界目录", action.Default, disabled || p.opening) {
 			a.openWorldDirectory(p, i, world)
+		}
+		if p.retry == nil && button(c, "复制世界…", action.Default, disabled || a.ctx == nil) {
+			p.copy = &worldCopyView{world: world}
 		}
 		if canBackup && button(c, "备份所选世界", action.Default, disabled) {
 			a.form.open = false
