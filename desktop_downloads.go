@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"path/filepath"
 	"slices"
 	"strings"
 
@@ -105,6 +104,7 @@ type installView struct {
 	query, name, group, err string
 	java                    *releaseJavaPreview
 	cache                   *installCachePreview
+	directory               *installDirectoryCheck
 	scroll                  ui.ScrollState
 }
 
@@ -151,7 +151,7 @@ func (a *desktop) installPage(c *ui.Context) {
 			muted(c, "上次同步的正式版列表 · 仅可创建原版实例").FontSize(13)
 		}
 		if !hasMatches {
-			p.cache = nil
+			p.cache, p.directory = nil, nil
 			ui.Column(c).Grow(1).MinWidth(0).Gap(10).Justify(ui.Center).Children(func() {
 				switch {
 				case a.catalogBusy && !cached:
@@ -230,6 +230,7 @@ func (a *desktop) installDetails(c *ui.Context, p *installView, versions []launc
 	if cached {
 		loader = launcher.LoaderVanilla
 	}
+	targetReady := false
 	heading(c, "Minecraft "+p.version)
 	layout.Divider(c, layout.DividerProps{})
 	layout.ScrollArea(c, layout.ScrollAreaProps{}, func() {
@@ -255,14 +256,10 @@ func (a *desktop) installDetails(c *ui.Context, p *installView, versions []launc
 			} else if a.loaderFields(c, &p.loaderSelection, launcher.Instance{}, false) {
 				p.err = ""
 			}
+			layout.Divider(c, layout.DividerProps{})
+			targetReady = a.installDestinationPreview(c, p, loader)
 			a.releaseJavaDetails(c, p, versions, cached)
 			a.installCacheDetails(c, p, loader)
-			layout.Divider(c, layout.DividerProps{})
-			dir := filepath.Join(a.state.Settings.GameRoot, fmt.Sprintf("instance-%d", a.state.NextID))
-			settingsRow(c, "游戏目录", func() {
-				muted(c, dir).Grow(1).MinWidth(0).SingleLine().Ellipsis("…").Selectable()
-				action.CopyButton(c, dir, action.CopyButtonProps{}).Label("复制新实例目录")
-			})
 			if !cached && a.catalogErr != "" {
 				feedback.Alert(c, a.catalogErr, feedback.AlertProps{Type: feedback.Warning})
 			}
@@ -280,7 +277,7 @@ func (a *desktop) installDetails(c *ui.Context, p *installView, versions []launc
 	}
 	layout.Divider(c, layout.DividerProps{})
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Justify(ui.End).Children(func() {
-		locked := a.busy || a.running != nil || groupMissing || (!cached && !p.validLoader())
+		locked := a.busy || a.running != nil || groupMissing || !targetReady || (!cached && !p.validLoader())
 		if button(c, "仅创建实例", action.Default, locked) {
 			a.submitInstall(p, false)
 		}
@@ -302,6 +299,13 @@ func (a *desktop) installName(version, loader string) string {
 		candidate = fmt.Sprintf("%s (%d)", base, n)
 	}
 	return candidate
+}
+
+func (a *desktop) installDraftName(p *installView, loader string) string {
+	if name := strings.TrimSpace(p.name); name != "" {
+		return name
+	}
+	return a.installName(p.version, loader)
 }
 
 func (a *desktop) submitInstall(p *installView, installNow bool) {
@@ -331,11 +335,7 @@ func (a *desktop) submitInstall(p *installView, installNow bool) {
 		}
 		loaderVersion = p.loaderVersion
 	}
-	name := strings.TrimSpace(p.name)
-	if name == "" {
-		name = a.installName(p.version, loader)
-	}
-	next, instance, err := newLoaderInstallation(a.state, name, p.version, loader, loaderVersion)
+	next, instance, err := newLoaderInstallation(a.state, a.installDraftName(p, loader), p.version, loader, loaderVersion)
 	if err != nil {
 		p.err = err.Error()
 		return
@@ -346,7 +346,7 @@ func (a *desktop) submitInstall(p *installView, installNow bool) {
 	p.err = ""
 	a.save(next, instance.ID, func(err error) {
 		if err != nil {
-			p.err = err.Error()
+			p.err, p.directory = err.Error(), nil
 			a.message("无法保存新实例", err)
 			return
 		}

@@ -33,7 +33,8 @@ func (s *State) Create(name, version string) error {
 }
 
 // PreviewNewInstance returns the proposed instance without changing state or
-// checking the filesystem.
+// checking the filesystem. A proposal blocked by an existing registration
+// still includes its candidate path. Other errors return a zero instance.
 func (s State) PreviewNewInstance(name, version string) (instance.Instance, error) {
 	name, err := s.checkName(0, name)
 	if err != nil {
@@ -50,12 +51,13 @@ func (s State) PreviewNewInstance(name, version string) (instance.Instance, erro
 		return instance.Instance{}, i18n.Error("instance.id_exhausted")
 	}
 	dir := filepath.Join(s.Settings.GameRoot, fmt.Sprintf("instance-%d", id))
+	candidate := instance.Instance{ID: id, Name: name, Version: version, Loader: instance.LoaderVanilla, Revision: 1, GameDir: dir}
 	for _, other := range s.Instances {
 		if filepath.Clean(other.GameDir) == dir {
-			return instance.Instance{}, i18n.Error("instance.directory_occupied")
+			return candidate, i18n.Error("instance.directory_occupied")
 		}
 	}
-	return instance.Instance{ID: id, Name: name, Version: version, Loader: instance.LoaderVanilla, Revision: 1, GameDir: dir}, nil
+	return candidate, nil
 }
 
 func (s *State) Duplicate(id int, revision uint64, name, group string) (instance.Instance, error) {

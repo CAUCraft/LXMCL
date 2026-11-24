@@ -42,6 +42,10 @@ func TestInstallationDraftIsIndependentAndKeepsLaunchSelection(t *testing.T) {
 	}
 	state.Instances[0].GameDir = filepath.Join(root, "instance-2")
 	before = state.Clone()
+	blocked, err := state.PreviewNewInstance("reserved", "1.21.1")
+	if err == nil || blocked.GameDir != preview.GameDir || blocked.ID != preview.ID || !reflect.DeepEqual(state, before) {
+		t.Fatalf("registered destination did not retain its preview: %+v %v", blocked, err)
+	}
 	if _, _, err := state.PrepareInstallation("reserved", "1.21.1", instance.LoaderVanilla, ""); err == nil || !reflect.DeepEqual(state, before) {
 		t.Fatal("another profile's missing game directory was available for installation")
 	}
