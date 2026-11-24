@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"compress/gzip"
 	"encoding/binary"
 	"os"
@@ -14,12 +15,28 @@ import (
 func TestWorldSearchKeepsOnlyVisibleSelection(t *testing.T) {
 	a, tt := testDesktop(t)
 	i := a.state.Instances[0]
+	const levelName = "同名世界"
+	// A named root compound with a Data compound and a LevelName string.
+	nbt := binary.BigEndian.AppendUint16([]byte("\x0a\x00\x00\x0a\x00\x04Data\x08\x00\x09LevelName"), uint16(len(levelName)))
+	nbt = append(nbt, levelName...)
+	var compressed bytes.Buffer
+	z := gzip.NewWriter(&compressed)
+	if _, err := z.Write(append(nbt, 0, 0)); err != nil {
+		t.Fatal(err)
+	}
+	if err := z.Close(); err != nil {
+		t.Fatal(err)
+	}
 	for _, name := range []string{"Alpha", "河谷小屋", "河谷矿场"} {
 		dir := filepath.Join(i.GameDir, "saves", name)
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(dir, "level.dat"), []byte(name), 0644); err != nil {
+		level := compressed.Bytes()
+		if name == "Alpha" {
+			level = []byte("damaged metadata")
+		}
+		if err := os.WriteFile(filepath.Join(dir, "level.dat"), level, 0644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -37,11 +54,17 @@ func TestWorldSearchKeepsOnlyVisibleSelection(t *testing.T) {
 			t.Fatal(label, err)
 		}
 	}
-	click("河谷矿场")
+	click("目录 · 河谷矿场")
 	if node, ok := tt.Access("打开世界目录"); !ok || node.Disabled {
 		t.Fatal("visible world did not enable its folder action")
 	}
-	click("搜索世界目录")
+	click("搜索世界名或目录名")
+	tt.Type(levelName)
+	if len(p.visible) != 2 || p.selected != 1 || p.visible[p.selected].Folder() != "河谷矿场" {
+		t.Fatal("name search lost the selected folder among identically named worlds", p.visible, p.selected)
+	}
+	click("Clear")
+	click("搜索世界名或目录名")
 	tt.Type("河谷")
 	if p.selected != 1 || p.visible[p.selected].Folder() != "河谷矿场" {
 		t.Fatal("matching selection did not follow its folder", p.selected)
@@ -54,6 +77,12 @@ func TestWorldSearchKeepsOnlyVisibleSelection(t *testing.T) {
 		if node, ok := tt.Access(label); !ok || !node.Disabled {
 			t.Fatal("hidden selection left an enabled action", label)
 		}
+	}
+	click("Clear")
+	click("搜索世界名或目录名")
+	tt.Type("aLPHA")
+	if len(p.visible) != 1 || p.visible[0].Folder() != "Alpha" {
+		t.Fatal("world with damaged metadata was not searchable by folder", p.visible)
 	}
 	click("Clear")
 	if p.selected != -1 || len(p.visible) != 3 || p.visible[0].Folder() != "Alpha" {
