@@ -95,7 +95,7 @@ func withPrismZIP(ctx context.Context, filename string, use func(PrismInstance, 
 	return use(p, z)
 }
 
-func copyPrismZIP(ctx context.Context, p PrismInstance, destination string, worlds, options bool, commit func() error, report func(tasks.Progress)) error {
+func copyPrismZIP(ctx context.Context, p PrismInstance, destination string, selected PrismFiles, commit func() error, report func(tasks.Progress)) error {
 	return withPrismZIP(ctx, p.Source, func(now PrismInstance, z *zip.Reader) error {
 		if now != p {
 			return i18n.Error("prism.changed")
@@ -108,9 +108,10 @@ func copyPrismZIP(ctx context.Context, p PrismInstance, destination string, worl
 					return err
 				}
 				name, inGame := strings.CutPrefix(entry.Name, game)
-				includeWorld := worlds && strings.HasPrefix(name, "saves/")
-				includeOptions := options && name == "options.txt"
-				if !inGame || (!includeWorld && !includeOptions) {
+				includeWorld := selected.Worlds && strings.HasPrefix(name, "saves/")
+				includeOptions := selected.Options && name == "options.txt"
+				includeServers := selected.Servers && name == serverListPath.name
+				if !inGame || (!includeWorld && !includeOptions && !includeServers) {
 					continue
 				}
 				name = strings.TrimSuffix(name, "/")
