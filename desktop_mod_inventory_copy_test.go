@@ -90,7 +90,7 @@ func TestCopyInstalledModInventoryFromResources(t *testing.T) {
 	click("已停用", "搜索本地资源")
 	tt.Type("不存在")
 	tt.Frame()
-	if len(a.content.visibleFiles()) != 0 || !tt.HasText("没有匹配的资源") {
+	if len(a.content.visibleFiles(nil)) != 0 || !tt.HasText("没有匹配的资源") {
 		t.Fatal("the search and filter did not hide the inventory", tt.Texts())
 	}
 	for range 12 {
