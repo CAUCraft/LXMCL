@@ -128,6 +128,8 @@ func (a *desktop) instanceOverview(c *ui.Context, i launcher.Instance) {
 				}
 			})
 			layout.Divider(c, layout.DividerProps{})
+			a.instanceFileUsage(c.Key("instance-file-usage"), i)
+			layout.Divider(c, layout.DividerProps{})
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 				ui.Column(c).Grow(1).MinWidth(0).Children(func() { property(c, "实例 ID", strconv.Itoa(i.ID)) })
 				if button(c, "查看任务历史", action.Default, false) {
