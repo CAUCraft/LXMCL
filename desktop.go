@@ -173,6 +173,7 @@ func (a *desktop) view(c *ui.Context) {
 				a.accounts(c.Key("accounts"))
 			}
 		}
+		a.clearInstanceUsage()
 		if a.page != pageLibrary {
 			a.install.existing = nil
 		}

@@ -189,6 +189,7 @@ type desktop struct {
 	taskFilter, taskInstanceFilter   int
 	taskHistoryQuery                 string
 	instanceTaskHistory              *instanceTaskHistoryView
+	instanceUsage                    *instanceUsageRequest
 	browsedTask                      string
 	scroll                           ui.ScrollState
 	form                             editor
