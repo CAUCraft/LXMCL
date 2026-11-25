@@ -29,6 +29,7 @@ type contentView struct {
 	packPreview *resourcePackView
 	comparison  *modComparisonView
 	modNotes    *modReleaseNotesView
+	modPreview  *modUpdatePreview
 	restoreMods *modRestoreView
 	copyMods    *modCopyView
 	mods        map[string]launcher.InstalledMod
@@ -109,6 +110,7 @@ func (v contentView) kind() launcher.ContentKind {
 
 func (a *desktop) refreshContent(i launcher.Instance) {
 	a.closeModReleaseNotes()
+	a.content.modPreview = nil
 	a.content.savedPacks = nil
 	a.content.restoreMods = nil
 	a.content.packPreview = nil
@@ -164,6 +166,14 @@ func (a *desktop) instanceContent(c *ui.Context, i launcher.Instance) {
 	if p := v.modNotes; p != nil {
 		a.modReleaseNotes(c, p)
 		return
+	}
+	if p := v.modPreview; p != nil {
+		if a.validModUpdatePreview(i, p) {
+			a.showModUpdatePreview(c, p)
+			return
+		}
+		v.modPreview = nil
+		a.message("更新预览已失效，请重新选择要更新的模组。", nil)
 	}
 	if v.id != i.ID || v.revision != i.Revision || v.tab != 0 && !v.kind().Supports(i) {
 		*v = contentView{id: i.ID, revision: i.Revision}
@@ -759,29 +769,10 @@ func (a *desktop) modControls(c *ui.Context, i launcher.Instance, skipped map[st
 					updates++
 				}
 			}
-			var selected []launcher.InstalledMod
-			for _, f := range v.selection(files) {
-				m := v.mods[f.DiskName()]
-				if candidate := m.UpdateKey(); candidate != "" && !skipped[candidate] {
-					selected = append(selected, m)
-				}
-			}
+			selected := v.selectedModUpdates(files, skipped)
 			muted(c, fmt.Sprintf("已识别 %d/%d · 可更新 %d", known, len(v.files), updates))
 			if updates > 0 && button(c, fmt.Sprintf("更新选中 (%d)", len(selected)), action.Primary, len(selected) == 0 || disabled) {
-				game := a.game
-				a.runContentTask(i, "更新模组", nil, func(ctx context.Context, report func(launcher.Progress)) error {
-					var failures []error
-					for n, m := range selected {
-						if err := ctx.Err(); err != nil {
-							return errors.Join(append(failures, err)...)
-						}
-						report(launcher.Progress{Stage: "更新 " + m.DiskName(), Done: n, Total: len(selected)})
-						if err := game.UpdateMod(ctx, i, m); err != nil {
-							failures = append(failures, fmt.Errorf("%s: %w", m.DiskName(), err))
-						}
-					}
-					return errors.Join(failures...)
-				})
+				v.modPreview = &modUpdatePreview{target: i, request: a.contentRequest, selected: selected}
 			}
 		}
 	})
