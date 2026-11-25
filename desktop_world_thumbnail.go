@@ -52,6 +52,24 @@ func (a *desktop) loadWorldThumbnail(p *worldBrowser, i launcher.Instance, world
 
 func (a *desktop) worldSelectionDetails(c *ui.Context, p *worldBrowser, i launcher.Instance, world saves.World) {
 	a.loadWorldThumbnail(p, i, world)
+	mode, hardcore := "未知", "未知"
+	switch world.DefaultGameMode() {
+	case saves.GameModeSurvival:
+		mode = "生存"
+	case saves.GameModeCreative:
+		mode = "创造"
+	case saves.GameModeAdventure:
+		mode = "冒险"
+	case saves.GameModeSpectator:
+		mode = "旁观"
+	}
+	if enabled, known := world.Hardcore(); known {
+		hardcore = "关闭"
+		if enabled {
+			hardcore = "开启"
+		}
+	}
+	settings := "默认游戏模式 · " + mode + "   硬核 · " + hardcore
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 		if p.thumbnail != nil && p.thumbnail.picture != nil {
 			ui.Image(c, p.thumbnail.picture).Size(40, 40).Fit(ui.Contain).Shrink(0).Label("世界缩略图")
@@ -60,7 +78,10 @@ func (a *desktop) worldSelectionDetails(c *ui.Context, p *worldBrowser, i launch
 				ui.Icon(c, lucide.Folder()).FontSize(20).Label("世界文件夹图标")
 			})
 		}
-		muted(c, worldSavedVersionLabel(world)).FontSize(12).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+		ui.Column(c).Gap(2).Grow(1).MinWidth(0).Children(func() {
+			muted(c, worldSavedVersionLabel(world)).FontSize(12).SingleLine().Ellipsis("…")
+			muted(c, settings).FontSize(12).SingleLine().Ellipsis("…").Tooltip(settings)
+		})
 		a.worldUsageDetails(c, p, i, world)
 	})
 }

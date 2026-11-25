@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/CAUCraft/LXMCL/internal/saves"
 )
@@ -19,24 +20,34 @@ func TestWorldSearchKeepsOnlyVisibleSelection(t *testing.T) {
 	// A named root compound with a Data compound and a LevelName string.
 	nbt := binary.BigEndian.AppendUint16([]byte("\x0a\x00\x00\x0a\x00\x04Data\x08\x00\x09LevelName"), uint16(len(levelName)))
 	nbt = append(nbt, levelName...)
-	var compressed bytes.Buffer
-	z := gzip.NewWriter(&compressed)
-	if _, err := z.Write(append(nbt, 0, 0)); err != nil {
-		t.Fatal(err)
-	}
-	if err := z.Close(); err != nil {
-		t.Fatal(err)
-	}
-	for _, name := range []string{"Alpha", "河谷小屋", "河谷矿场"} {
+	for _, fixture := range []struct {
+		name           string
+		mode, hardcore byte
+	}{
+		{"Alpha", 0, 0}, {"河谷小屋", 1, 1}, {"河谷矿场", 0, 0},
+	} {
+		name := fixture.name
 		dir := filepath.Join(i.GameDir, "saves", name)
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			t.Fatal(err)
 		}
-		level := compressed.Bytes()
+		var compressed bytes.Buffer
 		if name == "Alpha" {
-			level = []byte("damaged metadata")
+			compressed.WriteString("damaged metadata")
+		} else {
+			data := append(bytes.Clone(nbt), "\x03\x00\x08GameType\x00\x00\x00"...)
+			data = append(data, fixture.mode)
+			data = append(data, "\x01\x00\x08hardcore"...)
+			data = append(data, fixture.hardcore, 0, 0)
+			z := gzip.NewWriter(&compressed)
+			if _, err := z.Write(data); err != nil {
+				t.Fatal(err)
+			}
+			if err := z.Close(); err != nil {
+				t.Fatal(err)
+			}
 		}
-		if err := os.WriteFile(filepath.Join(dir, "level.dat"), level, 0644); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, "level.dat"), compressed.Bytes(), 0644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -54,7 +65,24 @@ func TestWorldSearchKeepsOnlyVisibleSelection(t *testing.T) {
 			t.Fatal(label, err)
 		}
 	}
+	checkSettings := func(want string) {
+		t.Helper()
+		tt.Frame()
+		if !tt.HasText(want) {
+			t.Fatal("wrong selected world settings", want, tt.Texts())
+		}
+	}
+	click("Alpha")
+	checkSettings("默认游戏模式 · 未知   硬核 · 未知")
+	click("目录 · 河谷小屋")
+	checkSettings("默认游戏模式 · 创造   硬核 · 开启")
+	capture(t, tt, "world-default-mode-creative-light")
+	tt.SetDark(true)
+	tt.Frame()
+	tt.Advance(400 * time.Millisecond)
 	click("目录 · 河谷矿场")
+	checkSettings("默认游戏模式 · 生存   硬核 · 关闭")
+	capture(t, tt, "world-default-mode-survival-dark")
 	if node, ok := tt.Access("打开世界目录"); !ok || node.Disabled {
 		t.Fatal("visible world did not enable its folder action")
 	}
@@ -70,8 +98,9 @@ func TestWorldSearchKeepsOnlyVisibleSelection(t *testing.T) {
 		t.Fatal("matching selection did not follow its folder", p.selected)
 	}
 	tt.Type("小屋")
-	if p.selected != -1 || len(p.visible) != 1 || p.visible[0].Folder() != "河谷小屋" {
-		t.Fatal("hidden selection was transferred to another world", p.selected)
+	if p.selected != -1 || len(p.visible) != 1 || p.visible[0].Folder() != "河谷小屋" ||
+		tt.HasText("默认游戏模式 · 生存   硬核 · 关闭") {
+		t.Fatal("hidden selection retained its details or moved to another world", p.selected)
 	}
 	for _, label := range []string{"打开世界目录", "备份所选世界", "进入世界"} {
 		if node, ok := tt.Access(label); !ok || !node.Disabled {
