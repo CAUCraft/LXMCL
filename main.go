@@ -187,6 +187,7 @@ type desktop struct {
 	libraryGroup                     *string
 	listMenuID                       int
 	taskFilter, taskInstanceFilter   int
+	instanceTaskHistory              *instanceTaskHistoryView
 	browsedTask                      string
 	scroll                           ui.ScrollState
 	form                             editor

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/CAUCraft/LXMCL/internal/i18n"
@@ -20,7 +21,41 @@ import (
 )
 
 func (a *desktop) openTasks() {
+	a.closeInstanceTaskHistory()
 	a.page, a.downloadPage = pageDownloads, downloadTasks
+}
+
+type instanceTaskHistoryView struct {
+	instanceID                       int
+	previousStatus, previousInstance int
+	previousTask                     string
+}
+
+func (a *desktop) openInstanceTaskHistory(i launcher.Instance) {
+	if current, ok := a.state.Find(i.ID); !ok || current != i || a.page != pageLibrary || a.inspected != i.ID || a.detailPage != detailOverview {
+		return
+	}
+	a.openTasks()
+	a.instanceTaskHistory = &instanceTaskHistoryView{
+		instanceID: i.ID, previousStatus: a.taskFilter, previousInstance: a.taskInstanceFilter, previousTask: a.browsedTask,
+	}
+	a.taskFilter, a.taskInstanceFilter, a.browsedTask = 0, i.ID, ""
+}
+
+func (a *desktop) closeInstanceTaskHistory() {
+	if view := a.instanceTaskHistory; view != nil {
+		a.taskFilter, a.taskInstanceFilter, a.browsedTask = view.previousStatus, view.previousInstance, view.previousTask
+		a.instanceTaskHistory = nil
+	}
+}
+
+func (a *desktop) returnFromInstanceTaskHistory() {
+	id := a.instanceTaskHistory.instanceID
+	a.closeInstanceTaskHistory()
+	a.page, a.detailPage, a.inspected = pageLibrary, detailOverview, 0
+	if _, ok := a.state.Find(id); ok {
+		a.inspected = id
+	}
 }
 
 func failedOrCanceled(row taskRecord) bool {
@@ -44,6 +79,7 @@ func (a *desktop) noticeTaskFiltered() bool {
 }
 
 func (a *desktop) openNoticeTask() {
+	a.openTasks()
 	if a.noticeTaskKey != "" {
 		a.browsedTask = a.noticeTaskKey
 		if row, ok := a.noticeTask(); ok {
@@ -55,11 +91,18 @@ func (a *desktop) openNoticeTask() {
 			}
 		}
 	}
-	a.openTasks()
 }
 
 func (a *desktop) tasks(c *ui.Context) {
 	ui.Column(c).Grow(1).Basis(0).MinHeight(0).Gap(8).Children(func() {
+		if a.instanceTaskHistory != nil {
+			ui.Row(c).Children(func() {
+				if button(c, "返回实例概览", action.Default, false) {
+					a.returnFromInstanceTaskHistory()
+					c.Invalidate()
+				}
+			})
+		}
 		a.queuePanel(c)
 		if a.task.Stage != "" {
 			sectionPane(c).Padding(10, 14).Gap(6).Children(func() {
@@ -109,7 +152,7 @@ func (a *desktop) tasks(c *ui.Context) {
 			})
 			return
 		}
-		if len(a.history) > 0 {
+		if len(a.history) > 0 || a.instanceTaskHistory != nil {
 			ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
 				display.Text(c, "历史记录", display.TextProps{Heading: 4})
 				ui.Spacer(c).Grow(1)
@@ -120,12 +163,18 @@ func (a *desktop) tasks(c *ui.Context) {
 			visible := a.visibleTaskHistory()
 			if len(visible) == 0 {
 				title := "没有匹配的历史任务"
-				if a.taskInstanceFilter == 0 {
+				switch {
+				case a.instanceTaskHistory != nil && a.taskInstanceFilter != 0 &&
+					!slices.ContainsFunc(a.history, func(row taskRecord) bool { return row.InstanceID == a.taskInstanceFilter }):
+					title = "此实例暂无任务记录"
+				case a.taskFilter == 0 && a.taskInstanceFilter == 0:
+					title = "暂无任务"
+				case a.taskInstanceFilter == 0:
 					title = "没有失败或取消的任务"
 				}
 				sectionPane(c).Padding(8, 14).Children(func() {
 					display.Empty(c, display.EmptyProps{Icon: lucide.SearchX(), Title: title, Action: func() {
-						if button(c, "清除筛选", action.Default, false) {
+						if (a.taskFilter != 0 || a.taskInstanceFilter != 0) && button(c, "清除筛选", action.Default, false) {
 							a.taskFilter, a.taskInstanceFilter = 0, 0
 							c.Invalidate()
 						}
