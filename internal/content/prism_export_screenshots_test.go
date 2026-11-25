@@ -71,11 +71,41 @@ func TestPrismExportScreenshots(t *testing.T) {
 
 	filename := export("with-screenshots", true)
 	preview, err := ReadPrismZIP(ctx, filename)
-	if err != nil || preview.Name != i.Name || preview.Version != i.Version {
+	if err != nil || preview.Name != i.Name || preview.Version != i.Version || !preview.Screenshots {
 		t.Fatal(preview, err)
 	}
-	if err := CopyPrismFiles(ctx, preview, filepath.Join(t.TempDir(), "imported"), PrismFiles{}, func() error { return nil }, nil); err != nil {
+	imports := t.TempDir()
+	defaultImport := filepath.Join(imports, "default")
+	commit := func() error { return nil }
+	if err := CopyPrismFiles(ctx, preview, defaultImport, PrismFiles{}, commit, nil); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(defaultImport, "screenshots")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("default import wrote a screenshot directory", err)
+	}
+	selectedImport := filepath.Join(imports, "selected")
+	selected := PrismFiles{Screenshots: true}
+	if err := CopyPrismFiles(ctx, preview, selectedImport, selected, commit, nil); err != nil {
+		t.Fatal(err)
+	}
+	for name, original := range pngs {
+		if !bytes.Equal(read(filepath.Join(selectedImport, filepath.FromSlash(name))), original) {
+			t.Fatal("import changed PNG bytes", name)
+		}
+	}
+	cancelImportCtx, cancelImport := context.WithCancel(ctx)
+	defer cancelImport()
+	err = CopyPrismFiles(cancelImportCtx, preview, filepath.Join(imports, "cancelled"), selected,
+		func() error { t.Fatal("cancelled import committed"); return nil }, func(p tasks.Progress) {
+			if p.Done == 1 {
+				cancelImport()
+			}
+		})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatal("expected cancelled import", err)
+	}
+	if entries, err := os.ReadDir(imports); err != nil || len(entries) != 2 {
+		t.Fatal("cancelled import left output or staging files", entries, err)
 	}
 	z, err := zip.OpenReader(filename)
 	if err != nil {
