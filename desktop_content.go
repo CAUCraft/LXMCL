@@ -337,6 +337,19 @@ func (a *desktop) contentList(c *ui.Context, i launcher.Instance, disabled bool)
 		}
 		field.SearchBar(c, &v.query, field.SearchBarProps{Placeholder: placeholder}).Label("搜索本地资源").Grow(1).MinWidth(0)
 		action.Segmented(c, &v.filter, []string{"全部资源", "已启用", "已停用"}, action.SegmentedProps{Size: theme.Small}).Label("本地资源筛选")
+		if v.kind() == launcher.Mods && button(c, "复制全部模组清单", action.Default, false) {
+			c.WriteClipboardThen(installedModReport(v.files), func(err error) {
+				if a.page != pageLibrary || a.detailPage != detailContent || a.inspected != i.ID ||
+					v.id != i.ID || v.revision != i.Revision || v.kind() != launcher.Mods {
+					return
+				}
+				if err != nil {
+					a.message("复制模组清单失败，请重试", err)
+					return
+				}
+				a.message("已复制全部模组清单", nil)
+			})
+		}
 		if oldQuery != v.query || oldFilter != v.filter {
 			v.selected, v.scroll = nil, ui.ListState{}
 		}

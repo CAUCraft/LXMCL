@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"slices"
-	"strings"
 
 	"github.com/CAUCraft/LXMCL/internal/instance"
 )
@@ -57,11 +56,7 @@ func CompareMods(ctx context.Context, base, other instance.Instance) (ModCompari
 				add(key{name: f.Name, file: true}, side, ModState{Enabled: f.Enabled})
 			}
 			for _, m := range f.mods {
-				version := strings.TrimSpace(m.version)
-				if strings.Contains(version, "${") {
-					version = ""
-				}
-				add(key{name: m.id}, side, ModState{Version: version, Enabled: f.Enabled})
+				add(key{name: m.id}, side, ModState{Version: m.knownVersion(), Enabled: f.Enabled})
 			}
 		}
 	}

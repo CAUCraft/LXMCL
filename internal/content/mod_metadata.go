@@ -18,6 +18,28 @@ func ReadModMetadata(root *os.Root, name string, markers []string) (string, stri
 
 type manifestMod struct{ id, name, version string }
 
+type ModMetadata struct{ ID, Name, Version string }
+
+// ModMetadata returns identifiers and resolved versions from the inventory snapshot.
+func (f File) ModMetadata() []ModMetadata {
+	if len(f.mods) == 0 {
+		return nil
+	}
+	result := make([]ModMetadata, len(f.mods))
+	for i, m := range f.mods {
+		result[i] = ModMetadata{ID: m.id, Name: m.name, Version: m.knownVersion()}
+	}
+	return result
+}
+
+func (m manifestMod) knownVersion() string {
+	version := strings.TrimSpace(m.version)
+	if strings.Contains(version, "${") {
+		return ""
+	}
+	return version
+}
+
 func modLabels(entries []manifestMod) (string, string) {
 	var titles, ids []string
 	for _, m := range entries {

@@ -42,19 +42,23 @@ function Find-Control([string]$name, [switch]$Press) {
     throw "Control unavailable: $name. Visible labels: $($labels -join ', ')"
 }
 
-function Assert-Copy($choice, $ready, [string]$expected) {
-    Set-Clipboard -Value 'waiting for the selected comparison'
-    Find-Control '选择对照实例' -Press
-    Find-Control $choice -Press
-    Find-Control $ready
-    Find-Control '复制差异清单' -Press
+function Assert-ClipboardText($label, [string]$expected) {
+    Set-Clipboard -Value 'waiting for clipboard text'
+    Find-Control $label -Press
     $limit = [DateTime]::UtcNow.AddSeconds(5)
     do {
         $actual = ([string](Get-Clipboard -Raw)).Replace("`r`n", "`n")
         if ($actual -ceq $expected) { return }
         Start-Sleep -Milliseconds 100
     } while ([DateTime]::UtcNow -lt $limit)
-    throw "Clipboard differs for $choice. Expected [$expected], got [$actual]"
+    throw "Clipboard differs for $label. Expected [$expected], got [$actual]"
+}
+
+function Assert-Copy($choice, $ready, [string]$expected) {
+    Find-Control '选择对照实例' -Press
+    Find-Control $choice -Press
+    Find-Control $ready
+    Assert-ClipboardText '复制差异清单' $expected
 }
 
 $root = Join-Path $env:RUNNER_TEMP ("lxmcl-report-" + [guid]::NewGuid())
@@ -76,7 +80,11 @@ Add-Mod $instances[2] 'lantern.jar' 'lantern' '3'
 Add-Mod $instances[1] 'camp.jar' 'camp' '4'
 $process = Start-Process -PassThru -FilePath $Launcher -ArgumentList "--data-dir `"$root`""
 try {
-    foreach ($name in '实例', 'Profile 1', '资源', '模组', '比对实例模组') { Find-Control $name -Press }
+    foreach ($name in '实例', 'Profile 2', '资源', '模组') { Find-Control $name -Press }
+    $inventory = @('camp · 4 · 启用', 'forest · 2.0 · 停用', 'maps · 3 · 启用', 'maps · 4 · 启用') -join "`n"
+    Assert-ClipboardText '复制全部模组清单' $inventory
+    Write-Output 'Verified the selected instance inventory on the Windows system clipboard.'
+    foreach ($name in 'Profile 1', '资源', '模组', '比对实例模组') { Find-Control $name -Press }
     $base = '基准：Minecraft 1.21.1 · Fabric 0.16.14'
     $different = @($base, '对照：Minecraft 1.21.4 · Fabric 0.16.14', '新增 · camp：无 → 4 · 启用', '版本及启用状态 · forest：1.0 · 启用 → 2.0 · 停用', '缺少 · lantern：3 · 启用 → 无', '重复未配对 · maps') -join "`n"
     $equal = @($base, '对照：Minecraft 1.21.1 · Fabric 0.16.14', '未发现可确认的差异。') -join "`n"
