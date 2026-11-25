@@ -220,7 +220,20 @@ func addPrismServerList(gameDir string, add func(*os.Root, string, string, fs.Fi
 
 // Use the gallery's scope: only direct, regular PNG files.
 func addPrismScreenshots(ctx context.Context, gameDir string, add prismExportAdd) error {
-	gameInfo, err := os.Lstat(gameDir)
+	gameDir = filepath.Clean(gameDir)
+	parentDir, gameName := filepath.Dir(gameDir), filepath.Base(gameDir)
+	if parentDir == gameDir {
+		gameName = "."
+	}
+	parent, err := os.OpenRoot(parentDir)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	defer parent.Close()
+	gameInfo, err := parent.Lstat(gameName)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil
 	}
@@ -230,12 +243,12 @@ func addPrismScreenshots(ctx context.Context, gameDir string, add prismExportAdd
 	if gameInfo.Mode().Type() != fs.ModeDir {
 		return i18n.Error("instance.duplicate_file_unsupported", gameDir)
 	}
-	game, err := os.OpenRoot(gameDir)
+	game, err := parent.OpenRoot(gameName)
 	if err != nil {
 		return err
 	}
 	defer game.Close()
-	if !prismExportDirMatches(game, ".", gameInfo) {
+	if !prismExportDirMatches(game, ".", gameInfo) || !prismExportDirMatches(parent, gameName, gameInfo) {
 		return i18n.Error("instance.duplicate_source_changed")
 	}
 
@@ -289,7 +302,7 @@ func addPrismScreenshots(ctx context.Context, gameDir string, add prismExportAdd
 			break
 		}
 	}
-	if !prismExportDirMatches(game, name, info) {
+	if !prismExportDirMatches(game, name, info) || !prismExportDirMatches(parent, gameName, gameInfo) {
 		return i18n.Error("instance.duplicate_source_changed")
 	}
 	return ctx.Err()
