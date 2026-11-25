@@ -62,8 +62,9 @@ func TestModUpdatePreview(t *testing.T) {
 	click("选择资源 " + engine)
 	const open = "更新选中 (2)"
 	const confirm = "确认更新 (2)"
+	const backup = "更新前备份所选原模组到 ZIP"
 	click(open)
-	if p := a.content.modPreview; p == nil || p.target != target ||
+	if p := a.content.modPreview; p == nil || p.target != target || p.backup ||
 		!slices.EqualFunc(p.selected, []string{bridge, engine + ".disabled"}, func(mod launcher.InstalledMod, name string) bool { return mod.DiskName() == name }) {
 		t.Fatal("preview scope", a.content.modPreview, tt.Texts())
 	}
@@ -77,11 +78,15 @@ func TestModUpdatePreview(t *testing.T) {
 			t.Fatal("preview included an unselected mod", name)
 		}
 	}
+	click(backup)
+	if !a.content.modPreview.backup || a.busy || a.pickerBusy {
+		t.Fatal("selecting the optional backup started work", tt.Texts())
+	}
 	for _, dark := range []bool{false, true} {
 		tt.SetDark(dark)
 		tt.Advance(400 * time.Millisecond)
 		tt.Frame()
-		for _, text := range []string{"取消", confirm, "目标实例 · #2 · 同名地图实例"} {
+		for _, text := range []string{"取消", confirm, backup, "目标实例 · #2 · 同名地图实例"} {
 			r, ok := tt.Find(text)
 			if !ok || r.X < 0 || r.Y < 42 || r.X+r.W > 820.5 || r.Y+r.H > 530.5 {
 				t.Fatal("clipped preview control", text, r, tt.Texts())
@@ -98,6 +103,9 @@ func TestModUpdatePreview(t *testing.T) {
 		t.Fatal("cancel did not preserve filtered selection", tt.Texts())
 	}
 	click(open)
+	if a.content.modPreview.backup {
+		t.Fatal("a new preview inherited the previous backup choice")
+	}
 	tt.Key(0, ui.KeyEscape)
 	tt.Frame()
 	if a.content.modPreview != nil || !tt.HasText(open) {

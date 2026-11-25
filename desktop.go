@@ -175,7 +175,7 @@ func (a *desktop) view(c *ui.Context) {
 		}
 		a.clearInstanceUsage()
 		a.discardStaleModReleaseNotes()
-		if p := a.content.modPreview; p != nil && (a.page != pageLibrary || a.detailPage != detailContent || a.inspected != p.target.ID) {
+		if p := a.content.modPreview; p != nil && !a.inModUpdatePreview(p) {
 			a.content.modPreview = nil
 		}
 		if a.page != pageLibrary {
@@ -253,8 +253,8 @@ func (a *desktop) noticeBar(c *ui.Context) {
 }
 
 func (a *desktop) backFromDetail() {
-	if a.detailPage == detailContent && a.content.modPreview != nil {
-		a.content.modPreview = nil
+	if p := a.content.modPreview; a.detailPage == detailContent && p != nil {
+		a.cancelModUpdatePreview(p)
 		return
 	}
 	if a.detailPage == detailContent && a.content.modNotes != nil {

@@ -2,21 +2,26 @@ package main
 
 import (
 	"cmp"
+	"context"
 	"fmt"
 	"slices"
 
+	"github.com/CAUCraft/LXMCL/internal/content"
 	"github.com/CAUCraft/LXMCL/internal/launcher"
 	"github.com/egoist/mygo/ui"
 	"github.com/lobehub/lobe-mygo/pkg/action"
+	"github.com/lobehub/lobe-mygo/pkg/choice"
 	"github.com/lobehub/lobe-mygo/pkg/display"
 	"github.com/lobehub/lobe-mygo/pkg/layout"
 )
 
 type modUpdatePreview struct {
-	target   launcher.Instance
-	request  uint64
-	selected []launcher.InstalledMod
-	scroll   ui.ListState
+	target    launcher.Instance
+	request   uint64
+	selected  []launcher.InstalledMod
+	scroll    ui.ListState
+	backup    bool
+	backingUp bool
 }
 
 func (v *contentView) selectedModUpdates(files []launcher.ContentFile, skipped map[string]bool) []launcher.InstalledMod {
@@ -85,16 +90,85 @@ func (a *desktop) showModUpdatePreview(c *ui.Context, p *modUpdatePreview) {
 		})
 	})
 	muted(c, "前置状态基于当前已启用且识别到的模组。").FontSize(12)
+	choice.Checkbox(c.Key("backup"), &p.backup, "更新前备份所选原模组到 ZIP", choice.CheckboxProps{}).Disabled(a.pickerBusy || a.busy)
 	ui.Row(c).Gap(8).Children(func() {
 		ui.Spacer(c).Grow(1)
 		cancel := action.Button(c.Key(p), "取消", action.ButtonProps{Variant: action.Default}).AutoFocus()
 		if cancel.Shortcut(0, ui.KeyEscape) || cancel.Clicked() {
-			a.content.modPreview = nil
+			a.cancelModUpdatePreview(p)
 			return
 		}
 		if button(c.Key("confirm"), fmt.Sprintf("确认更新 (%d)", len(p.selected)), action.Primary, a.ctx == nil || a.busy || a.running != nil || a.pickerBusy) {
-			a.content.modPreview = nil
-			a.updateSelectedMods(p.target, p.selected)
+			if p.backup {
+				a.pickModBackupDestination(p.target, func(path string) { a.backUpBeforeModUpdate(p, path) })
+			} else {
+				a.content.modPreview = nil
+				a.updateSelectedMods(p.target, p.selected)
+			}
 		}
 	})
+}
+
+func (a *desktop) cancelModUpdatePreview(p *modUpdatePreview) {
+	if p.backingUp && a.cancelTask != nil {
+		a.taskCanceling = true
+		a.cancelTask()
+	}
+	a.content.modPreview = nil
+}
+
+func (a *desktop) inModUpdatePreview(p *modUpdatePreview) bool {
+	// The task center can monitor a confirmed backup without dismissing it.
+	return a.inspected == p.target.ID && a.detailPage == detailContent &&
+		(a.page == pageLibrary || p.backingUp && a.page == pageDownloads && a.downloadPage == downloadTasks)
+}
+
+func (a *desktop) currentModUpdatePreview(p *modUpdatePreview) bool {
+	i, ok := a.state.Find(p.target.ID)
+	return ok && a.content.modPreview == p && a.inModUpdatePreview(p) && a.validModUpdatePreview(i, p)
+}
+
+func (a *desktop) backUpBeforeModUpdate(p *modUpdatePreview, path string) {
+	if !a.currentModUpdatePreview(p) || a.ctx == nil || a.ctx.Err() != nil || a.busy || a.running != nil {
+		a.message("更新预览已失效，请重新选择要更新的模组。", nil)
+		return
+	}
+	i := p.target
+	files := make([]launcher.ContentFile, 0, len(p.selected))
+	digests := make(map[string]string, len(p.selected))
+	for _, mod := range p.selected {
+		files = append(files, mod.File)
+		digests[mod.DiskName()] = mod.Digest
+	}
+	row := taskRecord{
+		InstanceID: i.ID, Revision: i.Revision, Name: i.Name, Version: i.Version,
+		Action: fmt.Sprintf("更新前备份 %d 项模组", len(files)), Resource: &resourceTask{Kind: string(launcher.Mods)},
+	}
+	p.backingUp = true
+	canceled := false
+	a.runFileTask(row, func(ctx context.Context, report func(launcher.Progress)) error {
+		return content.BackupVerifiedMods(ctx, i, files, digests, path, report)
+	}, func(err error) {
+		current := a.currentModUpdatePreview(p)
+		p.backingUp = false
+		if err != nil {
+			return
+		}
+		if canceled {
+			a.message("备份已保存，更新已取消。", nil)
+			return
+		}
+		if !current {
+			a.message("备份已保存，更新预览已失效，请重新选择。", nil)
+			return
+		}
+		a.content.modPreview = nil
+		a.updateSelectedMods(i, p.selected)
+	})
+	// Cancellation may arrive after ZIP publication, while the task is being saved.
+	cancel := a.cancelTask
+	a.cancelTask = func() {
+		canceled = true
+		cancel()
+	}
 }

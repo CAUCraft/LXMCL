@@ -14,6 +14,19 @@ import (
 
 // BackupMods publishes the captured files under mods/, using their physical enabled or disabled names.
 func BackupMods(ctx context.Context, source instance.Instance, selected []File, filename string, report func(tasks.Progress)) error {
+	return backupMods(ctx, source, selected, nil, filename, report)
+}
+
+// BackupVerifiedMods also verifies every selected file against its captured SHA-512 digest,
+// keyed by its physical name. A missing digest cannot authorize a backup for update.
+func BackupVerifiedMods(ctx context.Context, source instance.Instance, selected []File, digests map[string]string, filename string, report func(tasks.Progress)) error {
+	if digests == nil {
+		return i18n.Error("resource.backup_select")
+	}
+	return backupMods(ctx, source, selected, digests, filename, report)
+}
+
+func backupMods(ctx context.Context, source instance.Instance, selected []File, digests map[string]string, filename string, report func(tasks.Progress)) error {
 	if len(selected) == 0 {
 		return i18n.Error("resource.backup_select")
 	}
@@ -55,7 +68,12 @@ func BackupMods(ctx context.Context, source instance.Instance, selected []File, 
 			if report != nil {
 				report(tasks.Progress{Stage: i18n.Text("progress.copy_instance_file", name), Done: index, Total: len(selected)})
 			}
-			if err := transfer.WriteZIPFile(ctx, src, z, name, entry, st); err != nil {
+			if digests != nil {
+				err = transfer.WriteZIPFileSHA512(ctx, src, z, name, entry, st, digests[name])
+			} else {
+				err = transfer.WriteZIPFile(ctx, src, z, name, entry, st)
+			}
+			if err != nil {
 				return err
 			}
 		}

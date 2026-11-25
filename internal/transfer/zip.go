@@ -2,8 +2,12 @@ package transfer
 
 import (
 	"archive/zip"
+	"bytes"
 	"context"
+	"crypto/sha512"
+	"encoding/hex"
 	"errors"
+	"hash"
 	"io"
 	"io/fs"
 	"os"
@@ -15,6 +19,19 @@ import (
 
 // WriteZIPFile writes a regular file whose identity, size and timestamp match the snapshot.
 func WriteZIPFile(ctx context.Context, root *os.Root, z *zip.Writer, source, name string, expected fs.FileInfo) error {
+	return writeZIPFile(ctx, root, z, source, name, expected, nil)
+}
+
+// WriteZIPFileSHA512 checks the digest of the actual bytes written to the archive.
+func WriteZIPFileSHA512(ctx context.Context, root *os.Root, z *zip.Writer, source, name string, expected fs.FileInfo, digest string) error {
+	sum, err := hex.DecodeString(digest)
+	if err != nil || len(sum) != sha512.Size {
+		return i18n.Error("resource.backup_changed", source)
+	}
+	return writeZIPFile(ctx, root, z, source, name, expected, sum)
+}
+
+func writeZIPFile(ctx context.Context, root *os.Root, z *zip.Writer, source, name string, expected fs.FileInfo, digest []byte) error {
 	src, err := root.Open(filepath.FromSlash(source))
 	if err != nil {
 		return err
@@ -36,6 +53,11 @@ func WriteZIPFile(ctx context.Context, root *os.Root, z *zip.Writer, source, nam
 	if err != nil {
 		return err
 	}
+	var h hash.Hash
+	if digest != nil {
+		h = sha512.New()
+		dst = io.MultiWriter(dst, h)
+	}
 	n, err := io.Copy(dst, io.LimitReader(Reader(ctx, src), info.Size()+1))
 	if err != nil {
 		return err
@@ -46,6 +68,9 @@ func WriteZIPFile(ctx context.Context, root *os.Root, z *zip.Writer, source, nam
 	}
 	if n != info.Size() || after.Size() != info.Size() || !after.ModTime().Equal(info.ModTime()) {
 		return i18n.Error("saves.backup_file_changed", source)
+	}
+	if h != nil && !bytes.Equal(h.Sum(nil), digest) {
+		return i18n.Error("resource.backup_changed", source)
 	}
 	return nil
 }
