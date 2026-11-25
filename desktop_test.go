@@ -895,7 +895,7 @@ func TestResourceAndServerEntrypoints(t *testing.T) {
 		if err := tt.Click(order.label); err != nil {
 			t.Fatal(err)
 		}
-		if files := a.content.visibleFiles(); files[0].Name != order.first || len(a.content.selection(files)) != 3 {
+		if files := a.content.visibleFiles(nil); files[0].Name != order.first || len(a.content.selection(files)) != 3 {
 			t.Fatal("sorting lost the selection or put the wrong file first")
 		}
 	}
@@ -906,7 +906,7 @@ func TestResourceAndServerEntrypoints(t *testing.T) {
 		t.Fatal(err)
 	}
 	tt.Type("RENDERER_MOD")
-	if len(a.content.visibleFiles()) != 1 || len(a.content.selection(a.content.files)) != 0 {
+	if len(a.content.visibleFiles(nil)) != 1 || len(a.content.selection(a.content.files)) != 0 {
 		t.Fatal("filter did not narrow files and clear hidden selections")
 	}
 	if err := tt.Click("复制资源列表"); err != nil || tt.Clipboard() != "[启用] sodium.jar\n" {
@@ -917,7 +917,7 @@ func TestResourceAndServerEntrypoints(t *testing.T) {
 	if err := tt.Click("已停用"); err != nil {
 		t.Fatal(err)
 	}
-	if files := a.content.visibleFiles(); len(files) != 1 || files[0].Name != "old.jar" || a.state.Selected != 1 {
+	if files := a.content.visibleFiles(nil); len(files) != 1 || files[0].Name != "old.jar" || a.state.Selected != 1 {
 		t.Fatal("disabled filter or launch target changed")
 	}
 	capture(t, tt, "resources-disabled-compact")

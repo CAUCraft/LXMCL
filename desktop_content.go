@@ -41,15 +41,22 @@ type contentView struct {
 	err         string
 	query       string
 	filter      int
+	modFilter   string
 	order       string
 	selected    map[string]bool // physical filename → enabled state
 	scroll      ui.ListState
 	listing     *resourceListing
 }
 
+const (
+	modUpdateAvailable = "available"
+	modUpdateSkipped   = "skipped"
+)
+
 type resourceListing struct {
 	query      string
 	filter     int
+	modFilter  string
 	files      []launcher.ContentFile
 	selectable int
 	clipboard  string
@@ -57,11 +64,18 @@ type resourceListing struct {
 
 // Build the clipboard text and filtered view when the listing changes, including
 // a new disk scan or sort. Scrolling and hover frames reuse the same snapshot.
-func (v *contentView) currentListing() *resourceListing {
-	if v.listing != nil && v.listing.query == v.query && v.listing.filter == v.filter {
+func (v *contentView) currentListing(skipped map[string]bool) *resourceListing {
+	if v.listing != nil && v.listing.query == v.query && v.listing.filter == v.filter && v.listing.modFilter == v.modFilter {
 		return v.listing
 	}
-	list := &resourceListing{query: v.query, filter: v.filter, files: v.visibleFiles()}
+	list := &resourceListing{query: v.query, filter: v.filter, modFilter: v.modFilter, files: v.visibleFiles(skipped)}
+	if len(v.selected) > 0 {
+		visible := v.selection(list.files)
+		v.selected = make(map[string]bool, len(visible))
+		for _, file := range visible {
+			v.selected[file.DiskName()] = file.Enabled
+		}
+	}
 	var text strings.Builder
 	for _, file := range list.files {
 		if file.Directory {
@@ -185,7 +199,7 @@ func (a *desktop) instanceContent(c *ui.Context, i launcher.Instance) {
 			}
 			action.Segmented(c, &v.tab, options, action.SegmentedProps{Size: theme.Small}).Label("资源类型")
 			if old != v.tab {
-				v.query, v.filter, v.scroll = "", 0, ui.ListState{}
+				v.query, v.filter, v.modFilter, v.scroll = "", 0, "", ui.ListState{}
 				a.refreshContent(i)
 			}
 		} else {
@@ -276,16 +290,23 @@ func (a *desktop) importResourceFiles(i launcher.Instance, kind launcher.Content
 	})
 }
 
-func (v *contentView) visibleFiles() []launcher.ContentFile {
+func (v *contentView) visibleFiles(skipped map[string]bool) []launcher.ContentFile {
 	query := strings.ToLower(strings.TrimSpace(v.query))
-	if query == "" && v.filter == 0 {
+	if query == "" && v.filter == 0 && v.modFilter == "" {
 		return v.files
 	}
 	var files []launcher.ContentFile
 	for _, file := range v.files {
-		if query != "" && !strings.Contains(strings.ToLower(file.Name+"\n"+file.ModTitle+"\n"+file.ModIDs+"\n"+v.mods[file.DiskName()].Title), query) ||
+		mod := v.mods[file.DiskName()]
+		if query != "" && !strings.Contains(strings.ToLower(file.Name+"\n"+file.ModTitle+"\n"+file.ModIDs+"\n"+mod.Title), query) ||
 			v.filter != 0 && file.Directory || v.filter == 1 && !file.Enabled || v.filter == 2 && file.Enabled {
 			continue
+		}
+		if v.modFilter != "" {
+			key := mod.UpdateKey()
+			if key == "" || skipped[key] != (v.modFilter == modUpdateSkipped) {
+				continue
+			}
 		}
 		files = append(files, file)
 	}
@@ -333,9 +354,7 @@ func (v *contentView) selection(files []launcher.ContentFile) []launcher.Content
 
 func (a *desktop) contentList(c *ui.Context, i launcher.Instance, disabled bool) {
 	v := &a.content
-	if v.kind() == launcher.Mods && (v.checking || v.mods != nil || v.checkError != "") {
-		a.modControls(c, i, disabled)
-	}
+	skipped := a.state.SkippedModUpdates[i.ID]
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 		oldQuery, oldFilter := v.query, v.filter
 		placeholder := "搜索本地文件"
@@ -361,9 +380,13 @@ func (a *desktop) contentList(c *ui.Context, i launcher.Instance, disabled bool)
 			v.selected, v.scroll = nil, ui.ListState{}
 		}
 	})
-	listing := v.currentListing()
-	files := listing.files
+	var files []launcher.ContentFile
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+		if v.kind() == launcher.Mods {
+			v.modUpdatePicker(c)
+		}
+		listing := v.currentListing(skipped)
+		files = listing.files
 		n := len(v.selected)
 		all := n > 0 && n == listing.selectable
 		if choice.Checkbox(c, &all, "全选当前列表", choice.CheckboxProps{Indeterminate: n > 0 && n < listing.selectable}).
@@ -377,10 +400,14 @@ func (a *desktop) contentList(c *ui.Context, i launcher.Instance, disabled bool)
 				}
 			}
 		}
-		muted(c, fmt.Sprintf("%d / %d 项", len(files), len(v.files))).FontSize(12).Grow(1)
+		count := fmt.Sprintf("%d / %d 项", len(files), len(v.files))
+		muted(c, count).FontSize(12).Grow(1).MinWidth(0).SingleLine().Ellipsis("…").Tooltip(count)
 		a.modRestoreButton(c, i, disabled)
-		order := v.order
-		ui.Column(c).Width(124).Shrink(0).Children(func() {
+		order, orderWidth := v.order, float32(124)
+		if v.kind() == launcher.Mods {
+			orderWidth = 106
+		}
+		ui.Column(c).Width(orderWidth).Shrink(0).Children(func() {
 			field.Select(c, &v.order, field.SelectProps{Options: []field.SelectOption{
 				{Value: "", Label: "按名称"}, {Value: "modified", Label: "最近修改"}, {Value: "size", Label: "文件较大"},
 			}}).Label("本地资源排序")
@@ -388,16 +415,34 @@ func (a *desktop) contentList(c *ui.Context, i launcher.Instance, disabled bool)
 		if order != v.order {
 			v.scroll = ui.ListState{}
 			v.sortFiles()
-			listing = v.currentListing()
+			listing = v.currentListing(skipped)
 			files = listing.files
 		}
 		action.CopyButton(c, listing.clipboard, action.CopyButtonProps{}).Label("复制资源列表").Disabled(len(files) == 0)
 	})
+	if v.kind() == launcher.Mods && (v.checking || v.mods != nil || v.checkError != "") {
+		a.modControls(c, i, skipped, files, disabled)
+	}
 	if len(files) == 0 {
+		title, description := "没有匹配的资源", ""
+		if v.modFilter != "" {
+			switch {
+			case v.mods != nil:
+				title = "没有匹配的模组"
+			case v.checking:
+				title = "等待更新检查结果"
+			case v.checkError != "":
+				title = "没有可用的更新检查结果"
+			default:
+				title, description = "尚未检查更新", "点击「检查更新」后可按更新状态筛选。"
+			}
+		}
 		ui.Column(c).Grow(1).Center().Children(func() {
-			display.Empty(c, display.EmptyProps{Icon: lucide.Search(), Title: "没有匹配的资源", Action: func() {
+			display.Empty(c, display.EmptyProps{Icon: lucide.Search(), Title: title, Description: description, Action: func() {
 				if button(c, "清除资源筛选", action.Default, false) {
-					v.query, v.filter = "", 0
+					v.query, v.filter, v.modFilter = "", 0, ""
+					v.selected, v.scroll = nil, ui.ListState{}
+					c.Invalidate()
 				}
 			}})
 		})
@@ -657,6 +702,8 @@ func (a *desktop) setModUpdateSkipped(i launcher.Instance, candidate string, ski
 	a.save(next, 0, func(err error) {
 		if err != nil {
 			a.message("无法保存更新提示", err)
+		} else if a.content.id == i.ID && a.content.revision == i.Revision {
+			a.content.listing = nil
 		}
 	})
 }
@@ -681,26 +728,42 @@ func (a *desktop) checkModUpdates(i launcher.Instance) {
 	}()
 }
 
-func (a *desktop) modControls(c *ui.Context, i launcher.Instance, disabled bool) {
+func (v *contentView) modUpdatePicker(c *ui.Context) {
+	oldFilter := v.modFilter
+	ui.Column(c).Width(130).Shrink(0).Children(func() {
+		field.Select(c, &v.modFilter, field.SelectProps{Options: []field.SelectOption{
+			{Value: "", Label: "全部更新状态"},
+			{Value: modUpdateAvailable, Label: "可更新"},
+			{Value: modUpdateSkipped, Label: "已跳过"},
+		}}).Label("模组更新状态筛选")
+	})
+	if oldFilter != v.modFilter {
+		v.selected, v.scroll = nil, ui.ListState{}
+	}
+}
+
+func (a *desktop) modControls(c *ui.Context, i launcher.Instance, skipped map[string]bool, files []launcher.ContentFile, disabled bool) {
 	v := &a.content
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 		switch {
 		case v.checking:
 			muted(c, "正在识别模组并检查兼容版本…")
 		case v.mods != nil:
-			var selected []launcher.InstalledMod
 			known, updates := 0, 0
 			for _, f := range v.files {
-				key := f.DiskName()
-				m := v.mods[key]
+				m := v.mods[f.DiskName()]
 				if m.Current.ID != "" {
 					known++
 				}
-				if candidate := m.UpdateKey(); candidate != "" && !a.state.SkippedModUpdates[i.ID][candidate] {
+				if candidate := m.UpdateKey(); candidate != "" && !skipped[candidate] {
 					updates++
-					if _, checked := v.selected[key]; checked {
-						selected = append(selected, m)
-					}
+				}
+			}
+			var selected []launcher.InstalledMod
+			for _, f := range v.selection(files) {
+				m := v.mods[f.DiskName()]
+				if candidate := m.UpdateKey(); candidate != "" && !skipped[candidate] {
+					selected = append(selected, m)
 				}
 			}
 			muted(c, fmt.Sprintf("已识别 %d/%d · 可更新 %d", known, len(v.files), updates))
