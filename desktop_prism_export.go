@@ -177,7 +177,9 @@ func (a *desktop) savePrismExport(d *prismExportDraft) {
 				artifact = result
 				return err
 			}, func(row *taskRecord) {
-				row.PrismExport = artifact
+				if row.Status == taskCompleted {
+					row.PrismExport = artifact
+				}
 			})
 		})
 	}()

@@ -588,6 +588,7 @@ func (a *desktop) runFileTask(row taskRecord, work func(context.Context, func(la
 	a.runFileTaskWithResult(row, work, nil, refresh)
 }
 
+// result adds operation-specific data to the terminal record before it is saved.
 func (a *desktop) runFileTaskWithResult(row taskRecord, work func(context.Context, func(launcher.Progress)) error, result func(*taskRecord), refresh func(error)) {
 	queuedCurseMod := row.ID != "" && row.Resource != nil && row.Resource.Source == launcher.CurseForgeMods
 	row = row.Submitted()
@@ -609,9 +610,9 @@ func (a *desktop) runFileTaskWithResult(row taskRecord, work func(context.Contex
 			}
 		} else {
 			row.Pack = tasks.PackUpdate{}
-			if result != nil {
-				result(&row)
-			}
+		}
+		if result != nil {
+			result(&row)
 		}
 		noticeErr := err
 		if plainTaskCancellation(row) {

@@ -1,6 +1,7 @@
 package tasks
 
 import (
+	"slices"
 	"sync"
 	"sync/atomic"
 
@@ -73,6 +74,7 @@ func (j *Journal) publish(records []Record) {
 func clone(records []Record) []Record {
 	result := append([]Record(nil), records...)
 	for n := range result {
+		result[n].ModUpdates.Items = slices.Clone(result[n].ModUpdates.Items)
 		if result[n].Resource != nil {
 			r := *result[n].Resource
 			result[n].Resource = &r
