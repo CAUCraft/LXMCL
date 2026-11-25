@@ -31,8 +31,11 @@ type instanceTaskHistoryView struct {
 	previousTask, previousQuery      string
 }
 
-func (a *desktop) openInstanceTaskHistory(i launcher.Instance) {
+func (a *desktop) openInstanceTaskHistory(i launcher.Instance, key string) {
 	if current, ok := a.state.Find(i.ID); !ok || current != i || a.page != pageLibrary || a.inspected != i.ID || a.detailPage != detailOverview {
+		return
+	}
+	if key != "" && !a.hasUniqueInstanceTaskKey(i.ID, key) {
 		return
 	}
 	a.openTasks()
@@ -41,7 +44,7 @@ func (a *desktop) openInstanceTaskHistory(i launcher.Instance) {
 		previousTask: a.browsedTask, previousQuery: a.taskHistoryQuery,
 	}
 	a.taskFilter, a.taskInstanceFilter = 0, i.ID
-	a.browsedTask, a.taskHistoryQuery = "", ""
+	a.browsedTask, a.taskHistoryQuery = key, ""
 }
 
 func (a *desktop) closeInstanceTaskHistory() {
@@ -59,6 +62,37 @@ func (a *desktop) returnFromInstanceTaskHistory() {
 	if _, ok := a.state.Find(id); ok {
 		a.inspected = id
 	}
+}
+
+// Legacy rows without an ID use the submission time as their key.
+func (a *desktop) hasUniqueInstanceTaskKey(instanceID int, key string) bool {
+	matches := 0
+	for _, row := range a.history {
+		if row.InstanceID == instanceID && taskKey(row) == key {
+			matches++
+		}
+	}
+	return matches == 1
+}
+
+// At is the submission time. History order reflects when rows were last updated.
+func (a *desktop) latestFinishedLaunch(instanceID int) (taskRecord, bool) {
+	var latest taskRecord
+	if instanceID <= 0 {
+		return latest, false
+	}
+	for _, row := range a.history {
+		if row.InstanceID != instanceID || row.Action != taskLaunch {
+			continue
+		}
+		switch row.Status {
+		case taskExited, taskFailed, taskCanceled:
+			if latest.InstanceID == 0 || row.At.After(latest.At) {
+				latest = row
+			}
+		}
+	}
+	return latest, latest.InstanceID != 0
 }
 
 func failedOrCanceled(row taskRecord) bool {
