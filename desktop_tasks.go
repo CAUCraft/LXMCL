@@ -10,6 +10,7 @@ import (
 	"github.com/CAUCraft/LXMCL/internal/launcher"
 	launcherlog "github.com/CAUCraft/LXMCL/internal/log"
 	"github.com/CAUCraft/LXMCL/internal/tasks"
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"github.com/lobehub/lobe-mygo/pkg/action"
 	"github.com/lobehub/lobe-mygo/pkg/display"
@@ -388,6 +389,17 @@ func (a *desktop) taskRow(c *ui.Context, row taskRecord) {
 			}
 			muted(c, label+" · "+row.Resource.Title).FontSize(13).Selectable()
 		}
+		if row.ModUpdateBackupPath() != "" {
+			if !row.ModUpdateBackup.Stamp.Valid() {
+				muted(c, "备份已保存，但无法确认原 ZIP 的文件身份。请检查保存位置。").FontSize(12)
+			} else {
+				ui.Row(c).Children(func() {
+					if button(c, "定位备份 ZIP", action.Default, a.ctx == nil) {
+						a.locateTaskZIP("无法定位备份 ZIP", row.LocateModUpdateBackup)
+					}
+				})
+			}
+		}
 		modUpdateDetails(c, row)
 		if row.Detail != "" {
 			if row.Status == taskFailed {
@@ -476,7 +488,7 @@ func (a *desktop) taskRow(c *ui.Context, row taskRecord) {
 				a.openPath(launcher.BackupsDir(a.store.Root, row.InstanceID), false)
 			}
 			if exportPath != "" && button(c, "定位导出 ZIP", action.Default, a.ctx == nil) {
-				a.locatePrismExport(row)
+				a.locateTaskZIP("无法定位导出 ZIP", row.LocatePrismExport)
 			}
 			if row.Folder != "" && button(c, "打开文件夹", action.Default, false) {
 				a.openPath(row.Folder, false)
@@ -486,6 +498,22 @@ func (a *desktop) taskRow(c *ui.Context, row taskRecord) {
 			}
 		})
 	})
+}
+
+func (a *desktop) locateTaskZIP(errorTitle string, locate func() (string, error)) {
+	if a.ctx == nil {
+		return
+	}
+	go func() {
+		filename, err := locate()
+		a.post(func() {
+			if err != nil {
+				a.message(errorTitle, err)
+				return
+			}
+			mygo.Shell.ShowItemInFolder(filename)
+		})
+	}()
 }
 
 func (a *desktop) taskStage() string {

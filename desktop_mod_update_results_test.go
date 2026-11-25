@@ -3,11 +3,14 @@ package main
 import (
 	"context"
 	"errors"
+	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/CAUCraft/LXMCL/internal/storage"
 	"github.com/CAUCraft/LXMCL/internal/tasks"
 )
 
@@ -66,8 +69,12 @@ func TestModUpdateResultsFromTaskCenter(t *testing.T) {
 	a.state.Instances[0].Name, a.state.Instances[1].Name = "同名地图实例", "同名地图实例"
 	first, second := a.state.Instances[0], a.state.Instances[1]
 	at := time.Date(2026, time.November, 25, 10, 0, 0, 0, time.UTC)
+	backupPath := filepath.Join(t.TempDir(), "local-backup.zip")
+	stamp := storage.FileStamp{System: runtime.GOOS, File: 1, Size: 1}
+	const locate = "定位备份 ZIP"
 	rows := []taskRecord{
 		{ID: "new", InstanceID: second.ID, Name: second.Name, Action: tasks.ModUpdateAction, Status: taskCanceled, At: at,
+			ModUpdateBackup: tasks.LocalZIP{Path: backupPath, Stamp: stamp},
 			ModUpdates: tasks.SummarizeModUpdates([]tasks.ModUpdateItem{
 				{File: "地图.jar", From: "1.0", To: "2.0", Status: taskCompleted},
 				{File: "桥梁.jar.disabled", From: "0.9", To: "1.0", Status: taskFailed},
@@ -103,16 +110,22 @@ func TestModUpdateResultsFromTaskCenter(t *testing.T) {
 			t.Fatal("missing result", label, tt.Texts())
 		}
 	}
-	if len(a.visibleTaskHistory()) != 1 || tt.HasText("旧任务摘要") {
+	if len(a.visibleTaskHistory()) != 1 || tt.HasText("旧任务摘要") || tt.HasText(backupPath) {
 		t.Fatal("wrong instance history", tt.Texts())
 	}
 	for _, dark := range []bool{false, true} {
 		tt.SetDark(dark)
 		tt.Advance(350 * time.Millisecond)
 		tt.Frame()
-		b, ok := tt.Find("返回实例概览")
-		if !ok || b.Y < 42 || b.Y+b.H > 530.5 || b.X+b.W > 820.5 {
-			t.Fatal("return action not visible", b)
+		actions := []string{"返回实例概览"}
+		if stamp.Valid() {
+			actions = append(actions, locate)
+		}
+		for _, action := range actions {
+			b, ok := tt.Find(action)
+			if !ok || b.Y < 42 || b.Y+b.H > 530.5 || b.X+b.W > 820.5 {
+				t.Fatal("action not visible", action, b)
+			}
 		}
 		name := "mod-update-results-light"
 		if dark {
@@ -120,12 +133,17 @@ func TestModUpdateResultsFromTaskCenter(t *testing.T) {
 		}
 		capture(t, tt, name)
 	}
+	a.history[0].ModUpdateBackup.Stamp = storage.FileStamp{}
+	tt.Frame()
+	if !tt.HasText("备份已保存，但无法确认原 ZIP 的文件身份。请检查保存位置。") || tt.HasText(locate) {
+		t.Fatal("unverifiable attachment was offered for location", tt.Texts())
+	}
 	click("返回实例概览")
 	if a.inspected != second.ID || a.detailPage != detailOverview {
 		t.Fatal("did not return to the browsed instance")
 	}
 	click("任务中心", "筛选历史实例", "#1 · 同名地图实例")
-	if !tt.HasText("旧任务摘要") || tt.HasText("逐项结果") || a.state.Selected != first.ID || a.busy {
+	if !tt.HasText("旧任务摘要") || tt.HasText("逐项结果") || tt.HasText(locate) || a.state.Selected != first.ID || a.busy {
 		t.Fatal("legacy row gained invented results or changed the launch target", tt.Texts())
 	}
 }

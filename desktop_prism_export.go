@@ -184,19 +184,3 @@ func (a *desktop) savePrismExport(d *prismExportDraft) {
 		})
 	}()
 }
-
-func (a *desktop) locatePrismExport(row taskRecord) {
-	if a.ctx == nil || row.PrismExportPath() == "" {
-		return
-	}
-	go func() {
-		filename, err := row.LocatePrismExport()
-		a.post(func() {
-			if err != nil {
-				a.message("无法定位导出 ZIP", err)
-				return
-			}
-			mygo.Shell.ShowItemInFolder(filename)
-		})
-	}()
-}

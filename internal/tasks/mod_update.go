@@ -2,9 +2,11 @@ package tasks
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"unicode"
 
+	"github.com/CAUCraft/LXMCL/internal/i18n"
 	"github.com/CAUCraft/LXMCL/internal/storage"
 )
 
@@ -48,6 +50,38 @@ func SummarizeModUpdates(items []ModUpdateItem) ModUpdateReport {
 	}
 	report.Omitted = len(items) - len(report.Items)
 	return report
+}
+
+const (
+	modUpdateBackupPrefix = "更新前备份 "
+	modUpdateBackupSuffix = " 项模组"
+)
+
+// ModUpdateBackupAction describes the backup phase of a batch update.
+func ModUpdateBackupAction(count int) string {
+	return fmt.Sprintf("%s%d%s", modUpdateBackupPrefix, count, modUpdateBackupSuffix)
+}
+
+// ModUpdateBackupPath returns the recorded attachment without filesystem access.
+func (r Record) ModUpdateBackupPath() string {
+	if r.InstanceID <= 0 || r.ID == "" {
+		return ""
+	}
+	batch := r.Action == ModUpdateAction && (r.Status == Completed || r.Status == Failed || r.Status == Canceled)
+	backup := r.Status == Completed && strings.HasPrefix(r.Action, modUpdateBackupPrefix) && strings.HasSuffix(r.Action, modUpdateBackupSuffix)
+	if !batch && !backup {
+		return ""
+	}
+	return r.ModUpdateBackup.zipPath()
+}
+
+// LocateModUpdateBackup verifies the original ZIP at its recorded path.
+func (r Record) LocateModUpdateBackup() (string, error) {
+	filename := r.ModUpdateBackupPath()
+	if filename == "" || storage.CheckFileStamp(filename, r.ModUpdateBackup.Stamp) != nil {
+		return "", i18n.Error("resource.mod_update_backup_unavailable")
+	}
+	return filename, nil
 }
 
 func modVersionLabel(value string) string {

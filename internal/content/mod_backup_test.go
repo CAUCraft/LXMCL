@@ -11,6 +11,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/CAUCraft/LXMCL/internal/content"
@@ -40,12 +41,12 @@ func TestBackupSelectedMods(t *testing.T) {
 	path := filepath.Join(dir, "backup.zip")
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	if err := content.BackupVerifiedMods(ctx, source, chosen, digests, path, func(p tasks.Progress) {
+	if artifact, err := content.BackupVerifiedMods(ctx, source, chosen, digests, path, func(p tasks.Progress) {
 		if p.Done == 1 {
 			cancel()
 		}
-	}); !errors.Is(err, context.Canceled) {
-		t.Fatal(err)
+	}); !errors.Is(err, context.Canceled) || artifact != (tasks.LocalZIP{}) {
+		t.Fatal(artifact, err)
 	}
 	changed := append([]content.File(nil), chosen...)
 	changed[1].Size++
@@ -62,11 +63,11 @@ func TestBackupSelectedMods(t *testing.T) {
 	if st, err := os.Stat(sourcePath); err != nil || st.Size() != stale.Size || !st.ModTime().Equal(stale.Modified) {
 		t.Fatal("expected unchanged size and timestamp", st, err)
 	}
-	if err := content.BackupVerifiedMods(t.Context(), source, chosen, digests, path, nil); err == nil {
+	if artifact, err := content.BackupVerifiedMods(t.Context(), source, chosen, digests, path, nil); err == nil || artifact != (tasks.LocalZIP{}) {
 		t.Fatal("backed up different bytes with the same size and timestamp")
 	}
 	delete(digests, name)
-	if err := content.BackupVerifiedMods(t.Context(), source, chosen, digests, path, nil); err == nil {
+	if artifact, err := content.BackupVerifiedMods(t.Context(), source, chosen, digests, path, nil); err == nil || artifact != (tasks.LocalZIP{}) {
 		t.Fatal("backed up a mod without an expected digest")
 	}
 	if entries, err := os.ReadDir(dir); err != nil || len(entries) != 0 {
@@ -77,8 +78,15 @@ func TestBackupSelectedMods(t *testing.T) {
 		t.Fatal(err)
 	}
 	digests[name] = fmt.Sprintf("%x", sha512.Sum512(data))
-	if err := content.BackupVerifiedMods(t.Context(), source, chosen, digests, path, nil); err != nil {
-		t.Fatal(err)
+	artifact, err := content.BackupVerifiedMods(t.Context(), source, chosen, digests, path, nil)
+	if err != nil || artifact.Path != path {
+		t.Fatal(artifact, err)
+	}
+	row := (tasks.Record{InstanceID: source.ID, Action: tasks.ModUpdateAction, Status: tasks.Canceled, ModUpdateBackup: artifact}).Submitted()
+	if runtime.GOOS == "linux" || runtime.GOOS == "windows" {
+		if got, err := row.LocateModUpdateBackup(); err != nil || got != path {
+			t.Fatal(got, err)
+		}
 	}
 	if err := content.BackupMods(t.Context(), source, files[2:], path, nil); !errors.Is(err, fs.ErrExist) {
 		t.Fatal("reused existing target", err)

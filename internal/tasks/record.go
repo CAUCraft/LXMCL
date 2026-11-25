@@ -44,10 +44,11 @@ type PackUpdate struct {
 	BackupDir string `json:"backup_directory,omitempty"`
 }
 type Record struct {
-	Pack        PackUpdate      `json:"pack_update,omitzero"`
-	PrismExport PrismExport     `json:"prism_export,omitzero"`
-	ModUpdates  ModUpdateReport `json:"mod_updates,omitzero"`
-	ID          string          `json:"id,omitempty"`
+	Pack            PackUpdate      `json:"pack_update,omitzero"`
+	PrismExport     PrismExport     `json:"prism_export,omitzero"`
+	ModUpdateBackup LocalZIP        `json:"mod_update_backup,omitzero"`
+	ModUpdates      ModUpdateReport `json:"mod_updates,omitzero"`
+	ID              string          `json:"id,omitempty"`
 
 	InstanceID  int       `json:"instance_id,omitempty"`
 	Revision    uint64    `json:"instance_revision,omitempty"`
