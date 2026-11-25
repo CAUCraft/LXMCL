@@ -511,8 +511,9 @@ func (a *desktop) logDialog(c *ui.Context) {
 		body := ui.Column(c).Gap(10)
 		preview := ui.Local(body, "log-preview", func() logPreview { return logPreview{} })
 		body.Children(func() {
+			visibleFiles := 0
 			if a.logLibrary != nil {
-				a.logFilePicker(c)
+				visibleFiles = a.logFilePicker(c)
 			}
 			location := a.logPath
 			if p := a.logLibrary; p != nil {
@@ -556,8 +557,12 @@ func (a *desktop) logDialog(c *ui.Context) {
 					content = "暂无日志或崩溃报告，运行游戏后可刷新列表。"
 					if a.logLibrary.reading {
 						content = "正在查找实例日志…"
-					} else if a.logLibrary.err != "" {
+					} else if a.logLibrary.err != "" && len(a.logLibrary.entries) == 0 {
 						content = "检查实例目录和读取权限后，刷新日志列表重试。"
+					} else if visibleFiles > 0 {
+						content = "选择日志文件查看预览。"
+					} else if len(a.logLibrary.entries) > 0 {
+						content = "最近的日志列表中没有此类型的文件。"
 					}
 				} else if a.logError != "" {
 					content = "请刷新重试，或打开原文件查看。"
@@ -609,7 +614,7 @@ func (a *desktop) logDialog(c *ui.Context) {
 					caption = "已导出预览"
 				}
 				muted(c, caption).FontSize(12).Grow(1)
-				action.CopyButton(c, preview.text, action.CopyButtonProps{}).Label("复制当前日志").Disabled(preview.text == "" || a.logReading)
+				action.CopyButton(c.Key(a.logPath), preview.text, action.CopyButtonProps{}).Label("复制当前日志").Disabled(preview.text == "" || a.logReading)
 				if button(c, "导出预览…", action.Default, preview.text == "" || a.logReading || a.logExporting || a.pickerBusy) {
 					a.exportLog(preview.text)
 				}
