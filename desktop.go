@@ -111,6 +111,9 @@ func (a *desktop) view(c *ui.Context) {
 				a.returnToInstallDraft()
 			}
 		}
+		if a.instanceTaskHistory != nil && a.page == pageDownloads && a.downloadPage == downloadTasks && c.Shortcut(0, ui.KeyEscape) {
+			a.returnFromInstanceTaskHistory()
+		}
 		if a.page == pageAccount && c.Shortcut(0, ui.KeyEscape) {
 			a.page = a.accountReturn
 		}
@@ -172,6 +175,9 @@ func (a *desktop) view(c *ui.Context) {
 		}
 		if a.page != pageLibrary {
 			a.install.existing = nil
+		}
+		if a.page != pageDownloads || a.downloadPage != downloadTasks {
+			a.closeInstanceTaskHistory()
 		}
 		if a.page != pageDownloads || a.downloadPage != downloadGame {
 			if a.install.existing == nil {
