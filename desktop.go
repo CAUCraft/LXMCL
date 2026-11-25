@@ -174,6 +174,7 @@ func (a *desktop) view(c *ui.Context) {
 			}
 		}
 		a.clearInstanceUsage()
+		a.discardStaleModReleaseNotes()
 		if a.page != pageLibrary {
 			a.install.existing = nil
 		}
@@ -249,6 +250,10 @@ func (a *desktop) noticeBar(c *ui.Context) {
 }
 
 func (a *desktop) backFromDetail() {
+	if a.detailPage == detailContent && a.content.modNotes != nil {
+		a.closeModReleaseNotes()
+		return
+	}
 	if a.detailPage == detailContent && a.content.restoreMods != nil {
 		a.closeModRestore()
 		return
