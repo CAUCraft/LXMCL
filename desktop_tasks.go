@@ -28,7 +28,7 @@ func (a *desktop) openTasks() {
 type instanceTaskHistoryView struct {
 	instanceID                       int
 	previousStatus, previousInstance int
-	previousTask                     string
+	previousTask, previousQuery      string
 }
 
 func (a *desktop) openInstanceTaskHistory(i launcher.Instance) {
@@ -37,14 +37,17 @@ func (a *desktop) openInstanceTaskHistory(i launcher.Instance) {
 	}
 	a.openTasks()
 	a.instanceTaskHistory = &instanceTaskHistoryView{
-		instanceID: i.ID, previousStatus: a.taskFilter, previousInstance: a.taskInstanceFilter, previousTask: a.browsedTask,
+		instanceID: i.ID, previousStatus: a.taskFilter, previousInstance: a.taskInstanceFilter,
+		previousTask: a.browsedTask, previousQuery: a.taskHistoryQuery,
 	}
-	a.taskFilter, a.taskInstanceFilter, a.browsedTask = 0, i.ID, ""
+	a.taskFilter, a.taskInstanceFilter = 0, i.ID
+	a.browsedTask, a.taskHistoryQuery = "", ""
 }
 
 func (a *desktop) closeInstanceTaskHistory() {
 	if view := a.instanceTaskHistory; view != nil {
-		a.taskFilter, a.taskInstanceFilter, a.browsedTask = view.previousStatus, view.previousInstance, view.previousTask
+		a.taskFilter, a.taskInstanceFilter = view.previousStatus, view.previousInstance
+		a.browsedTask, a.taskHistoryQuery = view.previousTask, view.previousQuery
 		a.instanceTaskHistory = nil
 	}
 }
@@ -88,6 +91,9 @@ func (a *desktop) openNoticeTask() {
 			}
 			if a.taskInstanceFilter != row.InstanceID {
 				a.taskInstanceFilter = 0
+			}
+			if !a.matchesTaskHistoryQuery(row) {
+				a.taskHistoryQuery = ""
 			}
 		}
 	}
@@ -160,6 +166,14 @@ func (a *desktop) tasks(c *ui.Context) {
 				action.Segmented(c, &a.taskFilter, []string{"全部任务", "失败 / 取消"},
 					action.SegmentedProps{Size: theme.Small}).Label("历史任务筛选")
 			})
+			searchKey := "mod+f"
+			if a.logOpen {
+				searchKey = ""
+			}
+			search := field.SearchBar(c.Key("task-history-search"), &a.taskHistoryQuery, field.SearchBarProps{
+				Placeholder: "搜索任务名称或动作", ShortKey: searchKey,
+			}).Label("搜索历史任务")
+			searching := strings.TrimSpace(a.taskHistoryQuery) != ""
 			visible := a.visibleTaskHistory()
 			if len(visible) == 0 {
 				title := "没有匹配的历史任务"
@@ -167,6 +181,8 @@ func (a *desktop) tasks(c *ui.Context) {
 				case a.instanceTaskHistory != nil && a.taskInstanceFilter != 0 &&
 					!slices.ContainsFunc(a.history, func(row taskRecord) bool { return row.InstanceID == a.taskInstanceFilter }):
 					title = "此实例暂无任务记录"
+				case searching:
+					title = "没有符合搜索条件的任务"
 				case a.taskFilter == 0 && a.taskInstanceFilter == 0:
 					title = "暂无任务"
 				case a.taskInstanceFilter == 0:
@@ -174,7 +190,13 @@ func (a *desktop) tasks(c *ui.Context) {
 				}
 				sectionPane(c).Padding(8, 14).Children(func() {
 					display.Empty(c, display.EmptyProps{Icon: lucide.SearchX(), Title: title, Action: func() {
-						if (a.taskFilter != 0 || a.taskInstanceFilter != 0) && button(c, "清除筛选", action.Default, false) {
+						if searching {
+							if button(c, "清除搜索", action.Default, false) {
+								a.taskHistoryQuery = ""
+								search.Focus()
+								c.Invalidate()
+							}
+						} else if (a.taskFilter != 0 || a.taskInstanceFilter != 0) && button(c, "清除筛选", action.Default, false) {
 							a.taskFilter, a.taskInstanceFilter = 0, 0
 							c.Invalidate()
 						}

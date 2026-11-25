@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/lobehub/lobe-mygo/pkg/field"
@@ -38,13 +39,19 @@ func (a *desktop) taskHistoryInstancePicker(c *ui.Context) {
 	a.taskInstanceFilter, _ = strconv.Atoi(selected)
 }
 
+func (a *desktop) matchesTaskHistoryQuery(row taskRecord) bool {
+	query := strings.ToLower(strings.TrimSpace(a.taskHistoryQuery))
+	return query == "" || strings.Contains(strings.ToLower(row.Name), query) ||
+		strings.Contains(strings.ToLower(row.Action), query)
+}
+
 func (a *desktop) matchesTaskHistory(row taskRecord) bool {
 	return (a.taskInstanceFilter == 0 || row.InstanceID == a.taskInstanceFilter) &&
-		(a.taskFilter != 1 || failedOrCanceled(row))
+		(a.taskFilter != 1 || failedOrCanceled(row)) && a.matchesTaskHistoryQuery(row)
 }
 
 func (a *desktop) visibleTaskHistory() []taskRecord {
-	if a.taskInstanceFilter == 0 && a.taskFilter == 0 {
+	if a.taskInstanceFilter == 0 && a.taskFilter == 0 && strings.TrimSpace(a.taskHistoryQuery) == "" {
 		return a.history
 	}
 	var visible []taskRecord
