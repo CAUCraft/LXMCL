@@ -216,6 +216,7 @@ func (a *desktop) inspect(i launcher.Instance) {
 }
 
 func (a *desktop) openInstanceDetails(i launcher.Instance) {
+	a.closeModReleaseNotes()
 	if a.form.open && a.form.worlds != nil && a.form.target.ID != i.ID {
 		a.form.open = false
 	}

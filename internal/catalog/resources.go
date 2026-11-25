@@ -1,6 +1,7 @@
 package catalog
 
 import (
+	"encoding/json"
 	"regexp"
 	"slices"
 	"strings"
@@ -66,15 +67,22 @@ func (p PackProject) PageURL(kind content.Kind) string {
 
 type PackVersion struct {
 	curseAsset   distribution.Asset
-	ID           string    `json:"id"`
-	ProjectID    string    `json:"project_id"`
-	Number       string    `json:"version_number"`
-	Type         string    `json:"version_type"`
-	GameVersions []string  `json:"game_versions"`
-	Loaders      []string  `json:"loaders"`
-	Published    time.Time `json:"date_published"`
+	ID           string          `json:"id"`
+	ProjectID    string          `json:"project_id"`
+	Number       string          `json:"version_number"`
+	Type         string          `json:"version_type"`
+	GameVersions []string        `json:"game_versions"`
+	Loaders      []string        `json:"loaders"`
+	Published    time.Time       `json:"date_published"`
+	Changelog    json.RawMessage `json:"changelog,omitempty"`
 	Files        []PackFile
 	Dependencies []ModDependency
+}
+
+// ChangelogText distinguishes an omitted changelog from a known empty one.
+func (v PackVersion) ChangelogText() (text string, known bool) {
+	err := json.Unmarshal(v.Changelog, &text)
+	return text, err == nil
 }
 
 type ModDependency struct {

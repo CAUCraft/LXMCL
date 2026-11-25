@@ -28,6 +28,7 @@ type contentView struct {
 	savedPacks  *savedPacksView
 	packPreview *resourcePackView
 	comparison  *modComparisonView
+	modNotes    *modReleaseNotesView
 	restoreMods *modRestoreView
 	copyMods    *modCopyView
 	mods        map[string]launcher.InstalledMod
@@ -93,6 +94,7 @@ func (v contentView) kind() launcher.ContentKind {
 }
 
 func (a *desktop) refreshContent(i launcher.Instance) {
+	a.closeModReleaseNotes()
 	a.content.savedPacks = nil
 	a.content.restoreMods = nil
 	a.content.packPreview = nil
@@ -144,6 +146,11 @@ func (a *desktop) inspectContent(i launcher.Instance, kind launcher.ContentKind)
 
 func (a *desktop) instanceContent(c *ui.Context, i launcher.Instance) {
 	v := &a.content
+	a.discardStaleModReleaseNotes()
+	if p := v.modNotes; p != nil {
+		a.modReleaseNotes(c, p)
+		return
+	}
 	if v.id != i.ID || v.revision != i.Revision || v.tab != 0 && !v.kind().Supports(i) {
 		*v = contentView{id: i.ID, revision: i.Revision}
 		a.refreshContent(i)
@@ -616,6 +623,9 @@ func (a *desktop) contentFileTitle(c *ui.Context, i launcher.Instance, f launche
 		muted(c, detail).FontSize(11).SingleLine().Ellipsis("…")
 	})
 	if updateKey != "" {
+		if icon(c.Key("update-notes"), lucide.FileText(), "查看发布说明 "+key, v.checking) {
+			a.openModReleaseNotes(c, i, key, m)
+		}
 		label := "跳过此版本"
 		if skipped {
 			label = "恢复提示"
