@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -18,6 +19,7 @@ import (
 	"github.com/CAUCraft/LXMCL/internal/instance"
 	"github.com/CAUCraft/LXMCL/internal/nbt"
 	"github.com/CAUCraft/LXMCL/internal/saves"
+	"github.com/CAUCraft/LXMCL/internal/screenshots"
 	"github.com/CAUCraft/LXMCL/internal/storage"
 	"github.com/CAUCraft/LXMCL/internal/tasks"
 	"github.com/CAUCraft/LXMCL/internal/transfer"
@@ -110,6 +112,11 @@ func exportPrismFiles(ctx context.Context, i instance.Instance, filename string,
 		if selected.Servers {
 			if err := addPrismServerList(i.GameDir, add); err != nil {
 				return i18n.Error("instance.duplicate_file_failed", serverListPath.name, err)
+			}
+		}
+		if selected.Screenshots {
+			if err := addPrismScreenshots(ctx, i.GameDir, add); err != nil {
+				return i18n.Error("instance.duplicate_file_failed", screenshots.Directory, err)
 			}
 		}
 		if selectedWorlds != nil {
@@ -209,6 +216,83 @@ func addPrismServerList(gameDir string, add func(*os.Root, string, string, fs.Fi
 		return i18n.Error("instance.duplicate_source_changed")
 	}
 	return nil
+}
+
+// Use the gallery's scope: only direct, regular PNG files.
+func addPrismScreenshots(ctx context.Context, gameDir string, add prismExportAdd) error {
+	gameInfo, err := os.Lstat(gameDir)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if gameInfo.Mode().Type() != fs.ModeDir {
+		return i18n.Error("instance.duplicate_file_unsupported", gameDir)
+	}
+	game, err := os.OpenRoot(gameDir)
+	if err != nil {
+		return err
+	}
+	defer game.Close()
+	if !prismExportDirMatches(game, ".", gameInfo) {
+		return i18n.Error("instance.duplicate_source_changed")
+	}
+
+	name := screenshots.Directory
+	info, err := game.Lstat(name)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if info.Mode().Type() != fs.ModeDir {
+		return i18n.Error("instance.duplicate_file_unsupported", name)
+	}
+	root, err := game.OpenRoot(name)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	dir, err := root.Open(".")
+	if err != nil {
+		return err
+	}
+	defer dir.Close()
+	current, err := dir.Stat()
+	if err != nil || !os.SameFile(info, current) || !prismExportDirMatches(game, name, info) {
+		return i18n.Error("instance.duplicate_source_changed")
+	}
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		entries, readErr := dir.ReadDir(128)
+		if readErr != nil && !errors.Is(readErr, io.EOF) {
+			return readErr
+		}
+		for _, entry := range entries {
+			file := entry.Name()
+			if !entry.Type().IsRegular() || !strings.EqualFold(filepath.Ext(file), ".png") {
+				continue
+			}
+			snapshot, err := root.Lstat(file)
+			if err != nil {
+				return err
+			}
+			if err := add(root, file, name+"/"+file, snapshot); err != nil {
+				return err
+			}
+		}
+		if readErr == io.EOF {
+			break
+		}
+	}
+	if !prismExportDirMatches(game, name, info) {
+		return i18n.Error("instance.duplicate_source_changed")
+	}
+	return ctx.Err()
 }
 
 var playerProgressFile = regexp.MustCompile(`(?i)^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}[.]json$`)

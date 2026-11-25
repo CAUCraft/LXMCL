@@ -54,6 +54,7 @@ func (p PrismInstance) WorldFolders() ([]string, bool) {
 // PrismFiles identifies the game files selected for an import or export.
 type PrismFiles struct {
 	Worlds, Options, Servers bool
+	Screenshots              bool     // Export only.
 	WorldFolders             []string // For imports, nil uses Worlds as before. A non-nil slice selects exact folder names.
 }
 
