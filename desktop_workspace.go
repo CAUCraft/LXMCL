@@ -133,10 +133,12 @@ func (a *desktop) instanceOverview(c *ui.Context, i launcher.Instance) {
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 				ui.Column(c).Grow(1).MinWidth(0).Children(func() { property(c, "实例 ID", strconv.Itoa(i.ID)) })
 				if button(c, "查看任务历史", action.Default, false) {
-					a.openInstanceTaskHistory(i)
+					a.openInstanceTaskHistory(i, "")
 					c.Invalidate()
 				}
 			})
+			layout.Divider(c, layout.DividerProps{})
+			a.instanceLaunchResult(c, i)
 			layout.Divider(c, layout.DividerProps{})
 			a.playtimeOverview(c, i.ID)
 			layout.Divider(c, layout.DividerProps{})
@@ -156,6 +158,33 @@ func (a *desktop) instanceOverview(c *ui.Context, i launcher.Instance) {
 			}
 		})
 	}).Grow(1).MinHeight(0)
+}
+
+func (a *desktop) instanceLaunchResult(c *ui.Context, i launcher.Instance) {
+	const label = "上次启动结果"
+	if a.historyReadErr != "" {
+		property(c, label, "无法读取任务记录")
+		return
+	}
+	row, ok := a.latestFinishedLaunch(i.ID)
+	if !ok {
+		property(c, label, "暂无已结束的启动记录")
+		return
+	}
+	at := "时间未知"
+	if !row.At.IsZero() {
+		at = row.At.Local().Format("2006-01-02 15:04")
+	}
+	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+		ui.Column(c).Grow(1).MinWidth(0).Children(func() {
+			property(c, label, row.Status+" · "+at)
+		})
+		key := taskKey(row)
+		if button(c, "查看启动任务", action.Default, !a.hasUniqueInstanceTaskKey(i.ID, key)) {
+			a.openInstanceTaskHistory(i, key)
+			c.Invalidate()
+		}
+	})
 }
 
 func (a *desktop) instanceMenu(c *ui.Context, i launcher.Instance, inList bool) {
