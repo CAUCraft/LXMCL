@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/CAUCraft/LXMCL/internal/launcher"
 	"github.com/CAUCraft/LXMCL/internal/screenshots"
@@ -16,6 +17,7 @@ import (
 	"github.com/lobehub/lobe-mygo/pkg/action"
 	"github.com/lobehub/lobe-mygo/pkg/display"
 	"github.com/lobehub/lobe-mygo/pkg/feedback"
+	"github.com/lobehub/lobe-mygo/pkg/field"
 	"github.com/lobehub/lobe-mygo/pkg/layout"
 	"github.com/lobehub/lobe-mygo/pkg/lucide"
 	"github.com/lobehub/lobe-mygo/pkg/theme"
@@ -24,13 +26,30 @@ import (
 type screenshotGallery struct {
 	instance                            launcher.Instance
 	cancel                              context.CancelFunc
-	rows                                []display.ListItem
+	rows, matches                       []display.ListItem
+	query, appliedQuery                 string
 	selected, viewerFrom                string
 	loading, folder, exporting, copying bool
 	err, previewErr                     string
 	picture                             ui.ImageSource
 	original                            *screenshots.Original
 	scroll                              ui.ScrollState
+}
+
+func (p *screenshotGallery) visibleRows() []display.ListItem {
+	if p.query == "" {
+		return p.rows
+	}
+	if p.appliedQuery != p.query {
+		p.appliedQuery, p.matches = p.query, nil
+		query := strings.ToLower(strings.TrimSpace(p.query))
+		for _, row := range p.rows {
+			if strings.Contains(strings.ToLower(row.Key), query) {
+				p.matches = append(p.matches, row)
+			}
+		}
+	}
+	return p.matches
 }
 
 func (a *desktop) closeScreenshots() {
@@ -42,9 +61,9 @@ func (a *desktop) closeScreenshots() {
 	}
 }
 
-func (a *desktop) loadScreenshots(i launcher.Instance, selected string) {
+func (a *desktop) loadScreenshots(i launcher.Instance, selected, query string) {
 	a.closeScreenshots()
-	p := &screenshotGallery{instance: i, loading: true}
+	p := &screenshotGallery{instance: i, loading: true, query: query}
 	a.screenshots = p
 	if a.ctx == nil {
 		return
@@ -65,11 +84,12 @@ func (a *desktop) loadScreenshots(i launcher.Instance, selected string) {
 			if err != nil && !errors.Is(err, fs.ErrNotExist) {
 				p.err = err.Error()
 			}
-			if len(rows) == 0 {
+			visible := p.visibleRows()
+			if len(visible) == 0 {
 				return
 			}
-			if !slices.ContainsFunc(rows, func(row display.ListItem) bool { return row.Key == selected }) {
-				selected = rows[0].Key
+			if !slices.ContainsFunc(visible, func(row display.ListItem) bool { return row.Key == selected }) {
+				selected = visible[0].Key
 			}
 			a.selectScreenshot(p, selected)
 		})
@@ -79,9 +99,10 @@ func (a *desktop) loadScreenshots(i launcher.Instance, selected string) {
 func (a *desktop) selectScreenshot(p *screenshotGallery, name string) {
 	if p.cancel != nil {
 		p.cancel()
+		p.cancel = nil
 	}
 	p.selected, p.picture, p.original, p.previewErr, p.copying = name, nil, nil, "", false
-	if a.ctx == nil {
+	if name == "" || a.ctx == nil {
 		return
 	}
 	ctx, cancel := context.WithCancel(a.ctx)
@@ -201,7 +222,8 @@ func (a *desktop) leaveScreenshotViewer(p *screenshotGallery) {
 }
 
 func (a *desktop) screenshotViewer(c *ui.Context, p *screenshotGallery) {
-	index := slices.IndexFunc(p.rows, func(row display.ListItem) bool { return row.Key == p.selected })
+	rows := p.visibleRows()
+	index := slices.IndexFunc(rows, func(row display.ListItem) bool { return row.Key == p.selected })
 	target := index
 	var back bool
 	var toCopy *screenshots.Original
@@ -214,8 +236,8 @@ func (a *desktop) screenshotViewer(c *ui.Context, p *screenshotGallery) {
 		if icon(c, lucide.ChevronLeft(), "上一张", index <= 0) || c.Shortcut(0, ui.KeyLeft) {
 			target = index - 1
 		}
-		muted(c, fmt.Sprintf("%d / %d", index+1, len(p.rows)))
-		if icon(c, lucide.ChevronRight(), "下一张", index+1 >= len(p.rows)) || c.Shortcut(0, ui.KeyRight) {
+		muted(c, fmt.Sprintf("%d / %d", index+1, len(rows)))
+		if icon(c, lucide.ChevronRight(), "下一张", index+1 >= len(rows)) || c.Shortcut(0, ui.KeyRight) {
 			target = index + 1
 		}
 		toCopy = screenshotCopyButton(c, p)
@@ -225,8 +247,8 @@ func (a *desktop) screenshotViewer(c *ui.Context, p *screenshotGallery) {
 		a.leaveScreenshotViewer(p)
 		c.Invalidate()
 		return
-	case target != index && target >= 0 && target < len(p.rows):
-		a.selectScreenshot(p, p.rows[target].Key)
+	case target != index && target >= 0 && target < len(rows):
+		a.selectScreenshot(p, rows[target].Key)
 		c.Invalidate()
 	case toCopy != nil:
 		a.copyScreenshot(p, toCopy)
@@ -237,23 +259,43 @@ func (a *desktop) screenshotViewer(c *ui.Context, p *screenshotGallery) {
 func (a *desktop) instanceScreenshots(c *ui.Context, i launcher.Instance) {
 	p := a.screenshots
 	if p == nil || p.instance != i {
-		a.loadScreenshots(i, "")
+		a.loadScreenshots(i, "", "")
 		p = a.screenshots
 	}
 	var toCopy *screenshots.Original
+	var toExport string
+	var refresh bool
 	ui.Row(c).Gap(7).AlignItems(ui.Center).Children(func() {
 		display.Text(c, "游戏截图", display.TextProps{Strong: true, FontSize: 16}).Grow(1)
-		if icon(c, lucide.RefreshCw(), "刷新截图", p.loading) {
-			a.loadScreenshots(i, p.selected)
-		}
+		refresh = icon(c, lucide.RefreshCw(), "刷新截图", p.loading)
 		toCopy = screenshotCopyButton(c, p)
 		if button(c, "导出原图…", action.Default, p.picture == nil || p.exporting || a.pickerBusy || a.busy) {
-			a.exportScreenshot(p)
+			toExport = p.selected
 		}
 		if button(c, "打开截图文件夹", action.Default, !p.folder) {
 			a.openPath(filepath.Join(i.GameDir, screenshots.Directory), false)
 		}
 	})
+	var rows []display.ListItem
+	var search ui.Element
+	if !p.loading && p.err == "" && (len(p.rows) > 0 || p.query != "") {
+		old := p.query
+		key := "mod+f"
+		if a.logOpen {
+			key = ""
+		}
+		search = field.SearchBar(c.Key("screenshot-search"), &p.query, field.SearchBarProps{
+			Placeholder: "搜索截图文件名", ShortKey: key,
+		}).Label("搜索截图文件名")
+		rows = p.visibleRows()
+		if old != p.query {
+			p.scroll = ui.ScrollState{}
+			if p.selected != "" && !slices.ContainsFunc(rows, func(row display.ListItem) bool { return row.Key == p.selected }) {
+				a.selectScreenshot(p, "")
+			}
+			c.Invalidate()
+		}
+	}
 	switch {
 	case p.loading:
 		flightLoading(c, "正在读取截图…")
@@ -263,16 +305,30 @@ func (a *desktop) instanceScreenshots(c *ui.Context, i launcher.Instance) {
 		ui.Column(c).Grow(1).Center().Children(func() {
 			display.Empty(c, display.EmptyProps{Icon: lucide.Image(), Title: "还没有游戏截图", Description: "在此实例中按 F2 截图，然后刷新此页。"})
 		})
+	case len(rows) == 0:
+		ui.Column(c).Grow(1).Center().Children(func() {
+			display.Empty(c, display.EmptyProps{Icon: lucide.Search(), Title: "没有匹配的截图", Action: func() {
+				if button(c, "清除截图搜索", action.Default, false) {
+					p.query, p.scroll = "", ui.ScrollState{}
+					search.Focus()
+					c.Invalidate()
+				}
+			}})
+		})
 	default:
 		w, _ := c.Size()
 		splitWorkspace(c, catalogListWidth(w), func() {
 			muted(c, "修改时间 · 最近在前").FontSize(12)
 			layout.ScrollArea(c, layout.ScrollAreaProps{State: &p.scroll}, func() {
-				if name := display.List(c, display.ListProps{Items: p.rows, Active: p.selected, Compact: true}); name != "" && name != p.selected {
+				if name := display.List(c, display.ListProps{Items: rows, Active: p.selected, Compact: true}); name != "" && name != p.selected {
 					a.selectScreenshot(p, name)
 				}
 			}).Grow(1).MinHeight(0)
 		}, func() {
+			if p.selected == "" {
+				muted(c, "选择截图查看预览")
+				return
+			}
 			if screenshotPreview(c, p, true) {
 				p.viewerFrom = p.selected
 				c.Invalidate()
@@ -283,7 +339,13 @@ func (a *desktop) instanceScreenshots(c *ui.Context, i launcher.Instance) {
 			}
 		})
 	}
-	if toCopy != nil && a.screenshots == p && p.original == toCopy {
+	switch {
+	case refresh:
+		a.loadScreenshots(i, p.selected, p.query)
+		c.Invalidate()
+	case toCopy != nil && p.original == toCopy:
 		a.copyScreenshot(p, toCopy)
+	case toExport != "" && p.selected == toExport:
+		a.exportScreenshot(p)
 	}
 }
