@@ -513,7 +513,7 @@ func (a *desktop) library(c *ui.Context) {
 					hotkey = ""
 				}
 				search := field.SearchBar(c, &a.query, field.SearchBarProps{
-					Placeholder: "搜索实例", ShortKey: hotkey,
+					Placeholder: "搜索实例或备注", ShortKey: hotkey,
 				}).Label("搜索实例")
 				if a.focusSearch {
 					search.Focus()
@@ -572,8 +572,10 @@ func (a *desktop) libraryWorkspace(c *ui.Context, rows []launcher.Instance, exis
 	})
 }
 
-func matchesInstanceSearch(i launcher.Instance, query string) bool {
-	return query == "" || strings.Contains(strings.ToLower(i.Name+" "+i.Version+" "+loaderName(i)), query)
+func (a *desktop) matchesInstanceSearch(i launcher.Instance, query string) bool {
+	return query == "" ||
+		strings.Contains(strings.ToLower(i.Name+" "+i.Version+" "+loaderName(i)), query) ||
+		strings.Contains(strings.ToLower(a.state.InstanceNotes[i.ID]), query)
 }
 
 func (a *desktop) matchesCacheFilter(i launcher.Instance) bool {

@@ -197,7 +197,7 @@ func (a *desktop) configureLoader(i launcher.Instance) {
 
 func (a *desktop) inspect(i launcher.Instance) {
 	a.install.existing = nil
-	if !matchesInstanceSearch(i, strings.ToLower(strings.TrimSpace(a.query))) {
+	if !a.matchesInstanceSearch(i, strings.ToLower(strings.TrimSpace(a.query))) {
 		a.query, a.scroll.Y = "", 0
 	}
 	if !a.matchesCacheFilter(i) {
