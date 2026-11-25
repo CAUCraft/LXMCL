@@ -19,31 +19,84 @@ import (
 // four-digit range displayed by the launcher.
 const maxLastPlayedMillis = 253402300799999
 
-func readWorldMetadata(ctx context.Context, root *os.Root, world World) (string, time.Time, string) {
-	var name, version string
-	var lastPlayed time.Time
+// GameMode represents a world's recorded default mode.
+type GameMode uint8
+
+const (
+	GameModeUnknown GameMode = iota
+	GameModeSurvival
+	GameModeCreative
+	GameModeAdventure
+	GameModeSpectator
+)
+
+type worldHardcore uint8
+
+const (
+	hardcoreUnknown worldHardcore = iota
+	hardcoreOff
+	hardcoreOn
+)
+
+type worldMetadata struct {
+	name, savedVersion string
+	lastPlayed         time.Time
+	gameMode           GameMode
+	hardcore           worldHardcore
+}
+
+func readWorldMetadata(ctx context.Context, root *os.Root, world World) worldMetadata {
+	var metadata worldMetadata
+	var modernHardcore worldHardcore
+	var hasDifficultySettings bool
 	err := readWorldData(ctx, root, world, func(r *nbt.Reader, tag byte, key string) {
 		switch {
 		case tag == 8 && key == "LevelName":
 			if value := worldMetadataString(r); value != "" {
-				name = value
+				metadata.name = value
 			}
 		case tag == 4 && key == "LastPlayed":
 			ms := r.Long()
 			if ms > 0 && ms <= maxLastPlayedMillis {
-				lastPlayed = time.UnixMilli(ms).UTC()
+				metadata.lastPlayed = time.UnixMilli(ms).UTC()
 			}
+		case key == "GameType":
+			metadata.gameMode = GameModeUnknown
+			if tag != 3 {
+				r.Skip(tag)
+				return
+			}
+			// Java's stored IDs run from Survival (0) through Spectator (3).
+			if mode := r.Int(); mode >= 0 && mode <= 3 {
+				metadata.gameMode = GameModeSurvival + GameMode(mode)
+			}
+		case key == "hardcore":
+			metadata.hardcore = readWorldHardcore(r, tag)
+		case key == "difficulty_settings":
+			// Java 26.1 moved the flag here. A present group takes precedence.
+			hasDifficultySettings, modernHardcore = true, hardcoreUnknown
+			if tag != 10 {
+				r.Skip(tag)
+				return
+			}
+			r.Compound(func(tag byte, key string) {
+				if key == "hardcore" {
+					modernHardcore = readWorldHardcore(r, tag)
+				} else {
+					r.Skip(tag)
+				}
+			})
 		case key == "Version":
-			version = ""
+			metadata.savedVersion = ""
 			if tag != 10 {
 				r.Skip(tag)
 				return
 			}
 			r.Compound(func(tag byte, key string) {
 				if key == "Name" {
-					version = ""
+					metadata.savedVersion = ""
 					if tag == 8 {
-						version = worldMetadataString(r)
+						metadata.savedVersion = worldMetadataString(r)
 						return
 					}
 				}
@@ -54,9 +107,27 @@ func readWorldMetadata(ctx context.Context, root *os.Root, world World) (string,
 		}
 	})
 	if err != nil {
-		return "", time.Time{}, ""
+		return worldMetadata{}
 	}
-	return name, lastPlayed, version
+	if hasDifficultySettings {
+		metadata.hardcore = modernHardcore
+	}
+	return metadata
+}
+
+func readWorldHardcore(r *nbt.Reader, tag byte) worldHardcore {
+	if tag != 1 {
+		r.Skip(tag)
+		return hardcoreUnknown
+	}
+	switch r.Byte() {
+	case 0:
+		return hardcoreOff
+	case 1:
+		return hardcoreOn
+	default:
+		return hardcoreUnknown
+	}
 }
 
 func worldMetadataString(r *nbt.Reader) string {

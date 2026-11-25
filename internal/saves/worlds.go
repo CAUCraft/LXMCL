@@ -16,21 +16,27 @@ import (
 type World struct {
 	folder           string
 	directory, level fs.FileInfo
-	levelName        string
-	lastPlayed       time.Time
-	savedVersion     string
+	metadata         worldMetadata
 }
 
 func (w World) Folder() string { return w.folder }
 
 // LevelName is the saved in-game name, or empty when unavailable.
-func (w World) LevelName() string { return w.levelName }
+func (w World) LevelName() string { return w.metadata.name }
 
 // LastPlayed is the timestamp saved by the game, or zero when unavailable.
-func (w World) LastPlayed() time.Time { return w.lastPlayed }
+func (w World) LastPlayed() time.Time { return w.metadata.lastPlayed }
 
 // SavedVersion is the version name recorded in level.dat, or empty when unknown.
-func (w World) SavedVersion() string { return w.savedVersion }
+func (w World) SavedVersion() string { return w.metadata.savedVersion }
+
+// DefaultGameMode is the world setting saved in level.dat.
+func (w World) DefaultGameMode() GameMode { return w.metadata.gameMode }
+
+// Hardcore reports the saved world flag and whether it was recognized.
+func (w World) Hardcore() (enabled, known bool) {
+	return w.metadata.hardcore == hardcoreOn, w.metadata.hardcore != hardcoreUnknown
+}
 
 // Worlds lists immediate world directories without creating an absent saves folder.
 func Worlds(ctx context.Context, gameDir string) ([]World, error) {
@@ -61,7 +67,7 @@ func Worlds(ctx context.Context, gameDir string) ([]World, error) {
 		if err != nil {
 			return nil, err
 		}
-		world.levelName, world.lastPlayed, world.savedVersion = readWorldMetadata(ctx, root, world)
+		world.metadata = readWorldMetadata(ctx, root, world)
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}

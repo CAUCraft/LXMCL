@@ -104,6 +104,14 @@ func (r *Reader) Err() error { return r.err }
 
 func (r *Reader) Skip(tag byte) { r.skip(tag, 0) }
 
+func (r *Reader) Int() int32 {
+	b := r.take(4)
+	if b == nil {
+		return 0
+	}
+	return int32(binary.BigEndian.Uint32(b))
+}
+
 func (r *Reader) Long() int64 {
 	b := r.take(8)
 	if b == nil {

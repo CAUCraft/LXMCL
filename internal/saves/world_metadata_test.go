@@ -147,3 +147,70 @@ func TestWorldMetadata(t *testing.T) {
 		}
 	}
 }
+
+func TestWorldGameplaySettings(t *testing.T) {
+	field := func(tag byte, key string, payload []byte) []byte {
+		data := binary.BigEndian.AppendUint16([]byte{tag}, uint16(len(key)))
+		data = append(data, key...)
+		return append(data, payload...)
+	}
+	mode := func(id uint32) []byte { return field(3, "GameType", binary.BigEndian.AppendUint32(nil, id)) }
+	hardcore := func(value byte) []byte { return field(1, "hardcore", []byte{value}) }
+	difficulty := func(value []byte) []byte {
+		return field(10, "difficulty_settings", append(bytes.Clone(value), 0))
+	}
+	tests := []struct {
+		name     string
+		fields   [][]byte
+		mode     GameMode
+		hardcore worldHardcore
+	}{
+		{"a-survival", [][]byte{mode(0), hardcore(0)}, GameModeSurvival, hardcoreOff},
+		{"b-creative", [][]byte{mode(1), hardcore(1)}, GameModeCreative, hardcoreOn},
+		{"c-adventure", [][]byte{mode(2)}, GameModeAdventure, hardcoreUnknown},
+		{"d-spectator", [][]byte{mode(3), difficulty(hardcore(0)), hardcore(1)}, GameModeSpectator, hardcoreOff},
+		{"e-unknown-mode", [][]byte{mode(6), difficulty(hardcore(1))}, GameModeUnknown, hardcoreOn},
+		{"f-unknown-flag", [][]byte{mode(0), hardcore(2)}, GameModeSurvival, hardcoreUnknown},
+		{"g-wrong-types", [][]byte{field(1, "GameType", []byte{1}), field(3, "hardcore", []byte{0, 0, 0, 1})}, GameModeUnknown, hardcoreUnknown},
+		{"h-empty-settings", [][]byte{hardcore(1), difficulty(nil)}, GameModeUnknown, hardcoreUnknown},
+		{"i-player-only", nil, GameModeUnknown, hardcoreUnknown},
+	}
+	game := t.TempDir()
+	for _, tc := range tests {
+		var fields []byte
+		for _, value := range tc.fields {
+			fields = append(fields, value...)
+		}
+		// Player game mode is separate from the world's default mode.
+		player := field(3, "playerGameType", []byte{0, 0, 0, 1})
+		fields = append(fields, field(10, "Player", append(player, 0))...)
+		data := field(10, "", append(field(10, "Data", append(fields, 0)), 0))
+		dir := filepath.Join(game, "saves", tc.name)
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+		var zipped bytes.Buffer
+		writer := gzip.NewWriter(&zipped)
+		if _, err := writer.Write(data); err != nil {
+			t.Fatal(err)
+		}
+		if err := writer.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "level.dat"), zipped.Bytes(), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	worlds, err := Worlds(t.Context(), game)
+	if err != nil || len(worlds) != len(tests) {
+		t.Fatal(worlds, err)
+	}
+	for i, world := range worlds {
+		want := tests[i]
+		enabled, known := world.Hardcore()
+		if world.Folder() != want.name || world.DefaultGameMode() != want.mode ||
+			enabled != (want.hardcore == hardcoreOn) || known != (want.hardcore != hardcoreUnknown) {
+			t.Errorf("%s: mode %v, hardcore (enabled %v, known %v)", world.Folder(), world.DefaultGameMode(), enabled, known)
+		}
+	}
+}
