@@ -253,54 +253,19 @@ func addPrismScreenshots(ctx context.Context, gameDir string, add prismExportAdd
 	}
 
 	name := screenshots.Directory
-	info, err := game.Lstat(name)
+	root, info, err := openPrismScreenshotDir(game, name)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
-	if info.Mode().Type() != fs.ModeDir {
-		return i18n.Error("instance.duplicate_file_unsupported", name)
-	}
-	root, err := game.OpenRoot(name)
-	if err != nil {
-		return err
-	}
 	defer root.Close()
-	dir, err := root.Open(".")
+	err = visitPrismScreenshots(ctx, root, 0, func(file string, info fs.FileInfo) error {
+		return add(root, file, name+"/"+file, info)
+	})
 	if err != nil {
 		return err
-	}
-	defer dir.Close()
-	current, err := dir.Stat()
-	if err != nil || !os.SameFile(info, current) || !prismExportDirMatches(game, name, info) {
-		return i18n.Error("instance.duplicate_source_changed")
-	}
-	for {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		entries, readErr := dir.ReadDir(128)
-		if readErr != nil && !errors.Is(readErr, io.EOF) {
-			return readErr
-		}
-		for _, entry := range entries {
-			file := entry.Name()
-			if !entry.Type().IsRegular() || !strings.EqualFold(filepath.Ext(file), ".png") {
-				continue
-			}
-			snapshot, err := root.Lstat(file)
-			if err != nil {
-				return err
-			}
-			if err := add(root, file, name+"/"+file, snapshot); err != nil {
-				return err
-			}
-		}
-		if readErr == io.EOF {
-			break
-		}
 	}
 	if !prismExportDirMatches(game, name, info) || !prismExportDirMatches(parent, gameName, gameInfo) {
 		return i18n.Error("instance.duplicate_source_changed")
