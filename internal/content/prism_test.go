@@ -165,15 +165,19 @@ func TestPrismZIPRechecksAndStagesSelectedFiles(t *testing.T) {
 		}
 		z := zip.NewWriter(f)
 		files := fstest.MapFS{
-			"instance.cfg":                      {Data: []byte("name=Island\n")},
-			"mmc-pack.json":                     {Data: []byte(`{"formatVersion":1,"components":[{"uid":"net.minecraft","version":"1.21.4"}]}`)},
-			".minecraft/saves/Island/level.dat": {Data: []byte(world)},
-			".minecraft/saves/Empty":            {Mode: fs.ModeDir},
-			".minecraft/saves/notes.txt":        {Data: []byte("not a folder")},
-			".minecraft/options.txt":            {Data: []byte("music:0.25")},
-			".minecraft/servers.dat":            {Data: []byte(servers)},
-			".minecraft/servers.dat_old":        {Data: []byte("previous list")},
-			".minecraft/mods/notes.txt":         {Data: []byte("not selected")},
+			"instance.cfg":                          {Data: []byte("name=Island\n")},
+			"mmc-pack.json":                         {Data: []byte(`{"formatVersion":1,"components":[{"uid":"net.minecraft","version":"1.21.4"}]}`)},
+			".minecraft/saves/Island/level.dat":     {Data: []byte(world)},
+			".minecraft/saves/Empty":                {Mode: fs.ModeDir},
+			".minecraft/saves/notes.txt":            {Data: []byte("not a folder")},
+			".minecraft/options.txt":                {Data: []byte("music:0.25")},
+			".minecraft/servers.dat":                {Data: []byte(servers)},
+			".minecraft/servers.dat_old":            {Data: []byte("previous list")},
+			".minecraft/mods/notes.txt":             {Data: []byte("not selected")},
+			".minecraft/screenshots/sky.PNG":        {Data: []byte("direct game screenshot")},
+			".minecraft/screenshots/nested/sky.png": {Data: []byte("nested gallery folder")},
+			".minecraft/screenshots/sky.jpg":        {Data: []byte("different image type")},
+			"screenshots/sky.png":                   {Data: []byte("outside the game folder")},
 		}
 		if err := z.AddFS(files); err != nil {
 			t.Fatal(err)
@@ -189,7 +193,7 @@ func TestPrismZIPRechecksAndStagesSelectedFiles(t *testing.T) {
 	write("first", "archive server list")
 	ctx := t.Context()
 	p, err := ReadPrismZIP(ctx, filename)
-	if err != nil || !p.Worlds || !p.Options || !p.Servers || p.Version != "1.21.4" {
+	if err != nil || !p.Worlds || !p.Options || !p.Servers || !p.Screenshots || p.Version != "1.21.4" {
 		t.Fatal(p, err)
 	}
 	assertPrismWorldFolders(t, p, "Empty", "Island", "隐式")
@@ -241,6 +245,14 @@ func TestPrismZIPRechecksAndStagesSelectedFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertPrismServerList(t, serverOutput, "archive server list")
+	screenshotOutput := filepath.Join(parent, "screens")
+	if err := CopyPrismFiles(ctx, p, screenshotOutput, PrismFiles{Screenshots: true}, commit, nil); err != nil {
+		t.Fatal(err)
+	}
+	pictures := filepath.Join(screenshotOutput, "screenshots")
+	if entries, err := os.ReadDir(pictures); err != nil || len(entries) != 1 || entries[0].Name() != "sky.PNG" {
+		t.Fatal("only direct PNG entries belong in the gallery", entries, err)
+	}
 	write("later", "edited server list")
 	changed := filepath.Join(parent, "changed")
 	if err := CopyPrismFiles(ctx, p, changed, selectedWorlds, commit, nil); !errors.Is(err, ErrPrismWorldsChanged) {

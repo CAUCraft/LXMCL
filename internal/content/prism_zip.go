@@ -15,6 +15,7 @@ import (
 
 	"github.com/CAUCraft/LXMCL/internal/distribution"
 	"github.com/CAUCraft/LXMCL/internal/i18n"
+	"github.com/CAUCraft/LXMCL/internal/screenshots"
 	"github.com/CAUCraft/LXMCL/internal/storage"
 	"github.com/CAUCraft/LXMCL/internal/tasks"
 	"github.com/CAUCraft/LXMCL/internal/transfer"
@@ -109,7 +110,28 @@ func withPrismZIP(ctx context.Context, filename string, use func(PrismInstance, 
 	if err != nil {
 		return err
 	}
+	if p.GameFolder != "" {
+		game := p.zipGamePrefix()
+		for name := range files {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			if relative, ok := strings.CutPrefix(name, game); ok && prismScreenshotName(relative) {
+				p.Screenshots = true
+				break
+			}
+		}
+	}
 	return use(p, z)
+}
+
+func (p PrismInstance) zipGamePrefix() string {
+	return path.Join(p.archiveRoot, p.GameFolder) + "/"
+}
+
+func prismScreenshotName(name string) bool {
+	file, ok := strings.CutPrefix(name, screenshots.Directory+"/")
+	return ok && !strings.Contains(file, "/") && strings.EqualFold(path.Ext(file), ".png")
 }
 
 func copyPrismZIP(ctx context.Context, p PrismInstance, destination string, selected PrismFiles, chosen map[string]struct{}, commit func() error, report func(tasks.Progress)) error {
@@ -120,7 +142,7 @@ func copyPrismZIP(ctx context.Context, p PrismInstance, destination string, sele
 			return i18n.Error("prism.changed")
 		}
 		rechecked = true
-		game := path.Join(p.archiveRoot, p.GameFolder) + "/"
+		game := p.zipGamePrefix()
 		return stageNewDirectory(ctx, p.Source, destination, commit, report, func(dst *os.Root) error {
 			done := 0
 			for _, entry := range z.File {
@@ -128,6 +150,9 @@ func copyPrismZIP(ctx context.Context, p PrismInstance, destination string, sele
 					return err
 				}
 				name, inGame := strings.CutPrefix(entry.Name, game)
+				if !inGame {
+					continue
+				}
 				includeWorld := selected.Worlds && strings.HasPrefix(name, "saves/")
 				if includeWorld && chosen != nil {
 					folder, _, inFolder := strings.Cut(strings.TrimPrefix(name, "saves/"), "/")
@@ -136,7 +161,8 @@ func copyPrismZIP(ctx context.Context, p PrismInstance, destination string, sele
 				}
 				includeOptions := selected.Options && name == "options.txt"
 				includeServers := selected.Servers && name == serverListPath.name
-				if !inGame || (!includeWorld && !includeOptions && !includeServers) {
+				includeScreenshot := selected.Screenshots && entry.Mode().IsRegular() && prismScreenshotName(name)
+				if !includeWorld && !includeOptions && !includeServers && !includeScreenshot {
 					continue
 				}
 				name = strings.TrimSuffix(name, "/")

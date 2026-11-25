@@ -26,6 +26,7 @@ import (
 type PrismInstance struct {
 	Source, GameFolder, Name, Version string
 	Worlds, Options, Servers          bool
+	Screenshots                       bool // ZIP preview only.
 	SkippedSettings                   bool
 	Launch                            instance.LaunchOptions
 	archiveRoot                       string // "." or the single wrapper folder in a ZIP; empty for a directory.
@@ -54,7 +55,7 @@ func (p PrismInstance) WorldFolders() ([]string, bool) {
 // PrismFiles identifies the game files selected for an import or export.
 type PrismFiles struct {
 	Worlds, Options, Servers bool
-	Screenshots              bool     // Export only.
+	Screenshots              bool     // ZIP only.
 	WorldFolders             []string // For imports, nil uses Worlds as before. A non-nil slice selects exact folder names.
 }
 
@@ -295,7 +296,8 @@ func CopyPrismFiles(ctx context.Context, p PrismInstance, destination string, se
 	if err != nil {
 		return err
 	}
-	if (selected.Worlds && !p.Worlds) || (selected.Options && !p.Options) || (selected.Servers && !p.Servers) {
+	if (selected.Worlds && !p.Worlds) || (selected.Options && !p.Options) || (selected.Servers && !p.Servers) ||
+		(selected.Screenshots && (!p.Screenshots || p.archiveRoot == "")) {
 		return i18n.Error("prism.changed")
 	}
 	if p.archiveRoot != "" {

@@ -31,11 +31,11 @@ const (
 )
 
 type prismDraft struct {
-	source                    content.PrismInstance
-	group                     string
-	worldMode                 int
-	options, servers, reading bool
-	worldPreview              prismWorldPreview
+	source                                 content.PrismInstance
+	group                                  string
+	worldMode                              int
+	options, servers, screenshots, reading bool
+	worldPreview                           prismWorldPreview
 }
 
 type prismWorldPreview struct {
@@ -120,8 +120,15 @@ func (a *desktop) prismEditor(c *ui.Context) {
 		if p.Options {
 			choice.Checkbox(c, &d.options, "游戏选项（options.txt）", choice.CheckboxProps{})
 		}
-		if p.Servers {
-			choice.Checkbox(c, &d.servers, "游戏内服务器列表", choice.CheckboxProps{})
+		if p.Servers || p.Screenshots {
+			ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
+				if p.Servers {
+					choice.Checkbox(c, &d.servers, "游戏内服务器列表", choice.CheckboxProps{})
+				}
+				if p.Screenshots {
+					choice.Checkbox(c, &d.screenshots, "游戏截图（PNG）", choice.CheckboxProps{}).Disabled(wait)
+				}
+			})
 		}
 		var settings []string
 		if p.Launch.Memory != 0 {
@@ -136,7 +143,7 @@ func (a *desktop) prismEditor(c *ui.Context) {
 		if p.SkippedSettings {
 			muted(c, "未支持的内存或窗口值将继承启动器设置。").FontSize(12)
 		}
-		if !p.Worlds && !p.Options && !p.Servers {
+		if !p.Worlds && !p.Options && !p.Servers && !p.Screenshots {
 			muted(c, "此实例没有可复制的存档或游戏选项。").FontSize(12)
 		}
 	} else if a.form.err == "" {
@@ -258,7 +265,7 @@ func (a *desktop) importPrism(d *prismDraft) {
 		return
 	}
 	p := d.source
-	files := content.PrismFiles{Options: d.options, Servers: d.servers}
+	files := content.PrismFiles{Options: d.options, Servers: d.servers, Screenshots: d.screenshots}
 	switch d.worldMode {
 	case prismNoWorlds:
 	case prismAllWorlds:
