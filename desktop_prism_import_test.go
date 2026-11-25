@@ -1,11 +1,11 @@
 package main
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/CAUCraft/LXMCL/internal/content"
-	"github.com/CAUCraft/LXMCL/internal/instance"
 )
 
 func TestPrismImportScreenshotOption(t *testing.T) {
@@ -23,9 +23,28 @@ func TestPrismImportScreenshotOption(t *testing.T) {
 	click("实例")
 	click("导入本地实例…")
 	d := a.form.prism
-	d.source = content.PrismInstance{Source: filepath.Join(t.TempDir(), "Island.zip"), Name: "Island", Version: "1.21.4",
-		Worlds: true, Options: true, Servers: true, Screenshots: true,
-		Launch: instance.LaunchOptions{Memory: 3584, Display: instance.DisplayResolution, Width: 1280, Height: 720}}
+	source := t.TempDir()
+	for name, data := range map[string]string{
+		"instance.cfg":                      "name=Island\nOverrideMemory=true\nMaxMemAlloc=3584\nOverrideWindow=true\nMinecraftWinWidth=1280\nMinecraftWinHeight=720\n",
+		"mmc-pack.json":                     `{"formatVersion":1,"components":[{"uid":"net.minecraft","version":"1.21.4"}]}`,
+		".minecraft/options.txt":            "music:0.5",
+		".minecraft/servers.dat":            "test server list",
+		".minecraft/saves/Island/level.dat": "test world",
+		".minecraft/screenshots/岛屿.PNG":     "preview only reads file metadata",
+	} {
+		file := filepath.Join(source, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(file), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(file, []byte(data), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var err error
+	d.source, err = content.ReadPrismInstance(t.Context(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
 	d.options = true
 	a.form.name = d.source.Name
 	tt.Frame()
@@ -43,12 +62,12 @@ func TestPrismImportScreenshotOption(t *testing.T) {
 		}
 	}
 	check(false)
-	capture(t, tt, "prism-import-screenshots-default-light")
+	capture(t, tt, "prism-directory-screenshots-default-light")
 	click(option)
 	tt.SetDark(true)
 	tt.Frame()
 	check(true)
-	capture(t, tt, "prism-import-screenshots-selected-dark")
+	capture(t, tt, "prism-directory-screenshots-selected-dark")
 	click("取消")
 	click("导入本地实例…")
 	if _, visible := tt.Access(option); visible || a.form.prism.screenshots {

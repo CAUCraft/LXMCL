@@ -26,13 +26,14 @@ import (
 type PrismInstance struct {
 	Source, GameFolder, Name, Version string
 	Worlds, Options, Servers          bool
-	Screenshots                       bool // ZIP preview only.
+	Screenshots                       bool
 	SkippedSettings                   bool
 	Launch                            instance.LaunchOptions
 	archiveRoot                       string // "." or the single wrapper folder in a ZIP; empty for a directory.
 	archiveIndex                      [sha256.Size]byte
 	serverList                        fs.FileInfo // Directory source identity. ZIP previews bind the archive index instead.
 	worldFolders                      *prismWorldPreview
+	directoryScreenshots              *prismDirectoryScreenshots
 }
 
 type prismWorldPreview struct {
@@ -55,7 +56,7 @@ func (p PrismInstance) WorldFolders() ([]string, bool) {
 // PrismFiles identifies the game files selected for an import or export.
 type PrismFiles struct {
 	Worlds, Options, Servers bool
-	Screenshots              bool     // ZIP only.
+	Screenshots              bool
 	WorldFolders             []string // For imports, nil uses Worlds as before. A non-nil slice selects exact folder names.
 }
 
@@ -70,8 +71,12 @@ func ReadPrismInstance(ctx context.Context, dir string) (PrismInstance, error) {
 	}
 	defer root.Close()
 	p, err = readPrismProfile(ctx, root.FS(), PrismInstance{Source: filepath.Clean(dir)}, filepath.Base(dir))
-	if err == nil && p.Worlds {
-		p.worldFolders = readPrismWorldFolders(ctx, root, filepath.Join(p.GameFolder, "saves"))
+	if err == nil {
+		if p.Worlds {
+			p.worldFolders = readPrismWorldFolders(ctx, root, filepath.Join(p.GameFolder, "saves"))
+		}
+		p.directoryScreenshots = readPrismDirectoryScreenshots(ctx, root, p)
+		p.Screenshots = p.directoryScreenshots != nil
 		err = ctx.Err()
 	}
 	return p, err
@@ -297,7 +302,7 @@ func CopyPrismFiles(ctx context.Context, p PrismInstance, destination string, se
 		return err
 	}
 	if (selected.Worlds && !p.Worlds) || (selected.Options && !p.Options) || (selected.Servers && !p.Servers) ||
-		(selected.Screenshots && (!p.Screenshots || p.archiveRoot == "")) {
+		(selected.Screenshots && !p.Screenshots) {
 		return i18n.Error("prism.changed")
 	}
 	if p.archiveRoot != "" {
@@ -306,7 +311,17 @@ func CopyPrismFiles(ctx context.Context, p PrismInstance, destination string, se
 	if !filepath.IsAbs(p.Source) {
 		return i18n.Error("prism.select_root")
 	}
-	root, err := os.OpenRoot(p.Source)
+	var root *os.Root
+	if selected.Screenshots {
+		var info fs.FileInfo
+		root, info, err = openPrismScreenshotSource(p.Source)
+		if err == nil && (p.directoryScreenshots == nil || !os.SameFile(p.directoryScreenshots.source, info)) {
+			root.Close()
+			return i18n.Error("prism.changed")
+		}
+	} else {
+		root, err = os.OpenRoot(p.Source)
+	}
 	if err != nil {
 		return prismWorldSourceError(ctx, err, chosen != nil)
 	}
@@ -319,6 +334,7 @@ func CopyPrismFiles(ctx context.Context, p PrismInstance, destination string, se
 	expected.Servers, now.Servers = false, false
 	expected.serverList, now.serverList = nil, nil
 	expected.worldFolders = nil
+	expected.Screenshots, expected.directoryScreenshots = false, nil
 	if now != expected {
 		return prismWorldSourceError(ctx, i18n.Error("prism.changed"), chosen != nil)
 	}
@@ -333,7 +349,17 @@ func CopyPrismFiles(ctx context.Context, p PrismInstance, destination string, se
 	if selected.Options {
 		paths = append(paths, setupPath{"options.txt", false})
 	}
-	src, err := root.OpenRoot(filepath.Join(".", now.GameFolder))
+	var src *os.Root
+	if selected.Screenshots {
+		var info fs.FileInfo
+		src, info, err = openPrismScreenshotDir(root, now.GameFolder)
+		if err == nil && !os.SameFile(p.directoryScreenshots.game, info) {
+			src.Close()
+			return i18n.Error("prism.changed")
+		}
+	} else {
+		src, err = root.OpenRoot(filepath.Join(".", now.GameFolder))
+	}
 	if err != nil {
 		return prismWorldSourceError(ctx, err, chosen != nil)
 	}
@@ -359,6 +385,11 @@ func CopyPrismFiles(ctx context.Context, p PrismInstance, destination string, se
 				return checkErr
 			}
 			return err
+		}
+		if selected.Screenshots {
+			if err := p.directoryScreenshots.copy(ctx, root, now.GameFolder, src, dst, report); err != nil {
+				return i18n.Error("instance.duplicate_file_failed", "screenshots", err)
+			}
 		}
 		if !selected.Servers {
 			return nil
