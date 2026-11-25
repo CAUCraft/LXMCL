@@ -83,6 +83,15 @@ func (a *desktop) instanceOverview(c *ui.Context, i launcher.Instance) {
 		sectionPane(c).Padding(12, 16).Gap(8).Children(func() {
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 				ui.Column(c).Grow(1).MinWidth(0).Children(func() { property(c, "版本", i.Version+" · "+loaderName(i)) })
+				if icon(c.Key("share-instance-version"), lucide.Copy(), "复制实例版本信息", false) {
+					c.WriteClipboardThen(instanceVersionClipboard(i), func(err error) {
+						if err != nil {
+							a.message("复制实例版本信息失败，请重试", err)
+							return
+						}
+						a.message("已复制实例版本信息", nil)
+					})
+				}
 				if i.PackFeed != "" && button(c, "检查服主更新", action.Default, a.busy || a.running != nil) {
 					a.readPackFeed(i)
 				}
