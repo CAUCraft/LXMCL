@@ -28,10 +28,10 @@ const (
 )
 
 type prismExportDraft struct {
-	worldMode                 int
-	options, servers, reading bool
-	worldPreview              prismWorldPreview
-	preview                   *content.PrismExportWorlds
+	worldMode                              int
+	options, servers, screenshots, reading bool
+	worldPreview                           prismWorldPreview
+	preview                                *content.PrismExportWorlds
 }
 
 func (d *prismExportDraft) needsWorldSelection() bool {
@@ -86,6 +86,7 @@ func (a *desktop) prismExportEditor(c *ui.Context, d *prismExportDraft) bool {
 	choice.Checkbox(c, &d.options, "游戏选项（options.txt）", choice.CheckboxProps{}).Disabled(wait)
 	choice.Checkbox(c, &d.servers, "游戏内服务器列表", choice.CheckboxProps{}).Disabled(wait)
 	muted(c, "勾选后，服务器地址将写入 ZIP。").FontSize(12)
+	choice.Checkbox(c, &d.screenshots, "游戏截图（PNG）", choice.CheckboxProps{}).Disabled(wait)
 	if a.form.err != "" {
 		feedback.Alert(c, a.form.err, feedback.AlertProps{Type: feedback.Error})
 	}
@@ -127,7 +128,7 @@ func (a *desktop) savePrismExport(d *prismExportDraft) {
 		return
 	}
 	i := a.form.target
-	files := content.PrismFiles{Options: d.options, Servers: d.servers}
+	files := content.PrismFiles{Options: d.options, Servers: d.servers, Screenshots: d.screenshots}
 	var selected []string
 	preview := d.preview
 	switch d.worldMode {
