@@ -76,7 +76,9 @@ func TestScreenshotSearchFromGallery(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		p.entries = make(map[string]screenshots.Entry, len(entries))
 		for _, entry := range entries {
+			p.entries[entry.Name] = entry
 			p.rows = append(p.rows, display.ListItem{Key: entry.Name, Label: entry.Name, Description: entry.Modified.Local().Format("2006-01-02 15:04")})
 		}
 		p.loading, p.folder, p.selected = false, true, entries[0].Name
@@ -181,6 +183,16 @@ func TestScreenshotSearchFromGallery(t *testing.T) {
 	if a.screenshots == p || a.state.Selected != first.ID || !tt.HasText("110 × 110") || tt.HasText("240 × 160") {
 		t.Fatal("changing instances reused the old search or preview, or switched the launch target")
 	}
+	click("批量导出…", "选择截图 "+night)
+	if selected := other.batchSelection(other.visibleRows()); len(selected) != 1 || selected[0].Name != night || other.selected != night || other.original == nil {
+		t.Fatal("batch selection disrupted the single-image preview", tt.Texts())
+	}
+	search("不存在")
+	click("清除截图搜索")
+	if len(other.batch) != 0 {
+		t.Fatal("clearing search brought back a hidden batch selection", tt.Texts())
+	}
+	click("退出批量")
 	for path, before := range sources {
 		after, err := os.ReadFile(path)
 		if err != nil || !bytes.Equal(before, after) {
