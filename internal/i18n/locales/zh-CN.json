@@ -2,6 +2,7 @@
   "archive.export_target": "请在源实例以外选择一个新的 .zip 文件。",
   "archive.export_exists": "已有同名文件，请更换 ZIP 文件名或位置。%w",
   "prism.export_name": "请使用非空且不含回车或空字符的实例名称后重试。",
+  "resource.mod_update_backup_unavailable": "无法确认原备份 ZIP。它可能已移动、删除或变化，请检查保存时选择的位置。",
   "prism.export_unavailable": "原导出 ZIP 已移动、删除或变化。请检查导出时选择的位置。",
   "prism.export_worlds_changed": "所选存档已变化或不可用。请重新打开导出并勾选存档。",
   "prism.export_worlds_preview_limit": "存档预览超过可检查的文件数量。",

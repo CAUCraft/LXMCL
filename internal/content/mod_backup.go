@@ -14,19 +14,21 @@ import (
 
 // BackupMods publishes the captured files under mods/, using their physical enabled or disabled names.
 func BackupMods(ctx context.Context, source instance.Instance, selected []File, filename string, report func(tasks.Progress)) error {
-	return backupMods(ctx, source, selected, nil, filename, report)
+	return backupMods(ctx, source, selected, nil, filename, report, nil)
 }
 
 // BackupVerifiedMods also verifies every selected file against its captured SHA-512 digest,
 // keyed by its physical name. A missing digest cannot authorize a backup for update.
-func BackupVerifiedMods(ctx context.Context, source instance.Instance, selected []File, digests map[string]string, filename string, report func(tasks.Progress)) error {
+func BackupVerifiedMods(ctx context.Context, source instance.Instance, selected []File, digests map[string]string, filename string, report func(tasks.Progress)) (tasks.LocalZIP, error) {
+	var artifact tasks.LocalZIP
 	if digests == nil {
-		return i18n.Error("resource.backup_select")
+		return artifact, i18n.Error("resource.backup_select")
 	}
-	return backupMods(ctx, source, selected, digests, filename, report)
+	err := backupMods(ctx, source, selected, digests, filename, report, &artifact)
+	return artifact, err
 }
 
-func backupMods(ctx context.Context, source instance.Instance, selected []File, digests map[string]string, filename string, report func(tasks.Progress)) error {
+func backupMods(ctx context.Context, source instance.Instance, selected []File, digests map[string]string, filename string, report func(tasks.Progress), artifact *tasks.LocalZIP) error {
 	if len(selected) == 0 {
 		return i18n.Error("resource.backup_select")
 	}
@@ -38,7 +40,7 @@ func backupMods(ctx context.Context, source instance.Instance, selected []File, 
 		return err
 	}
 	defer src.Close()
-	return publishInstanceZIP(ctx, source.GameDir, filename, func(dst *os.File) error {
+	prepare := func(dst *os.File) error {
 		z := zip.NewWriter(&limitedZIPWriter{file: dst, remaining: storage.MaxPackSize})
 		var total int64
 		paths := make(storage.ArchivePaths)
@@ -78,5 +80,10 @@ func backupMods(ctx context.Context, source instance.Instance, selected []File, 
 			}
 		}
 		return z.Close()
-	})
+	}
+	if artifact == nil {
+		return publishInstanceZIP(ctx, source.GameDir, filename, prepare)
+	}
+	*artifact, err = publishInstanceZIPStamped(ctx, source.GameDir, filename, prepare)
+	return err
 }

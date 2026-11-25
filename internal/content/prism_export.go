@@ -143,13 +143,11 @@ func exportPrismFiles(ctx context.Context, i instance.Instance, filename string,
 	if artifact == nil {
 		return publishInstanceZIP(ctx, i.GameDir, filename, prepare)
 	}
-	return withInstanceZIPDestination(i.GameDir, filename, func(out *os.Root, name string) error {
-		stamp, err := storage.PublishNewStamped(ctx, out, name, 0600, prepare)
-		if err == nil && stamp.Valid() && storage.CheckFileStamp(filename, stamp) == nil {
-			*artifact = tasks.PrismExport{Path: filepath.Clean(filename), Stamp: stamp}
-		}
-		return err
-	})
+	result, err := publishInstanceZIPStamped(ctx, i.GameDir, filename, prepare)
+	if err == nil && result.Stamp.Valid() && storage.CheckFileStamp(filename, result.Stamp) == nil {
+		*artifact = result
+	}
+	return err
 }
 
 func writePrismMetadata(z *zip.Writer, i instance.Instance) (int64, error) {

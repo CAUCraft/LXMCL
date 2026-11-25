@@ -8,6 +8,7 @@ import (
 
 	"github.com/CAUCraft/LXMCL/internal/content"
 	"github.com/CAUCraft/LXMCL/internal/launcher"
+	"github.com/CAUCraft/LXMCL/internal/tasks"
 	"github.com/egoist/mygo/ui"
 	"github.com/lobehub/lobe-mygo/pkg/action"
 	"github.com/lobehub/lobe-mygo/pkg/choice"
@@ -103,7 +104,7 @@ func (a *desktop) showModUpdatePreview(c *ui.Context, p *modUpdatePreview) {
 				a.pickModBackupDestination(p.target, func(path string) { a.backUpBeforeModUpdate(p, path) })
 			} else {
 				a.content.modPreview = nil
-				a.updateSelectedMods(p.target, p.selected)
+				a.updateSelectedMods(p.target, p.selected, tasks.LocalZIP{})
 			}
 		}
 	})
@@ -142,12 +143,17 @@ func (a *desktop) backUpBeforeModUpdate(p *modUpdatePreview, path string) {
 	}
 	row := taskRecord{
 		InstanceID: i.ID, Revision: i.Revision, Name: i.Name, Version: i.Version,
-		Action: fmt.Sprintf("更新前备份 %d 项模组", len(files)), Resource: &resourceTask{Kind: string(launcher.Mods)},
+		Action: tasks.ModUpdateBackupAction(len(files)), Resource: &resourceTask{Kind: string(launcher.Mods)},
 	}
 	p.backingUp = true
 	canceled := false
-	a.runFileTask(row, func(ctx context.Context, report func(launcher.Progress)) error {
-		return content.BackupVerifiedMods(ctx, i, files, digests, path, report)
+	var backup tasks.LocalZIP
+	a.runFileTaskWithResult(row, func(ctx context.Context, report func(launcher.Progress)) error {
+		result, err := content.BackupVerifiedMods(ctx, i, files, digests, path, report)
+		backup = result
+		return err
+	}, func(row *taskRecord) {
+		row.ModUpdateBackup = backup
 	}, func(err error) {
 		current := a.currentModUpdatePreview(p)
 		p.backingUp = false
@@ -163,7 +169,7 @@ func (a *desktop) backUpBeforeModUpdate(p *modUpdatePreview, path string) {
 			return
 		}
 		a.content.modPreview = nil
-		a.updateSelectedMods(i, p.selected)
+		a.updateSelectedMods(i, p.selected, backup)
 	})
 	// Cancellation may arrive after ZIP publication, while the task is being saved.
 	cancel := a.cancelTask

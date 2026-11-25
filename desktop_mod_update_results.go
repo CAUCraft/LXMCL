@@ -12,7 +12,7 @@ import (
 	"github.com/lobehub/lobe-mygo/pkg/layout"
 )
 
-func (a *desktop) updateSelectedMods(i launcher.Instance, selected []launcher.InstalledMod) {
+func (a *desktop) updateSelectedMods(i launcher.Instance, selected []launcher.InstalledMod, backup tasks.LocalZIP) {
 	items := make([]tasks.ModUpdateItem, len(selected))
 	for n, mod := range selected {
 		items[n] = tasks.ModUpdateItem{
@@ -28,6 +28,7 @@ func (a *desktop) updateSelectedMods(i launcher.Instance, selected []launcher.In
 		})
 	}, func(row *taskRecord) {
 		row.ModUpdates = tasks.SummarizeModUpdates(items)
+		row.ModUpdateBackup = backup
 	})
 }
 

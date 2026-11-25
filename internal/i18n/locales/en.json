@@ -2,6 +2,7 @@
   "archive.export_target": "Choose a new .zip file outside the source instance.",
   "archive.export_exists": "A file with this name already exists. Choose a different ZIP filename. %w",
   "prism.export_name": "Rename the instance using a non-empty name without carriage returns or NUL characters.",
+  "resource.mod_update_backup_unavailable": "The original backup ZIP could not be verified. It may have moved, been deleted or changed. Check the location chosen when saving it.",
   "prism.export_unavailable": "The original exported ZIP was moved, deleted or changed. Check the location you selected when exporting.",
   "prism.export_worlds_changed": "The selected worlds have changed or are unavailable. Reopen the export and select the world folders again.",
   "prism.export_worlds_preview_limit": "The world preview exceeds the number of files that can be checked.",

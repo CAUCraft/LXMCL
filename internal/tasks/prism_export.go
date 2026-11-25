@@ -1,27 +1,20 @@
 package tasks
 
 import (
-	"path/filepath"
-	"strings"
-
 	"github.com/CAUCraft/LXMCL/internal/i18n"
 	"github.com/CAUCraft/LXMCL/internal/storage"
 )
 
-// PrismExport is the exact successfully published local ZIP associated with a task.
-type PrismExport struct {
-	Path  string            `json:"path"`
-	Stamp storage.FileStamp `json:"stamp"`
-}
+// PrismExport is the successfully published local ZIP associated with an export task.
+type PrismExport = LocalZIP
 
 // PrismExportPath returns the recorded path without filesystem access.
 func (r Record) PrismExportPath() string {
 	p := r.PrismExport
-	if r.Action != PrismExportAction || r.Status != Completed || !p.Stamp.Valid() || !filepath.IsAbs(p.Path) || filepath.Clean(p.Path) != p.Path ||
-		!storage.ValidFilename(filepath.Base(p.Path)) || !strings.EqualFold(filepath.Ext(p.Path), ".zip") {
+	if r.Action != PrismExportAction || r.Status != Completed || !p.Stamp.Valid() {
 		return ""
 	}
-	return p.Path
+	return p.zipPath()
 }
 
 // LocatePrismExport checks that the original ZIP still occupies its recorded path.

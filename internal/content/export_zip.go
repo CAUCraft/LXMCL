@@ -10,6 +10,7 @@ import (
 
 	"github.com/CAUCraft/LXMCL/internal/i18n"
 	"github.com/CAUCraft/LXMCL/internal/storage"
+	"github.com/CAUCraft/LXMCL/internal/tasks"
 )
 
 // publishInstanceZIP writes a new ZIP at the chosen path outside the source instance.
@@ -17,6 +18,18 @@ func publishInstanceZIP(ctx context.Context, gameDir, filename string, prepare f
 	return withInstanceZIPDestination(gameDir, filename, func(out *os.Root, name string) error {
 		return storage.PublishNew(ctx, out, name, 0600, prepare)
 	})
+}
+
+func publishInstanceZIPStamped(ctx context.Context, gameDir, filename string, prepare func(*os.File) error) (tasks.LocalZIP, error) {
+	var artifact tasks.LocalZIP
+	err := withInstanceZIPDestination(gameDir, filename, func(out *os.Root, name string) error {
+		stamp, err := storage.PublishNewStamped(ctx, out, name, 0600, prepare)
+		if err == nil {
+			artifact = tasks.LocalZIP{Path: filepath.Clean(filename), Stamp: stamp}
+		}
+		return err
+	})
+	return artifact, err
 }
 
 func withInstanceZIPDestination(gameDir, filename string, publish func(*os.Root, string) error) error {
