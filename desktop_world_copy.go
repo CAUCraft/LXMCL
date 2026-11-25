@@ -141,7 +141,9 @@ func (a *desktop) runWorldCopy(browser *worldBrowser, source launcher.Instance, 
 	a.runFileTaskWithResult(row, func(ctx context.Context, _ func(launcher.Progress)) error {
 		return plan.Apply(ctx)
 	}, func(record *taskRecord) {
-		record.Detail = fmt.Sprintf("来源 · %s · #%d\n目标目录 · %s", source.Name, source.ID, plan.Destination())
+		if record.Status == taskCompleted {
+			record.Detail = fmt.Sprintf("来源 · %s · #%d\n目标目录 · %s", source.Name, source.ID, plan.Destination())
+		}
 	}, func(err error) {
 		if !errors.Is(err, context.Canceled) || a.form.open || a.form.worlds != browser ||
 			a.page != pageLibrary || a.detailPage != detailFiles || a.inspected != source.ID {

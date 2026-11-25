@@ -388,6 +388,7 @@ func (a *desktop) taskRow(c *ui.Context, row taskRecord) {
 			}
 			muted(c, label+" · "+row.Resource.Title).FontSize(13).Selectable()
 		}
+		modUpdateDetails(c, row)
 		if row.Detail != "" {
 			if row.Status == taskFailed {
 				feedback.Alert(c, "任务未完成", feedback.AlertProps{Type: feedback.Error, Description: row.Detail})

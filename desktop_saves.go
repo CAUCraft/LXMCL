@@ -55,7 +55,9 @@ func (a *desktop) runSaveBackup(i launcher.Instance, world string, backup func(c
 		archive, err = backup(ctx, root)
 		return err
 	}, func(record *taskRecord) {
-		record.SaveArchive = filepath.Base(archive)
+		if record.Status == taskCompleted {
+			record.SaveArchive = filepath.Base(archive)
+		}
 	}, func(err error) {
 		if err == nil && a.backups != nil && a.backups.instanceID == i.ID {
 			a.refreshBackups(i.ID)

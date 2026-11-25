@@ -2,8 +2,6 @@ package main
 
 import (
 	"cmp"
-	"context"
-	"errors"
 	"fmt"
 	"slices"
 
@@ -98,22 +96,5 @@ func (a *desktop) showModUpdatePreview(c *ui.Context, p *modUpdatePreview) {
 			a.content.modPreview = nil
 			a.updateSelectedMods(p.target, p.selected)
 		}
-	})
-}
-
-func (a *desktop) updateSelectedMods(i launcher.Instance, selected []launcher.InstalledMod) {
-	game := a.game
-	a.runContentTask(i, "更新模组", nil, func(ctx context.Context, report func(launcher.Progress)) error {
-		var failures []error
-		for n, m := range selected {
-			if err := ctx.Err(); err != nil {
-				return errors.Join(append(failures, err)...)
-			}
-			report(launcher.Progress{Stage: "更新 " + m.DiskName(), Done: n, Total: len(selected)})
-			if err := game.UpdateMod(ctx, i, m); err != nil {
-				failures = append(failures, fmt.Errorf("%s: %w", m.DiskName(), err))
-			}
-		}
-		return errors.Join(failures...)
 	})
 }
