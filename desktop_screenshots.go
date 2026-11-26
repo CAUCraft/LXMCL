@@ -34,6 +34,7 @@ type screenshotGallery struct {
 	err, previewErr                     string
 	picture                             ui.ImageSource
 	original                            *screenshots.Original
+	reveal                              *screenshotRevealRequest
 	scroll                              ui.ScrollState
 
 	appliedFilter, selectionFilter screenshotFilterKey
@@ -94,6 +95,7 @@ func (a *desktop) selectScreenshot(p *screenshotGallery, name string) {
 		p.cancel = nil
 	}
 	p.selected, p.picture, p.original, p.previewErr, p.copying = name, nil, nil, "", false
+	p.reveal = nil
 	if name == "" || a.ctx == nil {
 		return
 	}
@@ -222,7 +224,7 @@ func screenshotCopyButton(c *ui.Context, p *screenshotGallery) *screenshots.Orig
 
 func (a *desktop) leaveScreenshotViewer(p *screenshotGallery) {
 	from := p.viewerFrom
-	p.viewerFrom = ""
+	p.viewerFrom, p.reveal = "", nil
 	if p.selected != from && screenshotIsVisible(p.visibleRows(), from) {
 		a.selectScreenshot(p, from)
 	}
@@ -232,13 +234,13 @@ func (a *desktop) screenshotViewer(c *ui.Context, p *screenshotGallery) {
 	rows := a.currentScreenshotRows(c, p)
 	index := slices.IndexFunc(rows, func(row display.ListItem) bool { return row.Key == p.selected })
 	if index < 0 {
-		p.viewerFrom = ""
+		p.viewerFrom, p.reveal = "", nil
 		c.Invalidate()
 		return
 	}
 	target := index
 	var back bool
-	var toCopy, toIcon *screenshots.Original
+	var toCopy, toIcon, toReveal *screenshots.Original
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 		back = button(c, "返回图库", action.Default, false)
 		display.Text(c, p.selected, display.TextProps{Strong: true, Rows: 1}).Grow(1).MinWidth(0).Ellipsis("…")
@@ -253,6 +255,7 @@ func (a *desktop) screenshotViewer(c *ui.Context, p *screenshotGallery) {
 			target = index + 1
 		}
 		toCopy = screenshotCopyButton(c, p)
+		toReveal = screenshotRevealButton(c, p)
 		if button(c.Key(p.original).Key("icon"), "用作实例图标…", action.Default, p.original == nil || a.busy || a.pickerBusy) {
 			toIcon = p.original
 		}
@@ -269,6 +272,8 @@ func (a *desktop) screenshotViewer(c *ui.Context, p *screenshotGallery) {
 		a.copyScreenshot(p, toCopy)
 	case toIcon != nil:
 		a.editScreenshotIcon(p, toIcon)
+	case toReveal != nil:
+		a.revealScreenshot(p, toReveal)
 	}
 	screenshotPreview(c, p, false)
 }
@@ -279,7 +284,7 @@ func (a *desktop) instanceScreenshots(c *ui.Context, i launcher.Instance) {
 		a.loadScreenshots(i, "", "", "", "")
 		p = a.screenshots
 	}
-	var toCopy *screenshots.Original
+	var toCopy, toReveal *screenshots.Original
 	var toExport string
 	var refresh bool
 	ui.Row(c).Gap(7).AlignItems(ui.Center).Children(func() {
@@ -357,13 +362,21 @@ func (a *desktop) instanceScreenshots(c *ui.Context, i launcher.Instance) {
 				muted(c, "选择截图查看预览")
 				return
 			}
-			if screenshotPreview(c, p, true) {
-				p.viewerFrom = p.selected
+			expanded := screenshotPreview(c, p, true)
+			if expanded {
+				p.viewerFrom, p.reveal = p.selected, nil
 				c.Invalidate()
 			}
 			if p.original != nil {
-				display.Text(c, p.selected, display.TextProps{Strong: true, Rows: 1}).MinWidth(0).Ellipsis("…")
-				muted(c, fmt.Sprintf("%d × %d", p.original.Size.X, p.original.Size.Y)).FontSize(12)
+				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+					ui.Column(c).Grow(1).MinWidth(0).Children(func() {
+						display.Text(c, p.selected, display.TextProps{Strong: true, Rows: 1}).Ellipsis("…")
+						muted(c, fmt.Sprintf("%d × %d", p.original.Size.X, p.original.Size.Y)).FontSize(12)
+					})
+					if original := screenshotRevealButton(c, p); !expanded {
+						toReveal = original
+					}
+				})
 			}
 		})
 	}
@@ -375,5 +388,7 @@ func (a *desktop) instanceScreenshots(c *ui.Context, i launcher.Instance) {
 		a.copyScreenshot(p, toCopy)
 	case toExport != "" && p.selected == toExport:
 		a.exportScreenshot(p)
+	case toReveal != nil:
+		a.revealScreenshot(p, toReveal)
 	}
 }

@@ -89,37 +89,38 @@ type Original struct {
 	Size          image.Point
 	gameDir, name string
 	digest        [sha256.Size]byte
+	info          fs.FileInfo
 }
 
-func readPNG(ctx context.Context, gameDir, name string, maxBytes int64) ([]byte, error) {
+func readPNG(ctx context.Context, gameDir, name string, maxBytes int64) ([]byte, fs.FileInfo, error) {
 	if !filepath.IsLocal(name) || filepath.Base(name) != name || !strings.EqualFold(filepath.Ext(name), ".png") {
-		return nil, fs.ErrInvalid
+		return nil, nil, fs.ErrInvalid
 	}
 	root, err := open(gameDir)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer root.Close()
 	f, err := root.Open(name)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer f.Close()
 	info, err := f.Stat()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if !info.Mode().IsRegular() {
-		return nil, fs.ErrInvalid
+		return nil, nil, fs.ErrInvalid
 	}
 	if info.Size() > maxBytes {
-		return nil, ErrPNGTooLarge
+		return nil, nil, ErrPNGTooLarge
 	}
 	data, err := io.ReadAll(transfer.Reader(ctx, io.LimitReader(f, info.Size()+1)))
 	if err == nil && int64(len(data)) != info.Size() {
-		return nil, i18n.Error("screenshot.changed")
+		return nil, nil, i18n.Error("screenshot.changed")
 	}
-	return data, err
+	return data, info, err
 }
 
 // PNG rereads the selected original without retaining full-size images while browsing.
@@ -129,7 +130,7 @@ func (o *Original) PNG(ctx context.Context) ([]byte, error) {
 
 // PNGWithin checks the original digest and applies a caller's smaller byte limit.
 func (o *Original) PNGWithin(ctx context.Context, maxBytes int64) ([]byte, error) {
-	data, err := readPNG(ctx, o.gameDir, o.name, min(maxBytes, maxPNGBytes))
+	data, _, err := readPNG(ctx, o.gameDir, o.name, min(maxBytes, maxPNGBytes))
 	if err != nil {
 		return nil, err
 	}
@@ -141,7 +142,7 @@ func (o *Original) PNGWithin(ctx context.Context, maxBytes int64) ([]byte, error
 
 // Preview limits the displayed image to 1600 pixels and binds it to its original.
 func Preview(ctx context.Context, gameDir, name string) (image.Image, *Original, error) {
-	data, err := readPNG(ctx, gameDir, name, maxPNGBytes)
+	data, info, err := readPNG(ctx, gameDir, name, maxPNGBytes)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -164,5 +165,5 @@ func Preview(ctx context.Context, gameDir, name string) (image.Image, *Original,
 		draw.ApproxBiLinear.Scale(scaled, scaled.Bounds(), img, img.Bounds(), draw.Src, nil)
 		img = scaled
 	}
-	return img, &Original{Size: size, gameDir: gameDir, name: name, digest: sha256.Sum256(data)}, ctx.Err()
+	return img, &Original{Size: size, gameDir: gameDir, name: name, digest: sha256.Sum256(data), info: info}, ctx.Err()
 }
