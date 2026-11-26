@@ -27,6 +27,8 @@ type screenshotGallery struct {
 	instance                            launcher.Instance
 	cancel                              context.CancelFunc
 	rows, matches                       []display.ListItem
+	entries                             map[string]screenshots.Entry
+	batch                               map[string]bool
 	query, appliedQuery                 string
 	selected, viewerFrom                string
 	loading, folder, exporting, copying bool
@@ -73,14 +75,16 @@ func (a *desktop) loadScreenshots(i launcher.Instance, selected, query string) {
 	go func() {
 		entries, err := screenshots.List(ctx, i.GameDir)
 		rows := make([]display.ListItem, 0, len(entries))
+		byName := make(map[string]screenshots.Entry, len(entries))
 		for _, e := range entries {
 			rows = append(rows, display.ListItem{Key: e.Name, Label: e.Name, Description: e.Modified.Local().Format("2006-01-02 15:04")})
+			byName[e.Name] = e
 		}
 		a.post(func() {
 			if ctx.Err() != nil || a.screenshots != p {
 				return
 			}
-			p.loading, p.folder, p.rows = false, err == nil, rows
+			p.loading, p.folder, p.rows, p.entries = false, err == nil, rows, byName
 			if err != nil && !errors.Is(err, fs.ErrNotExist) {
 				p.err = err.Error()
 			}
@@ -272,6 +276,13 @@ func (a *desktop) instanceScreenshots(c *ui.Context, i launcher.Instance) {
 		if button(c, "导出原图…", action.Default, p.picture == nil || p.exporting || a.pickerBusy || a.busy) {
 			toExport = p.selected
 		}
+		if p.batch == nil {
+			if button(c.Key("batch"), "批量导出…", action.Default, len(p.rows) == 0 || p.exporting || a.pickerBusy || a.busy) {
+				p.batch = make(map[string]bool)
+			}
+		} else if button(c.Key("batch"), "退出批量", action.Default, a.busy || a.pickerBusy) {
+			p.batch = nil
+		}
 		if button(c, "打开截图文件夹", action.Default, !p.folder) {
 			a.openPath(filepath.Join(i.GameDir, screenshots.Directory), false)
 		}
@@ -289,12 +300,16 @@ func (a *desktop) instanceScreenshots(c *ui.Context, i launcher.Instance) {
 		}).Label("搜索截图文件名")
 		rows = p.visibleRows()
 		if old != p.query {
+			p.restrictBatchSelection(rows)
 			p.scroll = ui.ScrollState{}
 			if p.selected != "" && !slices.ContainsFunc(rows, func(row display.ListItem) bool { return row.Key == p.selected }) {
 				a.selectScreenshot(p, "")
 			}
 			c.Invalidate()
 		}
+	}
+	if p.batch != nil {
+		a.screenshotBatchActions(c, p, rows)
 	}
 	switch {
 	case p.loading:
@@ -320,9 +335,7 @@ func (a *desktop) instanceScreenshots(c *ui.Context, i launcher.Instance) {
 		splitWorkspace(c, catalogListWidth(w), func() {
 			muted(c, "修改时间 · 最近在前").FontSize(12)
 			layout.ScrollArea(c, layout.ScrollAreaProps{State: &p.scroll}, func() {
-				if name := display.List(c, display.ListProps{Items: rows, Active: p.selected, Compact: true}); name != "" && name != p.selected {
-					a.selectScreenshot(p, name)
-				}
+				a.screenshotList(c, p, rows)
 			}).Grow(1).MinHeight(0)
 		}, func() {
 			if p.selected == "" {

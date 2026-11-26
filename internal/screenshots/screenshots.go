@@ -27,6 +27,7 @@ const Directory = "screenshots"
 type Entry struct {
 	Name     string
 	Modified time.Time
+	info     fs.FileInfo
 }
 
 func open(gameDir string) (*os.Root, error) {
@@ -60,14 +61,16 @@ func List(ctx context.Context, gameDir string) ([]Entry, error) {
 		if !f.Type().IsRegular() || !strings.EqualFold(filepath.Ext(f.Name()), ".png") {
 			continue
 		}
-		info, err := f.Info()
+		info, err := root.Lstat(f.Name())
 		if errors.Is(err, fs.ErrNotExist) {
 			continue
 		}
 		if err != nil {
 			return nil, err
 		}
-		entries = append(entries, Entry{f.Name(), info.ModTime()})
+		if info.Mode().IsRegular() {
+			entries = append(entries, Entry{Name: f.Name(), Modified: info.ModTime(), info: info})
+		}
 	}
 	slices.SortFunc(entries, func(a, b Entry) int {
 		if n := b.Modified.Compare(a.Modified); n != 0 {
