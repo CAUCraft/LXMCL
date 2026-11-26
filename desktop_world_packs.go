@@ -30,16 +30,24 @@ type worldPacksView struct {
 	loading bool
 	tab     int
 	scroll  ui.ListState
+	preview *worldPackPreview
 }
 
 func (p *worldBrowser) closeWorldPacks() {
-	if p.packs != nil && p.packs.cancel != nil {
-		p.packs.cancel()
+	if p.packs != nil {
+		if p.packs.cancel != nil {
+			p.packs.cancel()
+		}
+		p.packs.closePreview()
 	}
 	p.packs = nil
 }
 
 func (a *desktop) openWorldPacks(browser *worldBrowser, i launcher.Instance, world saves.World) {
+	if a.ctx == nil {
+		return
+	}
+	browser.closeWorldPacks()
 	ctx, cancel := context.WithCancel(a.ctx)
 	p := &worldPacksView{world: world, cancel: cancel, loading: true}
 	browser.packs = p
@@ -62,7 +70,7 @@ func (a *desktop) openWorldPacks(browser *worldBrowser, i launcher.Instance, wor
 			}
 		}
 		a.post(func() {
-			if !a.form.open || a.form.worlds != browser || browser.packs != p {
+			if !a.form.open || a.form.worlds != browser || browser.packs != p || a.form.target != i {
 				return
 			}
 			p.data, p.status, p.err, p.loading, p.cancel = data, status, err, false, nil
@@ -77,21 +85,37 @@ func (a *desktop) worldPacksEditor(c *ui.Context, browser *worldBrowser, i launc
 	if name == "" {
 		name = p.world.Folder()
 	}
-	panelHeading(c, lucide.Layers(), name, fmt.Sprintf("%s · #%d · 目录 %s", i.Name, i.ID, p.world.Folder()))
+	refresh := false
+	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+		ui.Column(c).Grow(1).MinWidth(0).Children(func() {
+			panelHeading(c, lucide.Layers(), name, fmt.Sprintf("%s · #%d · 目录 %s", i.Name, i.ID, p.world.Folder()))
+		})
+		if p.preview == nil {
+			refresh = icon(c.Key(p), lucide.RefreshCw(), "刷新数据包", stale || p.loading || a.ctx == nil)
+		}
+	})
+	if refresh {
+		a.openWorldPacks(browser, i, p.world)
+		browser.packs.tab = p.tab
+		return
+	}
 	switch {
 	case stale:
+		p.closePreview()
 		feedback.Alert(c, "实例已变化，请关闭并重新打开存档列表。", feedback.AlertProps{Type: feedback.Warning})
 	case p.err != nil:
 		feedback.Alert(c, "无法读取世界数据包", feedback.AlertProps{Type: feedback.Warning, Description: p.err.Error()})
 	case p.loading:
 		flightLoading(c, "正在读取世界数据包…")
+	case p.preview != nil:
+		a.showWorldPackPreview(c, browser, i, p)
 	default:
 		before := p.tab
 		action.Segmented(c, &p.tab, []string{"本地文件", "上次启用", "上次停用"}, action.SegmentedProps{Size: theme.Small}).Label("数据包视图")
 		if before != p.tab {
 			p.scroll = ui.ListState{}
 		}
-		a.worldPackRows(c, p)
+		a.worldPackRows(c, browser, i, p)
 	}
 	ui.Row(c).Justify(ui.End).Children(func() {
 		if button(c, "返回存档列表", action.Default, false) {
@@ -100,7 +124,7 @@ func (a *desktop) worldPacksEditor(c *ui.Context, browser *worldBrowser, i launc
 	})
 }
 
-func (a *desktop) worldPackRows(c *ui.Context, p *worldPacksView) {
+func (a *desktop) worldPackRows(c *ui.Context, browser *worldBrowser, i launcher.Instance, p *worldPacksView) {
 	local := p.tab == worldPacksLocal
 	if !local {
 		if p.data.SavedErr != nil {
@@ -129,7 +153,13 @@ func (a *desktop) worldPackRows(c *ui.Context, p *worldPacksView) {
 	}
 	muted(c, "启停状态来自此世界上次保存的存档。").FontSize(12)
 	const rowHeight = 40
-	ui.List(c, &p.scroll, len(rows)).Height(float32(min(6, len(rows)) * rowHeight)).FillWidth().Rows(func(r ui.ListRow) {
+	maxRows := 6
+	list := ui.List(c.Key(p), &p.scroll, len(rows))
+	if local {
+		maxRows = 5
+		list.ItemKey(func(row int) any { return rows[row].Name })
+	}
+	list.Height(float32(min(maxRows, len(rows)) * rowHeight)).FillWidth().Rows(func(r ui.ListRow) {
 		rc, pack := r.Context, rows[r.Index]
 		ui.Row(rc).Height(rowHeight).Padding(0, 8).Gap(8).AlignItems(ui.Center).Children(func() {
 			ui.Column(rc).Grow(1).MinWidth(0).Children(func() {
@@ -145,6 +175,11 @@ func (a *desktop) worldPackRows(c *ui.Context, p *worldPacksView) {
 					}
 				}
 				muted(rc, status).FontSize(12).Shrink(0)
+				if (pack.Kind == saves.DataPackZIP || pack.Kind == saves.DataPackFolder) &&
+					action.Button(rc.Key(pack.Name), "预览", action.ButtonProps{Variant: action.Default}).
+						Label("预览数据包 "+pack.Name).Disabled(a.ctx == nil).Clicked() {
+					a.openWorldPackPreview(browser, i, p, pack)
+				}
 			}
 		})
 	})

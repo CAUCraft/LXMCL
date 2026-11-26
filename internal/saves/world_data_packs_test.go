@@ -1,6 +1,7 @@
 package saves_test
 
 import (
+	"archive/zip"
 	"bytes"
 	"compress/gzip"
 	"encoding/binary"
@@ -9,8 +10,10 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
+	"github.com/CAUCraft/LXMCL/internal/packmeta"
 	"github.com/CAUCraft/LXMCL/internal/saves"
 )
 
@@ -109,6 +112,87 @@ func TestWorldDataPacksMissingDirectoryAndSavedLists(t *testing.T) {
 				t.Fatal("created a datapacks folder", err)
 			}
 		})
+	}
+}
+
+func TestWorldDataPackMetadataPreview(t *testing.T) {
+	game := t.TempDir()
+	level := fixtureDataPacks(t, nil, nil)
+	worldDir := writeDataPackFile(t, game, level)
+	packs := filepath.Join(worldDir, "datapacks")
+	folder := filepath.Join(packs, "目录")
+	if err := os.MkdirAll(folder, 0700); err != nil {
+		t.Fatal(err)
+	}
+	const metadata = `{"pack":{"description":{"text":"说明","extra":[{"text":" · 中文"}]},"pack_format":48,"min_format":[4,1],"max_format":49}}`
+	marker := filepath.Join(folder, packmeta.Filename)
+	if err := os.WriteFile(marker, []byte(metadata), 0600); err != nil {
+		t.Fatal(err)
+	}
+	writeZIP := func(name, entry, text string) {
+		t.Helper()
+		var data bytes.Buffer
+		z := zip.NewWriter(&data)
+		w, err := z.Create(entry)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.Write([]byte(text)); err != nil {
+			t.Fatal(err)
+		}
+		if err := z.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(packs, name), data.Bytes(), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeZIP("ready.zip", packmeta.Filename, metadata)
+	writeZIP("missing.zip", "pack.mcmeta/notes.txt", "only a directory, no root file")
+	writeZIP("invalid.zip", packmeta.Filename, "{")
+	writeZIP("large.zip", packmeta.Filename, strings.Repeat(" ", packmeta.MaxBytes+1))
+	world := dataPackWorld(t, game)
+	list, err := saves.ReadWorldDataPacks(t.Context(), game, world)
+	if err != nil || len(list.Local) != 5 {
+		t.Fatal(list.Local, err)
+	}
+	preview := func(name string) (packmeta.Metadata, error) {
+		t.Helper()
+		at := slices.IndexFunc(list.Local, func(pack saves.DataPack) bool { return pack.Name == name })
+		if at < 0 {
+			t.Fatal("missing local entry", name)
+		}
+		return list.Preview(t.Context(), game, world, list.Local[at])
+	}
+	want := packmeta.Metadata{Description: "说明 · 中文", Format: "48", Min: "4.1", Max: "49"}
+	for _, name := range []string{"ready.zip", "目录"} {
+		if got, err := preview(name); got != want || err != nil {
+			t.Fatalf("%s: %v %v", name, got, err)
+		}
+	}
+	if _, err := preview("missing.zip"); !errors.Is(err, saves.ErrDataPackMetadataMissing) {
+		t.Fatal("missing metadata not distinguished", err)
+	}
+	for _, name := range []string{"invalid.zip", "large.zip"} {
+		if _, err := preview(name); err == nil || errors.Is(err, saves.ErrDataPackMetadataMissing) {
+			t.Fatal("unreadable metadata treated as missing or valid", name, err)
+		}
+	}
+	if err := os.Remove(marker); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := preview("目录"); !errors.Is(err, saves.ErrDataPackMetadataMissing) {
+		t.Fatal("removed folder metadata not distinguished", err)
+	}
+	if err := os.Rename(filepath.Join(packs, "ready.zip"), filepath.Join(packs, "old.zip")); err != nil {
+		t.Fatal(err)
+	}
+	writeZIP("ready.zip", packmeta.Filename, metadata)
+	if _, err := preview("ready.zip"); err == nil || errors.Is(err, saves.ErrDataPackMetadataMissing) {
+		t.Fatal("replacement accepted as the originally listed ZIP", err)
+	}
+	if got, err := os.ReadFile(filepath.Join(worldDir, "level.dat")); err != nil || !bytes.Equal(got, level) {
+		t.Fatal("preview modified the world", err)
 	}
 }
 
