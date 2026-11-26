@@ -117,6 +117,40 @@ func TestWorldSearchKeepsOnlyVisibleSelection(t *testing.T) {
 	if p.selected != -1 || len(p.visible) != 3 || p.visible[0].Folder() != "Alpha" {
 		t.Fatal("clearing search did not restore the original list", p.selected)
 	}
+
+	filterMode := func(label string) {
+		t.Helper()
+		click("默认游戏模式")
+		click(label)
+		tt.Frame()
+	}
+	click("目录 · 河谷小屋")
+	filterMode("创造")
+	if world, ok := p.selectedWorld(); !ok || world.Folder() != "河谷小屋" || len(p.visible) != 1 {
+		t.Fatal("creative filter lost the hardcore world's selection", p.visible, p.selected)
+	}
+	filterMode("生存")
+	if _, ok := p.selectedWorld(); ok || len(p.visible) != 1 || p.visible[0].Folder() != "河谷矿场" {
+		t.Fatal("filter selected a different world or lost GameType 0", p.visible, p.selected)
+	}
+	for _, label := range []string{"打开世界目录", "复制世界…", "查看数据包", "备份所选世界", "进入世界"} {
+		if node, ok := tt.Access(label); !ok || !node.Disabled {
+			t.Fatal("mode filter left an enabled action for a hidden world", label)
+		}
+	}
+	filterMode("未知")
+	if len(p.visible) != 1 || p.visible[0].Folder() != "Alpha" || p.selected != -1 {
+		t.Fatal("unknown filter matched a recognized default mode", p.visible, p.selected)
+	}
+	click("搜索世界名或目录名")
+	tt.Type(levelName)
+	if len(p.visible) != 0 || !tt.HasText("没有匹配的世界。") {
+		t.Fatal("name and game mode filters did not intersect", p.visible)
+	}
+	filterMode("全部模式")
+	if len(p.visible) != 2 || p.selected != -1 {
+		t.Fatal("clearing mode did not preserve the search and empty selection", p.visible, p.selected)
+	}
 }
 
 func TestWorldSortUsesSavedTimeAndKeepsFolderSelection(t *testing.T) {

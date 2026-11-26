@@ -50,26 +50,31 @@ func (a *desktop) loadWorldThumbnail(p *worldBrowser, i launcher.Instance, world
 	}()
 }
 
+func worldModeLabel(mode saves.GameMode) string {
+	switch mode {
+	case saves.GameModeSurvival:
+		return "生存"
+	case saves.GameModeCreative:
+		return "创造"
+	case saves.GameModeAdventure:
+		return "冒险"
+	case saves.GameModeSpectator:
+		return "旁观"
+	default:
+		return "未知"
+	}
+}
+
 func (a *desktop) worldSelectionDetails(c *ui.Context, p *worldBrowser, i launcher.Instance, world saves.World) {
 	a.loadWorldThumbnail(p, i, world)
-	mode, hardcore := "未知", "未知"
-	switch world.DefaultGameMode() {
-	case saves.GameModeSurvival:
-		mode = "生存"
-	case saves.GameModeCreative:
-		mode = "创造"
-	case saves.GameModeAdventure:
-		mode = "冒险"
-	case saves.GameModeSpectator:
-		mode = "旁观"
-	}
+	hardcore := "未知"
 	if enabled, known := world.Hardcore(); known {
 		hardcore = "关闭"
 		if enabled {
 			hardcore = "开启"
 		}
 	}
-	settings := "默认游戏模式 · " + mode + "   硬核 · " + hardcore
+	settings := "默认游戏模式 · " + worldModeLabel(world.DefaultGameMode()) + "   硬核 · " + hardcore
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 		if p.thumbnail != nil && p.thumbnail.picture != nil {
 			ui.Image(c, p.thumbnail.picture).Size(40, 40).Fit(ui.Contain).Shrink(0).Label("世界缩略图")
