@@ -174,6 +174,9 @@ func (a *desktop) view(c *ui.Context) {
 			}
 		}
 		a.clearInstanceUsage()
+		if a.content.reveal != nil && !a.inLocalModList() {
+			a.content.reveal = nil
+		}
 		a.discardStaleModReleaseNotes()
 		if p := a.content.modPreview; p != nil && !a.inModUpdatePreview(p) {
 			a.content.modPreview = nil
