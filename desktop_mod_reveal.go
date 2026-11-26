@@ -15,7 +15,7 @@ func (a *desktop) inLocalModList() bool {
 	v := &a.content
 	return a.page == pageLibrary && a.detailPage == detailContent && a.inspected == v.id &&
 		v.kind() == launcher.Mods && !v.reading && !a.form.open && !a.busy &&
-		v.modNotes == nil && v.modPreview == nil && v.restoreMods == nil && v.comparison == nil && v.copyLocal == nil
+		v.modNotes == nil && v.modPreview == nil && v.restoreMods == nil && v.comparison == nil && v.copyLocal == nil && v.duplicateView == nil
 }
 
 func (a *desktop) revealModFile(i launcher.Instance, file launcher.ContentFile) {

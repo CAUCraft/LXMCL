@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/CAUCraft/LXMCL/internal/content"
 	"github.com/CAUCraft/LXMCL/internal/launcher"
 	"github.com/CAUCraft/LXMCL/internal/tasks"
 	"github.com/egoist/mygo"
@@ -48,6 +49,9 @@ type contentView struct {
 	scroll      ui.ListState
 	listing     *resourceListing
 	reveal      *modRevealRequest
+
+	duplicates    []content.DuplicateModID
+	duplicateView *duplicateModView
 }
 
 const (
@@ -118,6 +122,7 @@ func (a *desktop) refreshContent(i launcher.Instance) {
 	a.content.copyLocal = nil
 	a.content.comparison = nil
 	a.content.listing, a.content.reveal = nil, nil
+	a.content.duplicates, a.content.duplicateView = nil, nil
 	if a.ctx == nil {
 		return
 	}
@@ -133,9 +138,13 @@ func (a *desktop) refreshContent(i launcher.Instance) {
 	go func() {
 		defer cancel()
 		files, err := launcher.ContentInventory(ctx, i, kind)
+		var duplicates []content.DuplicateModID
+		if err == nil && kind == launcher.Mods && ctx.Err() == nil {
+			duplicates = content.DuplicateEnabledModIDs(files)
+		}
 		a.post(func() {
 			if request == a.contentRequest {
-				a.content.reading, a.content.files = false, files
+				a.content.reading, a.content.files, a.content.duplicates = false, files, duplicates
 				a.content.sortFiles()
 				if err != nil {
 					a.content.err = err.Error()
@@ -198,6 +207,10 @@ func (a *desktop) instanceContent(c *ui.Context, i launcher.Instance) {
 	}
 	if v.comparison != nil {
 		a.modComparison(c, i, v.comparison)
+		return
+	}
+	if p := v.duplicateView; p != nil {
+		v.showDuplicateMods(c, p)
 		return
 	}
 	disabled := a.busy || a.pickerBusy || a.running != nil
@@ -284,6 +297,7 @@ func (a *desktop) instanceContent(c *ui.Context, i launcher.Instance) {
 				a.modRestoreButton(c, i, disabled)
 			})
 		default:
+			v.duplicateModNotice(c)
 			a.contentList(c, i, disabled)
 		}
 	})
