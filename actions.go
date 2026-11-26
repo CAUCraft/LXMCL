@@ -238,6 +238,19 @@ func (a *desktop) submitEditor() {
 	if a.busy {
 		return
 	}
+	if d := a.form.icon; d != nil && d.screenshot != nil {
+		if !d.reading && a.form.err == "" && d.encoded != d.original {
+			a.readScreenshotIcon(d, true)
+		}
+		return
+	}
+	a.commitEditor()
+}
+
+func (a *desktop) commitEditor() {
+	if a.busy {
+		return
+	}
 	form := a.form
 	next := a.state.Clone()
 	var err error
@@ -337,6 +350,9 @@ func (a *desktop) submitEditor() {
 	a.form.err = ""
 	a.save(next, checkID, func(err error) {
 		same := a.form.mode == form.mode && a.form.target.ID == form.target.ID
+		if form.icon != nil {
+			same = a.form.icon == form.icon
+		}
 		if err != nil {
 			if same && a.form.open {
 				a.form.err = err.Error()

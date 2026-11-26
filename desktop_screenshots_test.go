@@ -76,6 +76,10 @@ func TestScreenshotPageKeepsInstanceSelection(t *testing.T) {
 		if !ok || large.W <= r.W || large.H <= r.H || large.X+large.W > 820 || large.Y+large.H > 530 || !tt.HasText("1 / 2") {
 			t.Fatal("viewer bounds or position", large, tt.Texts())
 		}
+		iconAction, ok := tt.Find("用作实例图标…")
+		if !ok || iconAction.X < 0 || iconAction.X+iconAction.W > 820 || iconAction.Y+iconAction.H > 530 {
+			t.Fatal("screenshot icon action outside window", iconAction, tt.Texts())
+		}
 		if dark {
 			capture(t, tt, "screenshot-viewer-dark")
 		} else {

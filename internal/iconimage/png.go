@@ -16,6 +16,7 @@ import (
 )
 
 const side = 96
+const MaxImportBytes = 32 << 20
 
 // Fit preserves the aspect ratio and centers the image on a transparent canvas.
 func Fit(src image.Image) *image.RGBA {
@@ -35,29 +36,40 @@ func ImportPNG(ctx context.Context, path string) (image.Image, string, error) {
 		return nil, "", err
 	}
 	defer f.Close()
-	const maxBytes = 32 << 20
 	st, err := f.Stat()
 	if err != nil {
 		return nil, "", err
 	}
-	if !st.Mode().IsRegular() || st.Size() > maxBytes {
+	if !st.Mode().IsRegular() || st.Size() > MaxImportBytes {
 		return nil, "", i18n.Error("instance.icon_size_invalid")
 	}
-	cfg, err := png.DecodeConfig(transfer.Reader(ctx, f))
+	return importPNG(ctx, f)
+}
+
+// ImportPNGBytes prepares a PNG already read from a selected local source.
+func ImportPNGBytes(ctx context.Context, data []byte) (image.Image, string, error) {
+	if len(data) > MaxImportBytes {
+		return nil, "", i18n.Error("instance.icon_size_invalid")
+	}
+	return importPNG(ctx, bytes.NewReader(data))
+}
+
+func importPNG(ctx context.Context, src io.ReadSeeker) (image.Image, string, error) {
+	cfg, err := png.DecodeConfig(transfer.Reader(ctx, src))
 	if err != nil {
 		return nil, "", err
 	}
 	if cfg.Width <= 0 || cfg.Height <= 0 || cfg.Width > (16<<20)/cfg.Height {
 		return nil, "", i18n.Error("instance.icon_size_invalid")
 	}
-	if _, err = f.Seek(0, io.SeekStart); err != nil {
+	if _, err = src.Seek(0, io.SeekStart); err != nil {
 		return nil, "", err
 	}
-	src, err := png.Decode(transfer.Reader(ctx, io.LimitReader(f, maxBytes)))
+	decoded, err := png.Decode(transfer.Reader(ctx, io.LimitReader(src, MaxImportBytes)))
 	if err != nil {
 		return nil, "", err
 	}
-	img := Fit(src)
+	img := Fit(decoded)
 	var buf bytes.Buffer
 	if err := png.Encode(&buf, img); err != nil {
 		return nil, "", err

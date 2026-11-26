@@ -23,6 +23,9 @@ import (
 )
 
 const Directory = "screenshots"
+const maxPNGBytes = 128 << 20
+
+var ErrPNGTooLarge = i18n.Error("screenshot.too_large")
 
 type Entry struct {
 	Name     string
@@ -88,7 +91,7 @@ type Original struct {
 	digest        [sha256.Size]byte
 }
 
-func readPNG(ctx context.Context, gameDir, name string) ([]byte, error) {
+func readPNG(ctx context.Context, gameDir, name string, maxBytes int64) ([]byte, error) {
 	if !filepath.IsLocal(name) || filepath.Base(name) != name || !strings.EqualFold(filepath.Ext(name), ".png") {
 		return nil, fs.ErrInvalid
 	}
@@ -109,9 +112,8 @@ func readPNG(ctx context.Context, gameDir, name string) ([]byte, error) {
 	if !info.Mode().IsRegular() {
 		return nil, fs.ErrInvalid
 	}
-	const maxBytes = 128 << 20
 	if info.Size() > maxBytes {
-		return nil, i18n.Error("screenshot.too_large")
+		return nil, ErrPNGTooLarge
 	}
 	data, err := io.ReadAll(transfer.Reader(ctx, io.LimitReader(f, info.Size()+1)))
 	if err == nil && int64(len(data)) != info.Size() {
@@ -122,7 +124,12 @@ func readPNG(ctx context.Context, gameDir, name string) ([]byte, error) {
 
 // PNG rereads the selected original without retaining full-size images while browsing.
 func (o *Original) PNG(ctx context.Context) ([]byte, error) {
-	data, err := readPNG(ctx, o.gameDir, o.name)
+	return o.PNGWithin(ctx, maxPNGBytes)
+}
+
+// PNGWithin checks the original digest and applies a caller's smaller byte limit.
+func (o *Original) PNGWithin(ctx context.Context, maxBytes int64) ([]byte, error) {
+	data, err := readPNG(ctx, o.gameDir, o.name, min(maxBytes, maxPNGBytes))
 	if err != nil {
 		return nil, err
 	}
@@ -134,7 +141,7 @@ func (o *Original) PNG(ctx context.Context) ([]byte, error) {
 
 // Preview limits the displayed image to 1600 pixels and binds it to its original.
 func Preview(ctx context.Context, gameDir, name string) (image.Image, *Original, error) {
-	data, err := readPNG(ctx, gameDir, name)
+	data, err := readPNG(ctx, gameDir, name, maxPNGBytes)
 	if err != nil {
 		return nil, nil, err
 	}

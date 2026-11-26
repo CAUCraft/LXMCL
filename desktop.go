@@ -712,6 +712,9 @@ func (a *desktop) editor(c *ui.Context) {
 	if a.form.mode == "" {
 		return
 	}
+	if d := a.form.icon; a.form.open && d != nil && d.screenshot != nil && !a.screenshotIconCurrent(d.screenshot) {
+		a.form.open = false
+	}
 	title, okText := "重命名实例", "保存"
 	width := float32(480)
 	switch a.form.mode {
@@ -881,6 +884,12 @@ func (a *desktop) editor(c *ui.Context) {
 		if a.form.open {
 			a.submitEditor()
 		}
+	}
+	if d := a.form.icon; !a.form.open && d != nil && d.screenshot != nil {
+		if d.cancel != nil {
+			d.cancel()
+		}
+		d.screenshot, d.cancel = nil, nil
 	}
 	if p := a.form.loaders; !a.form.open && p != nil && p.loaderCancel != nil {
 		p.cancelLoaders()
