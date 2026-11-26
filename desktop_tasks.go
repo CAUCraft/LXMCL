@@ -30,6 +30,7 @@ type instanceTaskHistoryView struct {
 	instanceID                       int
 	previousStatus, previousInstance int
 	previousTask, previousQuery      string
+	previousAction                   string
 }
 
 func (a *desktop) openInstanceTaskHistory(i launcher.Instance, key string) {
@@ -42,16 +43,16 @@ func (a *desktop) openInstanceTaskHistory(i launcher.Instance, key string) {
 	a.openTasks()
 	a.instanceTaskHistory = &instanceTaskHistoryView{
 		instanceID: i.ID, previousStatus: a.taskFilter, previousInstance: a.taskInstanceFilter,
-		previousTask: a.browsedTask, previousQuery: a.taskHistoryQuery,
+		previousTask: a.browsedTask, previousQuery: a.taskHistoryQuery, previousAction: a.taskActionFilter,
 	}
 	a.taskFilter, a.taskInstanceFilter = 0, i.ID
-	a.browsedTask, a.taskHistoryQuery = key, ""
+	a.browsedTask, a.taskHistoryQuery, a.taskActionFilter = key, "", ""
 }
 
 func (a *desktop) closeInstanceTaskHistory() {
 	if view := a.instanceTaskHistory; view != nil {
 		a.taskFilter, a.taskInstanceFilter = view.previousStatus, view.previousInstance
-		a.browsedTask, a.taskHistoryQuery = view.previousTask, view.previousQuery
+		a.browsedTask, a.taskHistoryQuery, a.taskActionFilter = view.previousTask, view.previousQuery, view.previousAction
 		a.instanceTaskHistory = nil
 	}
 }
@@ -126,6 +127,9 @@ func (a *desktop) openNoticeTask() {
 			}
 			if a.taskInstanceFilter != row.InstanceID {
 				a.taskInstanceFilter = 0
+			}
+			if !a.matchesTaskHistoryAction(row) {
+				a.taskActionFilter = ""
 			}
 			if !a.matchesTaskHistoryQuery(row) {
 				a.taskHistoryQuery = ""
@@ -205,9 +209,13 @@ func (a *desktop) tasks(c *ui.Context) {
 			if a.logOpen {
 				searchKey = ""
 			}
-			search := field.SearchBar(c.Key("task-history-search"), &a.taskHistoryQuery, field.SearchBarProps{
-				Placeholder: "搜索任务名称或动作", ShortKey: searchKey,
-			}).Label("搜索历史任务")
+			var search ui.Element
+			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+				search = field.SearchBar(c.Key("task-history-search"), &a.taskHistoryQuery, field.SearchBarProps{
+					Placeholder: "搜索任务名称或动作", ShortKey: searchKey,
+				}).Label("搜索历史任务").Grow(1).MinWidth(0)
+				a.taskHistoryActionPicker(c.Key("task-action-filter"))
+			})
 			searching := strings.TrimSpace(a.taskHistoryQuery) != ""
 			visible := a.visibleTaskHistory()
 			if len(visible) == 0 {
@@ -218,9 +226,9 @@ func (a *desktop) tasks(c *ui.Context) {
 					title = "此实例暂无任务记录"
 				case searching:
 					title = "没有符合搜索条件的任务"
-				case a.taskFilter == 0 && a.taskInstanceFilter == 0:
+				case a.taskActionFilter == "" && a.taskFilter == 0 && a.taskInstanceFilter == 0:
 					title = "暂无任务"
-				case a.taskInstanceFilter == 0:
+				case a.taskActionFilter == "" && a.taskInstanceFilter == 0:
 					title = "没有失败或取消的任务"
 				}
 				sectionPane(c).Padding(8, 14).Children(func() {
@@ -231,8 +239,9 @@ func (a *desktop) tasks(c *ui.Context) {
 								search.Focus()
 								c.Invalidate()
 							}
-						} else if (a.taskFilter != 0 || a.taskInstanceFilter != 0) && button(c, "清除筛选", action.Default, false) {
-							a.taskFilter, a.taskInstanceFilter = 0, 0
+						} else if (a.taskFilter != 0 || a.taskInstanceFilter != 0 || a.taskActionFilter != "") &&
+							button(c, "清除筛选", action.Default, false) {
+							a.taskFilter, a.taskInstanceFilter, a.taskActionFilter = 0, 0, ""
 							c.Invalidate()
 						}
 					}})
@@ -398,7 +407,7 @@ func (a *desktop) taskRow(c *ui.Context, row taskRecord) {
 			} else {
 				ui.Row(c).Children(func() {
 					if button(c, "定位备份 ZIP", action.Default, a.ctx == nil) {
-						a.locateTaskZIP("无法定位备份 ZIP", row.LocateModUpdateBackup)
+						a.locateTaskZIP(row, "无法定位备份 ZIP", row.LocateModUpdateBackup)
 					}
 				})
 			}
@@ -491,7 +500,7 @@ func (a *desktop) taskRow(c *ui.Context, row taskRecord) {
 				a.openPath(launcher.BackupsDir(a.store.Root, row.InstanceID), false)
 			}
 			if exportPath != "" && button(c, "定位导出 ZIP", action.Default, a.ctx == nil) {
-				a.locateTaskZIP("无法定位导出 ZIP", row.LocatePrismExport)
+				a.locateTaskZIP(row, "无法定位导出 ZIP", row.LocatePrismExport)
 			}
 			if row.Folder != "" && button(c, "打开文件夹", action.Default, false) {
 				a.openPath(row.Folder, false)
@@ -503,13 +512,20 @@ func (a *desktop) taskRow(c *ui.Context, row taskRecord) {
 	})
 }
 
-func (a *desktop) locateTaskZIP(errorTitle string, locate func() (string, error)) {
+func (a *desktop) locateTaskZIP(row taskRecord, errorTitle string, locate func() (string, error)) {
 	if a.ctx == nil {
 		return
 	}
 	go func() {
 		filename, err := locate()
 		a.post(func() {
+			if a.page != pageDownloads || a.downloadPage != downloadTasks || a.historyReadErr != "" ||
+				!slices.ContainsFunc(a.history, func(current taskRecord) bool {
+					return current.Key() == row.Key() && current.InstanceID == row.InstanceID &&
+						current.Revision == row.Revision && current.Action == row.Action && a.matchesTaskHistory(current)
+				}) {
+				return
+			}
 			if err != nil {
 				a.message(errorTitle, err)
 				return

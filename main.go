@@ -190,6 +190,7 @@ type desktop struct {
 	listMenuID                       int
 	taskFilter, taskInstanceFilter   int
 	taskHistoryQuery                 string
+	taskActionFilter                 string
 	instanceTaskHistory              *instanceTaskHistoryView
 	instanceUsage                    *instanceUsageRequest
 	browsedTask                      string
