@@ -6,6 +6,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -1128,7 +1129,12 @@ func TestGameServerJoinFollowsTheVisibleInstance(t *testing.T) {
 	a.serverInstanceID = a.state.Instances[1].ID
 	a.serverSource = 1
 	target := a.state.Instances[1]
-	rows := []launcher.Server{{Name: "建筑", Address: "build.example.invalid:25570"}, {Name: "空地址"}}
+	rows := []launcher.Server{
+		{Name: "建筑", Address: "build.example.invalid:25570"},
+		{Name: "空地址"},
+		{Name: "河谷", Address: "RIDGE.example.invalid:25571"},
+		{Name: "河谷", Address: "ridge.example.invalid:25572"},
+	}
 	if err := tt.Click("联机"); err != nil {
 		t.Fatal(err)
 	}
@@ -1140,6 +1146,48 @@ func TestGameServerJoinFollowsTheVisibleInstance(t *testing.T) {
 	}
 	if b, ok := tt.Access("启动并加入 空地址 未填写地址"); !ok || !b.Disabled {
 		t.Fatal("empty address enabled")
+	}
+	tt.SetSize(820, 530)
+	search := func(query string) {
+		t.Helper()
+		if err := tt.Click("搜索游戏内收藏"); err != nil {
+			t.Fatal(err)
+		}
+		tt.Key(ui.Cmd, ui.KeyA)
+		tt.Type(query)
+		tt.Frame()
+	}
+	search("  EXAMPLE.INVALID:25571  ")
+	p := a.gameServers
+	if visible := p.matchingRows(); !slices.Equal(visible, []int{2}) {
+		t.Fatal("filter lost the original row key", visible)
+	}
+	if err := tt.Click("复制游戏内地址 河谷"); err != nil || tt.Clipboard() != rows[2].Address {
+		t.Fatal("filtered copy did not use the original address", err, tt.Clipboard())
+	}
+	for _, label := range []string{"导入到启动器…", "选择导入 河谷 RIDGE.example.invalid:25571"} {
+		if err := tt.Click(label); err != nil {
+			t.Fatal(label, err)
+		}
+		tt.Frame()
+	}
+	if !p.importing.selected[2] {
+		t.Fatal("filtered selection used an index from the visible list")
+	}
+	search("25572")
+	if len(p.importing.selected) != 0 {
+		t.Fatal("hidden selection could still be imported", p.importing.selected)
+	}
+	search("不存在")
+	if !tt.HasText("没有匹配的游戏内收藏") {
+		t.Fatal("missing search empty state", tt.Texts())
+	}
+	if err := tt.Click("清除游戏内搜索"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !slices.Equal(p.matchingRows(), []int{0, 1, 2, 3}) {
+		t.Fatal("clearing search lost the original order")
 	}
 	a.serverInstanceID = a.state.Instances[0].ID
 	tt.Frame()

@@ -93,7 +93,7 @@ func (s *State) MatchingServers(query string) []server.Server {
 	}
 	var visible []server.Server
 	for _, entry := range s.Servers {
-		if strings.Contains(strings.ToLower(entry.Name), query) || strings.Contains(strings.ToLower(entry.Address), query) {
+		if entry.MatchesNameOrAddress(query) {
 			visible = append(visible, entry)
 		}
 	}
