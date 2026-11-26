@@ -37,6 +37,14 @@ type WorldDataPacks struct {
 	Disabled []DataPack
 	Saved    bool
 	SavedErr error
+
+	directory fs.FileInfo
+	files     map[string]dataPackFile
+}
+
+type dataPackFile struct {
+	info fs.FileInfo
+	err  error
 }
 
 // ReadWorldDataPacks inventories immediate local files and the last saved
@@ -53,28 +61,17 @@ func ReadWorldDataPacks(ctx context.Context, gameDir string, world World) (World
 		return WorldDataPacks{}, err
 	}
 	defer root.Close()
-	if err := world.check(root); err != nil {
-		return WorldDataPacks{}, err
-	}
-	selected, err := openBackupDirectory(root, world.folder)
+	selected, err := openDataPackWorld(root, world)
 	if err != nil {
 		return WorldDataPacks{}, err
 	}
 	defer selected.Close()
-	info, err := selected.Stat(".")
+	result, err := worldDataPackFiles(ctx, selected)
 	if err != nil {
 		return WorldDataPacks{}, err
 	}
-	if !os.SameFile(world.directory, info) {
-		return WorldDataPacks{}, i18n.Error("saves.world_changed", world.folder)
-	}
-	local, err := worldDataPackFiles(ctx, selected)
-	if err != nil {
-		return WorldDataPacks{}, err
-	}
-	result := WorldDataPacks{Local: local}
-	files := make(map[string]DataPackKind, len(local))
-	for _, pack := range local {
+	files := make(map[string]DataPackKind, len(result.Local))
+	for _, pack := range result.Local {
 		files[pack.Name] = pack.Kind
 	}
 	var enabled, disabled []DataPack
@@ -115,24 +112,47 @@ func ReadWorldDataPacks(ctx context.Context, gameDir string, world World) (World
 	return result, nil
 }
 
-func worldDataPackFiles(ctx context.Context, world *os.Root) ([]DataPack, error) {
-	root, err := openBackupDirectory(world, "datapacks")
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil, nil
+func openDataPackWorld(root *os.Root, world World) (*os.Root, error) {
+	if err := world.check(root); err != nil {
+		return nil, err
 	}
+	selected, err := openBackupDirectory(root, world.folder)
 	if err != nil {
 		return nil, err
+	}
+	info, err := selected.Stat(".")
+	if err == nil && os.SameFile(world.directory, info) {
+		return selected, nil
+	}
+	selected.Close()
+	if err != nil {
+		return nil, err
+	}
+	return nil, i18n.Error("saves.world_changed", world.folder)
+}
+
+func worldDataPackFiles(ctx context.Context, world *os.Root) (WorldDataPacks, error) {
+	root, err := openBackupDirectory(world, "datapacks")
+	if errors.Is(err, fs.ErrNotExist) {
+		return WorldDataPacks{}, nil
+	}
+	if err != nil {
+		return WorldDataPacks{}, err
 	}
 	defer root.Close()
 	dir, err := root.Open(".")
 	if err != nil {
-		return nil, err
+		return WorldDataPacks{}, err
 	}
 	defer dir.Close()
-	var packs []DataPack
+	info, err := dir.Stat()
+	if err != nil {
+		return WorldDataPacks{}, err
+	}
+	packs := WorldDataPacks{directory: info, files: make(map[string]dataPackFile)}
 	for {
 		if err := ctx.Err(); err != nil {
-			return nil, err
+			return WorldDataPacks{}, err
 		}
 		entries, err := dir.ReadDir(128)
 		for _, entry := range entries {
@@ -141,22 +161,27 @@ func worldDataPackFiles(ctx context.Context, world *os.Root) ([]DataPack, error)
 				continue
 			}
 			if err != nil {
-				return nil, err
+				return WorldDataPacks{}, err
 			}
 			kind, err := dataPackFileKind(root, info)
 			if err != nil {
-				return nil, err
+				return WorldDataPacks{}, err
 			}
-			packs = append(packs, DataPack{Name: entry.Name(), Kind: kind})
+			packs.Local = append(packs.Local, DataPack{Name: entry.Name(), Kind: kind})
+			if kind == DataPackFolder || kind == DataPackZIP {
+				// Root.Lstat captures the file identity from a handle on Windows.
+				snapshot, err := root.Lstat(entry.Name())
+				packs.files[entry.Name()] = dataPackFile{info: snapshot, err: err}
+			}
 		}
 		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
-			return nil, err
+			return WorldDataPacks{}, err
 		}
 	}
-	slices.SortFunc(packs, func(a, b DataPack) int { return strings.Compare(a.Name, b.Name) })
+	slices.SortFunc(packs.Local, func(a, b DataPack) int { return strings.Compare(a.Name, b.Name) })
 	return packs, nil
 }
 

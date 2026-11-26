@@ -353,6 +353,7 @@
   "launch.world_unsupported": "此版本未声明单人世界快速启动。请正常启动该实例，再从游戏内选择世界。",
   "launch.world_target_invalid": "请选择一个单人世界作为启动目标。",
   "saves.world_changed": "世界「%s」已更改或移动。请重新打开存档列表并选择世界。",
+  "saves.data_pack_changed": "本地数据包已变化，请刷新列表后重新选择。",
   "saves.no_worlds_to_back_up": "此实例还没有可备份的存档",
   "saves.path_conflict": "存档归档路径冲突：%s",
   "saves.path_invalid": "存档归档路径无法跨平台使用：%s",

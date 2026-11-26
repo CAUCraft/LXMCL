@@ -353,6 +353,7 @@
   "launch.world_unsupported": "This version does not declare singleplayer Quick Play. Start this instance normally and choose the world in the game.",
   "launch.world_target_invalid": "Choose one singleplayer world for a game launch.",
   "saves.world_changed": "World %s changed or moved. Reopen the world list and select it again.",
+  "saves.data_pack_changed": "The local data pack changed. Refresh its list and select it again.",
   "saves.no_worlds_to_back_up": "This instance has no worlds to back up",
   "saves.path_conflict": "Conflicting world archive path: %s",
   "saves.path_invalid": "World archive path is not portable: %s",

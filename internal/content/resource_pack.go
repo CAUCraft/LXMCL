@@ -3,27 +3,23 @@ package content
 import (
 	"archive/zip"
 	"context"
-	"encoding/json"
 	"errors"
 	"image"
 	"io"
 	"io/fs"
-	"math"
-	"strconv"
-	"strings"
 
 	"github.com/CAUCraft/LXMCL/internal/i18n"
 	"github.com/CAUCraft/LXMCL/internal/iconimage"
 	"github.com/CAUCraft/LXMCL/internal/instance"
-	"github.com/CAUCraft/LXMCL/internal/mctext"
+	"github.com/CAUCraft/LXMCL/internal/packmeta"
 	"github.com/CAUCraft/LXMCL/internal/storage"
 	"github.com/CAUCraft/LXMCL/internal/transfer"
 )
 
 type ResourcePackPreview struct {
-	Description, Format, Supported, Min, Max string
-	Cover                                    image.Image
-	MetadataErr, CoverErr                    error
+	packmeta.Metadata
+	Cover                 image.Image
+	MetadataErr, CoverErr error
 }
 
 // PreviewResourcePack opens only the selected local pack. The two root entries
@@ -96,9 +92,9 @@ func packEntry(ctx context.Context, pack fs.FS, name string, limit int64) ([]byt
 
 func readPackPreview(ctx context.Context, pack fs.FS) (ResourcePackPreview, error) {
 	var p ResourcePackPreview
-	meta, err := packEntry(ctx, pack, "pack.mcmeta", manifestLimit)
+	meta, err := packEntry(ctx, pack, packmeta.Filename, packmeta.MaxBytes)
 	if err == nil {
-		err = p.readMetadata(meta)
+		p.Metadata, err = packmeta.Decode(meta)
 	}
 	p.MetadataErr = err
 	png, err := packEntry(ctx, pack, "pack.png", iconimage.MaxPreviewBytes)
@@ -109,63 +105,4 @@ func readPackPreview(ctx context.Context, pack fs.FS) (ResourcePackPreview, erro
 		p.CoverErr = err
 	}
 	return p, ctx.Err()
-}
-
-func (p *ResourcePackPreview) readMetadata(data []byte) error {
-	var meta struct{ Pack map[string]any }
-	if err := json.Unmarshal(data, &meta); err != nil {
-		return err
-	}
-	if meta.Pack == nil {
-		return i18n.Error("resource.pack_metadata_invalid")
-	}
-	p.Description = mctext.Component(meta.Pack["description"], 4096)
-	p.Format = formatNumber(meta.Pack["pack_format"])
-	p.Min = formatVersion(meta.Pack["min_format"])
-	p.Max = formatVersion(meta.Pack["max_format"])
-	switch s := meta.Pack["supported_formats"].(type) {
-	case []any:
-		if len(s) == 2 {
-			p.Supported = formatRange(s[0], s[1])
-		}
-	case map[string]any:
-		p.Supported = formatRange(s["min_inclusive"], s["max_inclusive"])
-	default:
-		p.Supported = formatNumber(s)
-	}
-	return nil
-}
-
-func formatNumber(v any) string {
-	n, ok := v.(float64)
-	if !ok || n < 0 || n > math.MaxInt32 || n != math.Trunc(n) {
-		return ""
-	}
-	return strconv.Itoa(int(n))
-}
-
-func formatVersion(v any) string {
-	if pair, ok := v.([]any); ok {
-		if len(pair) < 1 || len(pair) > 2 {
-			return ""
-		}
-		var parts []string
-		for _, value := range pair {
-			n := formatNumber(value)
-			if n == "" {
-				return ""
-			}
-			parts = append(parts, n)
-		}
-		return strings.Join(parts, ".")
-	}
-	return formatNumber(v)
-}
-
-func formatRange(lo, hi any) string {
-	a, b := formatNumber(lo), formatNumber(hi)
-	if a == "" || b == "" {
-		return ""
-	}
-	return a + "–" + b
 }
