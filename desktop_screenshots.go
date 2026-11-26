@@ -7,7 +7,6 @@ import (
 	"io/fs"
 	"path/filepath"
 	"slices"
-	"strings"
 
 	"github.com/CAUCraft/LXMCL/internal/launcher"
 	"github.com/CAUCraft/LXMCL/internal/screenshots"
@@ -29,29 +28,15 @@ type screenshotGallery struct {
 	rows, matches                       []display.ListItem
 	entries                             map[string]screenshots.Entry
 	batch                               map[string]bool
-	query, appliedQuery                 string
+	query, dateFilter                   string
 	selected, viewerFrom                string
 	loading, folder, exporting, copying bool
 	err, previewErr                     string
 	picture                             ui.ImageSource
 	original                            *screenshots.Original
 	scroll                              ui.ScrollState
-}
 
-func (p *screenshotGallery) visibleRows() []display.ListItem {
-	if p.query == "" {
-		return p.rows
-	}
-	if p.appliedQuery != p.query {
-		p.appliedQuery, p.matches = p.query, nil
-		query := strings.ToLower(strings.TrimSpace(p.query))
-		for _, row := range p.rows {
-			if strings.Contains(strings.ToLower(row.Key), query) {
-				p.matches = append(p.matches, row)
-			}
-		}
-	}
-	return p.matches
+	appliedFilter, selectionFilter screenshotFilterKey
 }
 
 func (a *desktop) closeScreenshots() {
@@ -63,9 +48,9 @@ func (a *desktop) closeScreenshots() {
 	}
 }
 
-func (a *desktop) loadScreenshots(i launcher.Instance, selected, query string) {
+func (a *desktop) loadScreenshots(i launcher.Instance, selected, query, dateFilter string) {
 	a.closeScreenshots()
-	p := &screenshotGallery{instance: i, loading: true, query: query}
+	p := &screenshotGallery{instance: i, loading: true, query: query, dateFilter: dateFilter}
 	a.screenshots = p
 	if a.ctx == nil {
 		return
@@ -92,7 +77,10 @@ func (a *desktop) loadScreenshots(i launcher.Instance, selected, query string) {
 			if len(visible) == 0 {
 				return
 			}
-			if !slices.ContainsFunc(visible, func(row display.ListItem) bool { return row.Key == selected }) {
+			if !screenshotIsVisible(visible, selected) {
+				if dateFilter != "" {
+					return
+				}
 				selected = visible[0].Key
 			}
 			a.selectScreenshot(p, selected)
@@ -118,7 +106,7 @@ func (a *desktop) selectScreenshot(p *screenshotGallery, name string) {
 			picture = ui.NewBitmap(img)
 		}
 		a.post(func() {
-			if ctx.Err() != nil || a.screenshots != p {
+			if ctx.Err() != nil || a.screenshots != p || !screenshotIsVisible(p.visibleRows(), name) {
 				return
 			}
 			if err != nil {
@@ -130,7 +118,18 @@ func (a *desktop) selectScreenshot(p *screenshotGallery, name string) {
 	}()
 }
 
+func (a *desktop) currentScreenshotGallery(p *screenshotGallery) bool {
+	if a.screenshots != p || a.page != pageLibrary || a.detailPage != detailScreenshots || a.inspected != p.instance.ID {
+		return false
+	}
+	current, ok := a.state.Find(p.instance.ID)
+	return ok && current == p.instance
+}
+
 func (a *desktop) copyScreenshot(p *screenshotGallery, original *screenshots.Original) {
+	if a.ctx == nil || !a.currentScreenshotGallery(p) || !screenshotIsVisible(p.visibleRows(), p.selected) {
+		return
+	}
 	ctx, cancel := context.WithCancel(a.ctx)
 	if p.cancel != nil {
 		p.cancel()
@@ -148,7 +147,7 @@ func (a *desktop) copyScreenshot(p *screenshotGallery, original *screenshots.Ori
 				return
 			}
 			p.copying = false
-			if a.page != pageLibrary || a.detailPage != detailScreenshots || a.inspected != p.instance.ID {
+			if !a.currentScreenshotGallery(p) || !screenshotIsVisible(p.visibleRows(), p.selected) {
 				return
 			}
 			if err != nil {
@@ -165,9 +164,13 @@ func (a *desktop) copyScreenshot(p *screenshotGallery, original *screenshots.Ori
 }
 
 func (a *desktop) exportScreenshot(p *screenshotGallery) {
-	name := p.selected
+	name, original := p.selected, p.original
+	if !a.currentScreenshotGallery(p) || !screenshotIsVisible(p.visibleRows(), name) {
+		return
+	}
 	a.pickPath(mygo.OpenDialogOptions{Title: "选择截图导出目录", ButtonLabel: "导出到此处", Directory: true, CreateDirectories: true}, func(folder string) {
-		if a.screenshots != p || p.selected != name || p.exporting {
+		if !a.currentScreenshotGallery(p) || p.selected != name || p.original != original ||
+			!screenshotIsVisible(p.visibleRows(), name) || p.exporting || a.busy {
 			return
 		}
 		p.exporting = true
@@ -220,14 +223,19 @@ func screenshotCopyButton(c *ui.Context, p *screenshotGallery) *screenshots.Orig
 func (a *desktop) leaveScreenshotViewer(p *screenshotGallery) {
 	from := p.viewerFrom
 	p.viewerFrom = ""
-	if p.selected != from {
+	if p.selected != from && screenshotIsVisible(p.visibleRows(), from) {
 		a.selectScreenshot(p, from)
 	}
 }
 
 func (a *desktop) screenshotViewer(c *ui.Context, p *screenshotGallery) {
-	rows := p.visibleRows()
+	rows := a.currentScreenshotRows(c, p)
 	index := slices.IndexFunc(rows, func(row display.ListItem) bool { return row.Key == p.selected })
+	if index < 0 {
+		p.viewerFrom = ""
+		c.Invalidate()
+		return
+	}
 	target := index
 	var back bool
 	var toCopy, toIcon *screenshots.Original
@@ -268,7 +276,7 @@ func (a *desktop) screenshotViewer(c *ui.Context, p *screenshotGallery) {
 func (a *desktop) instanceScreenshots(c *ui.Context, i launcher.Instance) {
 	p := a.screenshots
 	if p == nil || p.instance != i {
-		a.loadScreenshots(i, "", "")
+		a.loadScreenshots(i, "", "", "")
 		p = a.screenshots
 	}
 	var toCopy *screenshots.Original
@@ -294,24 +302,20 @@ func (a *desktop) instanceScreenshots(c *ui.Context, i launcher.Instance) {
 	})
 	var rows []display.ListItem
 	var search ui.Element
-	if !p.loading && p.err == "" && (len(p.rows) > 0 || p.query != "") {
-		old := p.query
+	if !p.loading && p.err == "" && (len(p.rows) > 0 || p.query != "" || p.dateFilter != "") {
 		key := "mod+f"
 		if a.logOpen {
 			key = ""
 		}
-		search = field.SearchBar(c.Key("screenshot-search"), &p.query, field.SearchBarProps{
-			Placeholder: "搜索截图文件名", ShortKey: key,
-		}).Label("搜索截图文件名")
-		rows = p.visibleRows()
-		if old != p.query {
-			p.restrictBatchSelection(rows)
-			p.scroll = ui.ScrollState{}
-			if p.selected != "" && !slices.ContainsFunc(rows, func(row display.ListItem) bool { return row.Key == p.selected }) {
-				a.selectScreenshot(p, "")
-			}
-			c.Invalidate()
-		}
+		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+			search = field.SearchBar(c.Key("screenshot-search"), &p.query, field.SearchBarProps{
+				Placeholder: "搜索截图文件名", ShortKey: key,
+			}).Label("搜索截图文件名").Grow(1).MinWidth(0)
+			muted(c, "按修改日期").FontSize(12).Shrink(0)
+			field.Select(c.Key("screenshot-date-filter"), &p.dateFilter, field.SelectProps{Options: screenshotDateOptions}).
+				Label("修改日期").Width(132).Shrink(0)
+		})
+		rows = a.currentScreenshotRows(c, p)
 	}
 	if p.batch != nil {
 		a.screenshotBatchActions(c, p, rows)
@@ -328,8 +332,12 @@ func (a *desktop) instanceScreenshots(c *ui.Context, i launcher.Instance) {
 	case len(rows) == 0:
 		ui.Column(c).Grow(1).Center().Children(func() {
 			display.Empty(c, display.EmptyProps{Icon: lucide.Search(), Title: "没有匹配的截图", Action: func() {
-				if button(c, "清除截图搜索", action.Default, false) {
-					p.query, p.scroll = "", ui.ScrollState{}
+				label := "清除截图搜索"
+				if p.dateFilter != "" {
+					label = "清除截图筛选"
+				}
+				if button(c, label, action.Default, false) {
+					p.query, p.dateFilter = "", ""
 					search.Focus()
 					c.Invalidate()
 				}
@@ -359,7 +367,7 @@ func (a *desktop) instanceScreenshots(c *ui.Context, i launcher.Instance) {
 	}
 	switch {
 	case refresh:
-		a.loadScreenshots(i, p.selected, p.query)
+		a.loadScreenshots(i, p.selected, p.query, p.dateFilter)
 		c.Invalidate()
 	case toCopy != nil && p.original == toCopy:
 		a.copyScreenshot(p, toCopy)

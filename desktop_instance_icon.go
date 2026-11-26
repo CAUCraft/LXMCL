@@ -98,7 +98,8 @@ func (a *desktop) editScreenshotIcon(p *screenshotGallery, original *screenshots
 func (a *desktop) screenshotIconCurrent(source *screenshotIconSource) bool {
 	p := source.gallery
 	if a.screenshots != p || a.page != pageLibrary || a.detailPage != detailScreenshots ||
-		a.inspected != p.instance.ID || p.viewerFrom == "" || p.original != source.original || p.selected != source.name {
+		a.inspected != p.instance.ID || p.viewerFrom == "" || p.original != source.original || p.selected != source.name ||
+		!screenshotIsVisible(p.visibleRows(), source.name) {
 		return false
 	}
 	i, ok := a.state.Find(p.instance.ID)

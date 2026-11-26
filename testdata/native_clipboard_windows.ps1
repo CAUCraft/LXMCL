@@ -13,6 +13,7 @@ function Add-Mod($instance, $file, $id, $version) {
     } finally { $zip.Dispose() }
 }
 
+$script:lastControlStep = 'none'
 function Find-Control([string]$name, [switch]$Press) {
     $limit = [DateTime]::UtcNow.AddSeconds(20)
     $condition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, $name)
@@ -30,10 +31,25 @@ function Find-Control([string]$name, [switch]$Press) {
             }
             foreach ($node in $nodes) {
                 if (!$node.Current.IsEnabled) { continue }
-                if (!$Press) { return }
+                if (!$Press) { $script:lastControlStep = "ready '$name'"; return }
                 $pattern = $null
-                if ($node.TryGetCurrentPattern([Windows.Automation.InvokePattern]::Pattern, [ref]$pattern)) { $pattern.Invoke(); return }
-                if ($node.TryGetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern, [ref]$pattern)) { $pattern.Select(); return }
+                $method = $null
+                if ($node.TryGetCurrentPattern([Windows.Automation.InvokePattern]::Pattern, [ref]$pattern)) {
+                    $method = 'Invoke'
+                } elseif ($node.TryGetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern, [ref]$pattern)) {
+                    $method = 'Select'
+                }
+                if ($null -eq $method) { continue }
+                try {
+                    if ($method -eq 'Invoke') { $pattern.Invoke() } else { $pattern.Select() }
+                } catch {
+                    Write-Host "UI Automation $method failed for '$name'. Last successful control step was $script:lastControlStep."
+                    Write-Host ($_.Exception.ToString())
+                    Write-Host $_.ScriptStackTrace
+                    throw
+                }
+                $script:lastControlStep = "$method '$name'"
+                return
             }
         }
         Start-Sleep -Milliseconds 120

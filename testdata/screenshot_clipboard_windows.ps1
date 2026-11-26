@@ -29,7 +29,10 @@ function Assert-ImageCopy($file, $dimensions, [switch]$InViewer) {
                 # A Windows global memory block may include alignment padding after the PNG.
                 if ($actual.Length -ge $expected.Length -and
                     [Convert]::ToBase64String($actual, 0, $expected.Length) -ceq [Convert]::ToBase64String($expected) -and
-                    [Windows.Forms.Clipboard]::ContainsImage()) { return }
+                    [Windows.Forms.Clipboard]::ContainsImage()) {
+                    Write-Host "Verified screenshot '$($file.Name)' ($dimensions) on the Windows clipboard."
+                    return
+                }
             }
         }
         Start-Sleep -Milliseconds 100
