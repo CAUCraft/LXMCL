@@ -24,7 +24,16 @@ type Entry struct {
 }
 
 // Minecraft rotates dated logs; mod loaders also rotate numbered debug logs.
-var archivedLogName = regexp.MustCompile(`^(?:[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]+|debug-[0-9]+)\.log\.gz$`)
+const rotatedLogName = `(?:[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]+|debug-[0-9]+)`
+
+var archivedLogName = regexp.MustCompile(`^` + rotatedLogName + `\.log\.gz$`)
+var zipLogName = regexp.MustCompile(`^` + rotatedLogName + `(?:\.log)?\.zip$`)
+
+// IsInstanceLog includes recognized ZIP log archives, which are listed without previewing their contents.
+func IsInstanceLog(path string) bool {
+	return IsPreview(path) || filepath.IsAbs(path) && filepath.Base(filepath.Dir(path)) == "logs" &&
+		zipLogName.MatchString(filepath.Base(path))
+}
 
 // IsPreview recognizes launcher, game and crash diagnostics in their own directories.
 func IsPreview(path string) bool {
@@ -46,6 +55,7 @@ func Recent(ctx context.Context, gameDir string) ([]Entry, error) {
 	if !filepath.IsAbs(gameDir) {
 		return nil, i18n.Error("instance.game_dir_required")
 	}
+	gameDir = filepath.Clean(gameDir)
 	root, err := os.OpenRoot(gameDir)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
@@ -73,7 +83,7 @@ func Recent(ctx context.Context, gameDir string) ([]Entry, error) {
 				files, err := dir.ReadDir(64)
 				for _, file := range files {
 					path := filepath.Join(gameDir, directory, file.Name())
-					if !file.Type().IsRegular() || !IsPreview(path) {
+					if !file.Type().IsRegular() || !IsInstanceLog(path) {
 						continue
 					}
 					info, infoErr := file.Info()
@@ -124,40 +134,53 @@ func Recent(ctx context.Context, gameDir string) ([]Entry, error) {
 
 // CheckReveal verifies that the listed original still occupies its instance path.
 func (e Entry) CheckReveal(gameDir string) error {
-	if e.info == nil || !filepath.IsAbs(gameDir) || !IsPreview(e.Path) {
-		return fs.ErrInvalid
+	name, err := e.originalName(gameDir)
+	if err != nil {
+		return err
 	}
-	folder := filepath.Base(filepath.Dir(e.Path))
-	name := filepath.Join(folder, filepath.Base(e.Path))
-	relative, err := filepath.Rel(gameDir, e.Path)
-	if err != nil || relative != name {
-		return fs.ErrInvalid
-	}
-	root, err := os.OpenRoot(gameDir)
+	root, err := os.OpenRoot(filepath.Clean(gameDir))
 	if err != nil {
 		return err
 	}
 	defer root.Close()
+	_, err = e.checkOriginal(root, name)
+	return err
+}
+
+func (e Entry) originalName(gameDir string) (string, error) {
+	if e.info == nil || !filepath.IsAbs(gameDir) || !IsInstanceLog(e.Path) {
+		return "", fs.ErrInvalid
+	}
+	name := filepath.Join(filepath.Base(filepath.Dir(e.Path)), filepath.Base(e.Path))
+	relative, err := filepath.Rel(gameDir, e.Path)
+	if err != nil || relative != name {
+		return "", fs.ErrInvalid
+	}
+	return name, nil
+}
+
+func (e Entry) checkOriginal(root *os.Root, name string) (fs.FileInfo, error) {
+	folder := filepath.Dir(name)
 	parent, err := root.Lstat(folder)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if !parent.IsDir() {
-		return fs.ErrInvalid
+	if parent.Mode().Type() != fs.ModeDir {
+		return nil, fs.ErrInvalid
 	}
 	actual, err := root.Lstat(name)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if !actual.Mode().IsRegular() || !os.SameFile(e.info, actual) {
-		return fs.ErrInvalid
+		return nil, fs.ErrInvalid
 	}
 	current, err := root.Lstat(folder)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if !current.IsDir() || !os.SameFile(parent, current) {
-		return fs.ErrInvalid
+	if current.Mode().Type() != fs.ModeDir || !os.SameFile(parent, current) {
+		return nil, fs.ErrInvalid
 	}
-	return nil
+	return parent, nil
 }

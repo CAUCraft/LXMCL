@@ -168,6 +168,7 @@
   "log.archive_read_failed": "无法解压归档日志：%w",
   "log.crash_head": "\n\n仅显示崩溃报告开头 64 KiB。\n",
   "log.directory_read_failed": "无法读取 %s：%w",
+  "log.export_original_suffix": "请保留原文件扩展名 %s",
   "log.export_path_required": "请选择完整的保存路径",
   "log.export_source_conflict": "请选择新的文本文件，不能覆盖日志或崩溃报告",
   "log.game_create_failed": "无法创建游戏日志：%w",

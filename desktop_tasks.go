@@ -569,6 +569,9 @@ func (a *desktop) progress(c *ui.Context) {
 }
 
 func (a *desktop) logDialog(c *ui.Context) {
+	if p := a.logLibrary; p != nil && p.original != nil && !a.currentOriginalExport(p, p.original) {
+		p.stopOriginalExport()
+	}
 	title := "游戏日志"
 	if a.logLibrary != nil {
 		title = "日志与崩溃报告"
@@ -630,6 +633,8 @@ func (a *desktop) logDialog(c *ui.Context) {
 					} else if len(a.logLibrary.entries) > 0 {
 						content = "最近的日志列表中没有此类型的文件。"
 					}
+				} else if a.logLibrary != nil && !launcherlog.IsPreview(a.logPath) {
+					content = "ZIP 归档可导出原件。"
 				} else if a.logError != "" {
 					content = "请刷新重试，或打开原文件查看。"
 				} else if a.logText == "" && a.logPath != "" {
@@ -637,7 +642,7 @@ func (a *desktop) logDialog(c *ui.Context) {
 				}
 			}
 			_, height := c.Size()
-			reserved := float32(340)
+			reserved, minPreview := float32(340), float32(80)
 			if a.logDiagnosis.Cause != "" && detail == "" {
 				layout.ScrollArea(c.Key("log-diagnosis"), layout.ScrollAreaProps{}, func() { a.diagnosisPanel(c) }).MaxHeight(92)
 				reserved += 102
@@ -647,6 +652,15 @@ func (a *desktop) logDialog(c *ui.Context) {
 			}
 			if detail != "" {
 				reserved += 90
+			}
+			if p := a.logLibrary; p != nil && p.originalErr != "" {
+				layout.ScrollArea(c.Key("log-original-error"), layout.ScrollAreaProps{}, func() {
+					feedback.Alert(c, "无法导出原始日志", feedback.AlertProps{Type: feedback.Error, Description: p.originalErr})
+				}).MaxHeight(72)
+				reserved += 82
+				if detail != "" {
+					minPreview = 56
+				}
 			}
 			layout.ScrollArea(c.Key(a.logPath), layout.ScrollAreaProps{State: &a.logScroll}, func() {
 				if preview.text == "" && a.logText != "" && !a.logReading && (a.logQuery != "" || a.logFilter != 0) {
@@ -661,15 +675,22 @@ func (a *desktop) logDialog(c *ui.Context) {
 					return
 				}
 				display.Text(c, content, display.TextProps{Code: true, FontSize: 12}).Padding(12).Selectable()
-			}).Height(max(80, min(340, height-reserved))).Radius(8).Background(theme.TokensOf(c).FillTertiary)
+			}).Height(max(minPreview, min(340, height-reserved))).Radius(8).Background(theme.TokensOf(c).FillTertiary)
 			hint := "最近 64 KiB · 按日志条目筛选，保留堆栈"
 			if a.logLibrary != nil {
 				hint = "最近 30 个文件 · 预览末尾 64 KiB · 保留堆栈"
 				if filepath.Base(filepath.Dir(a.logPath)) == "crash-reports" {
 					hint = "最近 30 个文件 · 报告开头 64 KiB · 按章节筛选"
+				} else if a.logPath != "" && !launcherlog.IsPreview(a.logPath) {
+					hint = "最近 30 个文件 · ZIP 归档"
 				}
 			}
-			muted(c, hint).FontSize(12)
+			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+				muted(c, hint).FontSize(12).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+				if p := a.logLibrary; p != nil && a.logPath != "" {
+					muted(c, "原始日志可能含个人信息").FontSize(12).SingleLine().Shrink(0)
+				}
+			})
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Justify(ui.End).Children(func() {
 				caption := fmt.Sprintf("显示 %d 行", preview.lines)
 				if a.logReading {
@@ -679,18 +700,26 @@ func (a *desktop) logDialog(c *ui.Context) {
 				} else if a.logExported {
 					caption = "已导出预览"
 				}
-				muted(c, caption).FontSize(12).Grow(1)
+				if p := a.logLibrary; p != nil {
+					if p.original != nil {
+						caption = "正在导出原始日志…"
+					} else if p.originalDone {
+						caption = "已导出原始日志"
+					}
+				}
+				muted(c, caption).FontSize(12).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 				action.CopyButton(c.Key(a.logPath), preview.text, action.CopyButtonProps{}).Label("复制当前日志").Disabled(preview.text == "" || a.logReading)
-				if button(c, "导出预览…", action.Default, preview.text == "" || a.logReading || a.logExporting || a.pickerBusy) {
+				if button(c, "导出预览…", action.Default, preview.text == "" || a.logReading || a.logExporting || a.pickerBusy || a.logLibrary != nil && a.logLibrary.original != nil) {
 					a.exportLog(preview.text)
 				}
 				if p := a.logLibrary; p != nil {
 					entry, selected := p.selectedEntry(a.logPath)
+					a.originalLogAction(c, p, entry, selected)
 					if button(c.Key(entry), "在文件夹中显示", action.Default, !selected || p.reading || p.revealing) {
 						a.revealInstanceLog(p, entry)
 					}
 				}
-				if button(c, "打开文件", action.Default, a.logPath == "") {
+				if button(c, "打开文件", action.Default, !launcherlog.IsPreview(a.logPath)) {
 					a.openLog(a.logPath)
 				}
 				if button(c, "关闭", action.Primary, false) {
@@ -699,8 +728,11 @@ func (a *desktop) logDialog(c *ui.Context) {
 			})
 		})
 	})
-	if !a.logOpen && a.logCancel != nil {
-		a.stopLogRead()
+	if !a.logOpen {
+		a.logLibrary.stopOriginalExport()
+		if a.logCancel != nil {
+			a.stopLogRead()
+		}
 	}
 }
 
