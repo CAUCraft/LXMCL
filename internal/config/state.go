@@ -23,6 +23,7 @@ type State struct {
 	InstanceNotes    map[int]string           `json:"instance_notes,omitempty"`
 	InstanceIcons    map[int]string           `json:"instance_icons,omitempty"`
 	PinnedInstances  map[int]bool             `json:"pinned_instances,omitempty"`
+	PinnedWorlds     map[int]map[string]bool  `json:"pinned_worlds,omitempty"`
 	InstanceGroups   map[int]string           `json:"instance_groups,omitempty"`
 	LibraryLoader    string                   `json:"library_loader,omitempty"`
 	LibraryVersion   string                   `json:"library_version,omitempty"`
@@ -40,6 +41,10 @@ func (s State) Clone() State {
 	s.Instances = slices.Clone(s.Instances)
 	s.InstanceNotes = maps.Clone(s.InstanceNotes)
 	s.PinnedInstances = maps.Clone(s.PinnedInstances)
+	s.PinnedWorlds = maps.Clone(s.PinnedWorlds)
+	for id, worlds := range s.PinnedWorlds {
+		s.PinnedWorlds[id] = maps.Clone(worlds)
+	}
 	s.InstanceGroups = maps.Clone(s.InstanceGroups)
 	s.SkippedModUpdates = maps.Clone(s.SkippedModUpdates)
 	for id, versions := range s.SkippedModUpdates {

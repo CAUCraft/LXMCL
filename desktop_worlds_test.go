@@ -153,9 +153,10 @@ func TestWorldSortUsesSavedTimeAndKeepsFolderSelection(t *testing.T) {
 		t.Fatal(worlds, err)
 	}
 	p := &worldBrowser{entries: worlds, visible: worlds, selected: 1, order: sortRecent}
+	var pinned map[string]bool
 	check := func(selected string, order ...string) {
 		t.Helper()
-		p.filter()
+		p.filter(pinned)
 		var got []string
 		for _, w := range p.visible {
 			got = append(got, w.Folder())
@@ -166,10 +167,16 @@ func TestWorldSortUsesSavedTimeAndKeepsFolderSelection(t *testing.T) {
 		}
 	}
 	check("01 河谷", "02 河谷", "03 河谷", "01 河谷", "00 旧世界", "04 旧世界")
+	pinned = map[string]bool{"04 旧世界": true, "01 河谷": true, "已移走": true}
+	check("01 河谷", "01 河谷", "04 旧世界", "02 河谷", "03 河谷", "00 旧世界")
 	p.query = "河谷"
+	check("01 河谷", "01 河谷", "02 河谷", "03 河谷")
+	delete(pinned, "01 河谷")
 	check("01 河谷", "02 河谷", "03 河谷", "01 河谷")
 	p.query = "无匹配"
 	check("")
 	p.query, p.order = "", ""
+	check("", "04 旧世界", "00 旧世界", "01 河谷", "02 河谷", "03 河谷")
+	pinned = nil
 	check("", "00 旧世界", "01 河谷", "02 河谷", "03 河谷", "04 旧世界")
 }
