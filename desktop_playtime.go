@@ -19,6 +19,22 @@ func formatPlaytime(millis int64) string {
 	}
 }
 
+func formatLaunchRuntime(millis int64) string {
+	seconds := millis / 1000
+	switch {
+	case millis == 0:
+		return "不足 1 毫秒"
+	case seconds == 0:
+		return fmt.Sprintf("%d 毫秒", millis)
+	case seconds < 60:
+		return fmt.Sprintf("%d 秒", seconds)
+	case seconds < 3600:
+		return fmt.Sprintf("%d 分钟 %d 秒", seconds/60, seconds%60)
+	default:
+		return fmt.Sprintf("%d 小时 %d 分钟 %d 秒", seconds/3600, seconds/60%60, seconds%60)
+	}
+}
+
 func (a *desktop) playtimeOverview(c *ui.Context, id int) {
 	if a.playtimeErr != nil {
 		feedback.Alert(c, "游玩记录读写失败："+a.playtimeErr.Error(), feedback.AlertProps{Type: feedback.Error})

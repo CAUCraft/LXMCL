@@ -49,6 +49,7 @@ type Record struct {
 	ModUpdateBackup LocalZIP        `json:"mod_update_backup,omitzero"`
 	ModUpdates      ModUpdateReport `json:"mod_updates,omitzero"`
 	ID              string          `json:"id,omitempty"`
+	RunMillis       *int64          `json:"run_ms,omitempty"` // Set only after observing a game process exit.
 
 	InstanceID  int       `json:"instance_id,omitempty"`
 	Revision    uint64    `json:"instance_revision,omitempty"`

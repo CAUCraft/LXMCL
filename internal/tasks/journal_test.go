@@ -13,8 +13,8 @@ import (
 func TestJournalUpdatesOriginalTaskWithoutLosingNewerRecords(t *testing.T) {
 	var journal Journal
 	root := t.TempDir()
-	started := (Record{At: time.Now(), Status: Started, Log: "game.log", PID: 7}).Submitted()
-	another := (Record{At: started.At, Status: Completed}).Submitted()
+	started := (Record{At: time.Now(), InstanceID: 1, Name: "同名", Action: Launch, Status: Started, Log: "game.log", PID: 7}).Submitted()
+	another := (Record{At: started.At, InstanceID: 2, Name: started.Name, Action: Launch, Status: Failed}).Submitted()
 	if _, err := journal.Record(root, started); err != nil {
 		t.Fatal(err)
 	}
@@ -22,12 +22,21 @@ func TestJournalUpdatesOriginalTaskWithoutLosingNewerRecords(t *testing.T) {
 		t.Fatal(err)
 	}
 	started.Status = Exited
+	millis := int64(0)
+	started.RunMillis = &millis
 	if _, err := journal.Record(root, started); err != nil {
 		t.Fatal(err)
 	}
 	records, err := Load(root)
-	if err != nil || len(records) != 2 || records[0].ID != started.ID || records[1].ID != another.ID || records[0].PID != 7 {
+	if err != nil || len(records) != 2 || records[0].ID != started.ID || records[1].ID != another.ID || records[0].PID != 7 ||
+		records[0].RunMillis == nil || *records[0].RunMillis != 0 || records[1].RunMillis != nil {
 		t.Fatalf("lost task or process result: %v %v", records, err)
+	}
+	snapshot := journal.Snapshot()
+	*snapshot[0].RunMillis = 800
+	millis = 900
+	if got := *journal.Snapshot()[0].RunMillis; got != 0 {
+		t.Fatalf("changed the duration in another history snapshot: %d", got)
 	}
 }
 func TestLegacyHistoryKeepsIdentity(t *testing.T) {
