@@ -31,7 +31,7 @@ type contentView struct {
 	modNotes    *modReleaseNotesView
 	modPreview  *modUpdatePreview
 	restoreMods *modRestoreView
-	copyMods    *modCopyView
+	copyLocal   *localCopyView
 	mods        map[string]launcher.InstalledMod
 	checking    bool
 	checkError  string
@@ -114,7 +114,7 @@ func (a *desktop) refreshContent(i launcher.Instance) {
 	a.content.savedPacks = nil
 	a.content.restoreMods = nil
 	a.content.packPreview = nil
-	a.content.copyMods = nil
+	a.content.copyLocal = nil
 	a.content.comparison = nil
 	a.content.listing = nil
 	if a.ctx == nil {
@@ -191,8 +191,8 @@ func (a *desktop) instanceContent(c *ui.Context, i launcher.Instance) {
 		a.savedPackOrder(c, i, v.savedPacks)
 		return
 	}
-	if v.copyMods != nil {
-		a.modCopy(c, i, v.copyMods)
+	if v.copyLocal != nil {
+		a.localCopy(c, i, v.copyLocal)
 		return
 	}
 	if v.comparison != nil {
@@ -516,10 +516,13 @@ func (a *desktop) contentList(c *ui.Context, i launcher.Instance, disabled bool)
 		layout.Divider(c, layout.DividerProps{})
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 			muted(c, fmt.Sprintf("已选 %d 项", count)).FontSize(12).Grow(1)
-			if v.kind() == launcher.Mods {
+			kind := v.kind()
+			if kind == launcher.Mods || kind == launcher.ResourcePacks {
 				if button(c, "复制到实例…", action.Default, disabled) {
-					v.copyMods = &modCopyView{selected: v.selection(files)}
+					v.copyLocal = &localCopyView{selected: v.selection(files), kind: kind, source: i}
 				}
+			}
+			if kind == launcher.Mods {
 				if button(c, "备份 ZIP…", action.Default, disabled) {
 					a.chooseModBackup(i, v.selection(files))
 				}

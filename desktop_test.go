@@ -880,12 +880,12 @@ func TestResourceAndServerEntrypoints(t *testing.T) {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if a.content.copyMods == nil || a.content.copyMods.target.ID != 0 || !tt.HasText("没有游戏版本和加载器相同的其他实例。") {
+	if a.content.copyLocal == nil || a.content.copyLocal.target.ID != 0 || !tt.HasText("没有游戏版本和加载器相同的其他实例。") {
 		t.Fatal("copy offered an incompatible instance", tt.Texts())
 	}
 	tt.Key(0, ui.KeyEscape)
 	tt.Frame()
-	if a.content.copyMods != nil || len(a.content.selected) != 3 || a.inspected != i.ID || a.state.Selected != 1 {
+	if a.content.copyLocal != nil || len(a.content.selected) != 3 || a.inspected != i.ID || a.state.Selected != 1 {
 		t.Fatal("canceling copy lost the selection or changed the instance")
 	}
 

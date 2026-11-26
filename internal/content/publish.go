@@ -25,6 +25,10 @@ func publishResource(ctx context.Context, i instance.Instance, kind Kind, file F
 		return err
 	}
 	defer root.Close()
+	return publishResourceIn(ctx, root, i, kind, file, prepare)
+}
+
+func publishResourceIn(ctx context.Context, root *os.Root, i instance.Instance, kind Kind, file File, prepare func(*os.File) error) error {
 	other := file
 	other.Enabled = !file.Enabled
 	if err := checkResourceConflict(root, other); err != nil {

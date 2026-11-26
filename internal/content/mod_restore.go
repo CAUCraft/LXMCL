@@ -24,7 +24,7 @@ type ModRestorePlan struct {
 	target   instance.Instance
 	filename string
 	snapshot fs.FileInfo
-	Items    []ModCopyItem
+	Items    []CopyItem
 }
 
 // withModBackup validates the whole archive before using its direct mods/ entries.
@@ -85,7 +85,7 @@ func PreviewModRestore(ctx context.Context, target instance.Instance, filename s
 			if !inside || !ValidName(name, ".jar") {
 				continue
 			}
-			item := ModCopyItem{File: File{Name: name, Enabled: !disabled, Size: int64(entries[entry].UncompressedSize64)}}
+			item := CopyItem{File: File{Name: name, Enabled: !disabled, Size: int64(entries[entry].UncompressedSize64)}}
 			if err := inspectBackupMod(ctx, entries[entry], markers, &item); err != nil {
 				return fmt.Errorf("%s: %w", disk, err)
 			}
@@ -118,7 +118,7 @@ func PreviewModRestore(ctx context.Context, target instance.Instance, filename s
 
 // A compressed JAR must be seekable for the manifest reader. Spool one bounded
 // entry at a time without extracting into the instance or keeping it after preview.
-func inspectBackupMod(ctx context.Context, e *zip.File, markers []string, item *ModCopyItem) error {
+func inspectBackupMod(ctx context.Context, e *zip.File, markers []string, item *CopyItem) error {
 	src, err := e.Open()
 	if err != nil {
 		return err
