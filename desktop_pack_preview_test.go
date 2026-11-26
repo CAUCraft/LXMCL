@@ -27,7 +27,7 @@ func TestResourcePackDirectoryStaysReadOnly(t *testing.T) {
 			t.Fatal(tt.Texts())
 		}
 	}
-	p := &resourcePackView{file: files[0]}
+	p := &resourcePackView{instance: i, file: files[0]}
 	p.data.Description = "初春的森林"
 	p.data.Format = "34"
 	a.content.packPreview = p

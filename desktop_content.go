@@ -198,7 +198,7 @@ func (a *desktop) instanceContent(c *ui.Context, i launcher.Instance) {
 		return
 	}
 	if v.packPreview != nil {
-		a.resourcePackPreview(c, i, v.packPreview)
+		a.resourcePackPreview(c, v.packPreview)
 		return
 	}
 	if v.packComparison != nil {

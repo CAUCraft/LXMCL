@@ -5,6 +5,7 @@ import (
 
 	"github.com/CAUCraft/LXMCL/internal/content"
 	"github.com/CAUCraft/LXMCL/internal/launcher"
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"github.com/lobehub/lobe-mygo/pkg/display"
 	"github.com/lobehub/lobe-mygo/pkg/feedback"
@@ -13,11 +14,22 @@ import (
 )
 
 type resourcePackView struct {
-	file    launcher.ContentFile
-	data    content.ResourcePackPreview
-	picture ui.ImageSource
-	loading bool
-	err     error
+	instance                launcher.Instance
+	revealing, revealFailed bool
+	file                    launcher.ContentFile
+	data                    content.ResourcePackPreview
+	picture                 ui.ImageSource
+	loading                 bool
+	err                     error
+}
+
+func (a *desktop) inPackPreview(p *resourcePackView) bool {
+	if a.content.packPreview != p || a.page != pageLibrary || a.detailPage != detailContent ||
+		a.inspected != p.instance.ID || a.content.kind() != launcher.ResourcePacks {
+		return false
+	}
+	instance, ok := a.state.Find(p.instance.ID)
+	return ok && instance == p.instance
 }
 
 func (a *desktop) closePackPreview() {
@@ -34,13 +46,13 @@ func (a *desktop) openPackPreview(i launcher.Instance, file launcher.ContentFile
 	a.closePackPreview()
 	ctx, cancel := context.WithCancel(a.ctx)
 	a.contentCancel = cancel
-	p := &resourcePackView{file: file, loading: true}
+	p := &resourcePackView{instance: i, file: file, loading: true}
 	a.content.packPreview = p
 	go func() {
 		defer cancel()
 		data, err := content.PreviewResourcePack(ctx, i, file)
 		a.post(func() {
-			if a.content.packPreview != p {
+			if !a.inPackPreview(p) {
 				return
 			}
 			p.data, p.err, p.loading = data, err, false
@@ -51,20 +63,52 @@ func (a *desktop) openPackPreview(i launcher.Instance, file launcher.ContentFile
 	}()
 }
 
-func (a *desktop) resourcePackPreview(c *ui.Context, i launcher.Instance, p *resourcePackView) {
+func (a *desktop) revealPackFile(p *resourcePackView) {
+	if a.ctx == nil || p.loading || p.revealing || !a.inPackPreview(p) {
+		return
+	}
+	p.revealing, p.revealFailed = true, false
+	go func() {
+		path, err := p.file.ResourcePackRevealPath(p.instance)
+		a.post(func() {
+			if !a.inPackPreview(p) {
+				return
+			}
+			p.revealing, p.revealFailed = false, err != nil
+			if err == nil {
+				mygo.Shell.ShowItemInFolder(path)
+			}
+		})
+	}()
+}
+
+func (a *desktop) resourcePackPreview(c *ui.Context, p *resourcePackView) {
+	var back, reveal, refresh bool
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-		back := "返回资源包列表"
+		backLabel := "返回资源包列表"
 		if a.content.savedPacks != nil {
-			back = "返回游戏上次选择"
+			backLabel = "返回游戏上次选择"
 		}
-		if icon(c, lucide.ArrowLeft(), back, false) {
-			a.closePackPreview()
-		}
-		display.Text(c, p.file.Name, display.TextProps{Strong: true, FontSize: 16, Rows: 1}).Grow(1).MinWidth(0).Ellipsis("…")
-		if icon(c, lucide.RefreshCw(), "重新读取资源包", p.loading) {
-			a.openPackPreview(i, p.file)
-		}
+		back = icon(c, lucide.ArrowLeft(), backLabel, false)
+		display.Text(c, p.file.DiskName(), display.TextProps{Strong: true, FontSize: 16, Rows: 1}).Grow(1).MinWidth(0).Ellipsis("…")
+		reveal = icon(c, lucide.FolderOpen(), "在文件夹中显示", p.loading || p.revealing)
+		refresh = icon(c, lucide.RefreshCw(), "重新读取资源包", p.loading)
 	})
+	switch {
+	case back:
+		a.closePackPreview()
+		c.Invalidate()
+		return
+	case refresh:
+		a.openPackPreview(p.instance, p.file)
+		c.Invalidate()
+		return
+	case reveal:
+		a.revealPackFile(p)
+	}
+	if p.revealFailed {
+		feedback.Alert(c, "无法定位资源包", feedback.AlertProps{Type: feedback.Error, Description: "请返回并刷新资源列表后重试。"})
+	}
 	if p.loading {
 		flightLoading(c, "正在读取资源包…")
 		return

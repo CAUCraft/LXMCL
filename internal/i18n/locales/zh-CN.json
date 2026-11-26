@@ -304,6 +304,7 @@
   "progress.verify_station": "验证皮肤站登录",
   "progress.with_mirror": "%s · 镜像",
   "resource.saved_packs_invalid": "options.txt 中的 resourcePacks 不是有效的资源包标识列表。请在游戏中重新保存选择后刷新。",
+  "resource.pack_preview_changed": "资源包已变化，请返回并刷新列表后重试。",
   "resource.pack_metadata_invalid": "pack.mcmeta 缺少有效的 pack 对象",
   "resource.archive_invalid": "资源不是有效的 ZIP/JAR：%w",
   "resource.archive_missing_marker": "资源文件缺少 %s",

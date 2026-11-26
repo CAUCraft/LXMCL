@@ -8,6 +8,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
@@ -82,5 +83,63 @@ func TestInstalledResourcePackPreviews(t *testing.T) {
 	cancel()
 	if _, err = content.PreviewResourcePack(ctx, i, files[0]); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
+	}
+}
+
+func TestResourcePackRevealPath(t *testing.T) {
+	first := instance.Instance{ID: 1, Name: "同名实例", GameDir: t.TempDir()}
+	second := instance.Instance{ID: 2, Name: first.Name, GameDir: t.TempDir()}
+	names := []string{"同名包.zip", "同名包.zip.disabled", "四季 目录"}
+	write := func(i instance.Instance, name string) string {
+		t.Helper()
+		path := filepath.Join(i.GameDir, string(content.ResourcePacks), name)
+		marker := path
+		if name == names[2] {
+			marker = filepath.Join(path, "pack.mcmeta")
+		}
+		if err := os.MkdirAll(filepath.Dir(marker), 0700); err != nil {
+			t.Fatal(err)
+		}
+		// The locator accepts an ordinary file even when its preview cannot decode.
+		if err := os.WriteFile(marker, []byte("ordinary file"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	for _, name := range names {
+		write(first, name)
+		write(second, name)
+	}
+	files, err := content.Inventory(t.Context(), second, content.ResourcePacks)
+	if err != nil || len(files) != len(names) {
+		t.Fatal(files, err)
+	}
+	for _, file := range files {
+		name := file.DiskName()
+		want := filepath.Join(second.GameDir, string(content.ResourcePacks), name)
+		if got, err := file.ResourcePackRevealPath(second); got != want || err != nil {
+			t.Fatalf("reveal %q = %q, %v; want %q", name, got, err, want)
+		}
+		if got, err := file.ResourcePackRevealPath(first); got != "" || !errors.Is(err, fs.ErrInvalid) {
+			t.Fatalf("revealed the same name in another instance: %q, %v", got, err)
+		}
+		if err := os.Rename(want, filepath.Join(second.GameDir, name)); err != nil {
+			t.Fatal(err)
+		}
+		if got, err := file.ResourcePackRevealPath(second); got != "" || !errors.Is(err, fs.ErrNotExist) {
+			t.Fatalf("revealed missing entry %q: %q, %v", name, got, err)
+		}
+		write(second, name)
+		if err := os.Chtimes(want, file.Modified, file.Modified); err != nil {
+			t.Fatal(err)
+		}
+		if got, err := file.ResourcePackRevealPath(second); got != "" || !errors.Is(err, fs.ErrInvalid) {
+			t.Fatalf("revealed a same-name replacement: %q, %v", got, err)
+		}
+		if file.Directory {
+			if _, err := content.PreviewResourcePack(t.Context(), second, file); err == nil {
+				t.Fatal("preview opened a same-name replacement directory")
+			}
+		}
 	}
 }

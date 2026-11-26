@@ -6,9 +6,10 @@ import (
 	"path/filepath"
 
 	"github.com/CAUCraft/LXMCL/internal/instance"
+	"github.com/CAUCraft/LXMCL/internal/storage"
 )
 
-type modFileLocation struct {
+type contentFileLocation struct {
 	directory, file fs.FileInfo
 }
 
@@ -19,7 +20,27 @@ func (f File) ModRevealPath(i instance.Instance) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if f.location == nil || !ValidName(f.Name, ext) || !filepath.IsAbs(i.GameDir) {
+	if !ValidName(f.Name, ext) {
+		return "", fs.ErrInvalid
+	}
+	return f.revealPath(i, Mods, 0)
+}
+
+// ResourcePackRevealPath checks the exact inventory entry, including an
+// optional .disabled suffix. A preview need not decode for this check.
+func (f File) ResourcePackRevealPath(i instance.Instance) (string, error) {
+	if !storage.ValidFilename(f.DiskName()) || !f.Directory && !ValidName(f.Name, ".zip") {
+		return "", fs.ErrInvalid
+	}
+	var entryType fs.FileMode
+	if f.Directory {
+		entryType = fs.ModeDir
+	}
+	return f.revealPath(i, ResourcePacks, entryType)
+}
+
+func (f File) revealPath(i instance.Instance, kind Kind, entryType fs.FileMode) (string, error) {
+	if f.location == nil || !filepath.IsAbs(i.GameDir) {
 		return "", fs.ErrInvalid
 	}
 	gameDir := filepath.Clean(i.GameDir)
@@ -28,8 +49,12 @@ func (f File) ModRevealPath(i instance.Instance) (string, error) {
 		return "", err
 	}
 	defer game.Close()
+	gameIdentity, err := game.Stat(".")
+	if err != nil {
+		return "", err
+	}
 
-	folder := string(Mods)
+	folder := string(kind)
 	directory, err := game.Lstat(folder)
 	if err != nil {
 		return "", err
@@ -42,7 +67,7 @@ func (f File) ModRevealPath(i instance.Instance) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if !file.Mode().IsRegular() || !os.SameFile(f.location.file, file) {
+	if file.Mode().Type() != entryType || !os.SameFile(f.location.file, file) {
 		return "", fs.ErrInvalid
 	}
 	current, err := game.Lstat(folder)
@@ -50,6 +75,13 @@ func (f File) ModRevealPath(i instance.Instance) (string, error) {
 		return "", err
 	}
 	if current.Mode().Type() != fs.ModeDir || !os.SameFile(directory, current) {
+		return "", fs.ErrInvalid
+	}
+	currentGame, err := os.Stat(gameDir)
+	if err != nil {
+		return "", err
+	}
+	if !os.SameFile(gameIdentity, currentGame) {
 		return "", fs.ErrInvalid
 	}
 	return filepath.Join(gameDir, name), nil

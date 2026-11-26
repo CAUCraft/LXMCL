@@ -126,6 +126,9 @@ func (a *desktop) view(c *ui.Context) {
 		if a.page != pageNetwork && a.gameServers != nil {
 			a.closeGameServers()
 		}
+		if p := a.content.packPreview; p != nil && !a.inPackPreview(p) {
+			a.closePackPreview()
+		}
 		if p := a.content.packComparison; p != nil && !a.inPackComparison(p) {
 			a.closePackComparison()
 		}
