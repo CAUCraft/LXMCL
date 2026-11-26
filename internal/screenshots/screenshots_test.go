@@ -60,6 +60,12 @@ func TestGalleryReadsOnlyInstancePNGsInTimeOrder(t *testing.T) {
 	if err != nil || !bytes.Equal(full, read(filepath.Join(dir, rows[0].Name))) {
 		t.Fatal("clipboard image differs from the original 2000-pixel PNG", err)
 	}
+	if _, err := original.PNGWithin(t.Context(), int64(len(full)-1)); !errors.Is(err, ErrPNGTooLarge) {
+		t.Fatal("original exceeded the caller's byte budget")
+	}
+	if same, err := original.PNGWithin(t.Context(), int64(len(full))); err != nil || !bytes.Equal(full, same) {
+		t.Fatal("original within the caller's byte budget was not returned", err)
+	}
 	out := filepath.Join(folder, rows[0].Name)
 	if !bytes.Equal(read(out), read(filepath.Join(dir, rows[0].Name))) {
 		t.Fatal("export differs from original 2000-pixel PNG")
@@ -72,5 +78,15 @@ func TestGalleryReadsOnlyInstancePNGsInTimeOrder(t *testing.T) {
 	}
 	if _, _, err := Preview(t.Context(), t.TempDir(), rows[0].Name); !errors.Is(err, fs.ErrNotExist) {
 		t.Fatal(err)
+	}
+	var replacement bytes.Buffer
+	if err := png.Encode(&replacement, image.NewGray(image.Rect(0, 0, 16, 9))); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, rows[0].Name), replacement.Bytes(), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := original.PNGWithin(t.Context(), int64(len(full))); err == nil {
+		t.Fatal("accepted a different PNG under the same name")
 	}
 }

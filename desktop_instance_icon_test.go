@@ -38,6 +38,13 @@ func TestInstanceIconSurvivesMovingSourceAndReset(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, encoded, err := iconimage.ImportPNGBytes(t.Context(), raw); err != nil || encoded != data {
+		t.Fatal("in-memory PNG import differs from file import", err)
+	}
 	if err := a.state.SetInstanceIcon(target.ID, target.Revision, "", data); err != nil {
 		t.Fatal(err)
 	}

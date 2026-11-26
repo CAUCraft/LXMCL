@@ -230,21 +230,24 @@ func (a *desktop) screenshotViewer(c *ui.Context, p *screenshotGallery) {
 	index := slices.IndexFunc(rows, func(row display.ListItem) bool { return row.Key == p.selected })
 	target := index
 	var back bool
-	var toCopy *screenshots.Original
+	var toCopy, toIcon *screenshots.Original
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 		back = button(c, "返回图库", action.Default, false)
 		display.Text(c, p.selected, display.TextProps{Strong: true, Rows: 1}).Grow(1).MinWidth(0).Ellipsis("…")
 		if p.original != nil {
 			muted(c, fmt.Sprintf("%d × %d", p.original.Size.X, p.original.Size.Y)).Shrink(0)
 		}
-		if icon(c, lucide.ChevronLeft(), "上一张", index <= 0) || c.Shortcut(0, ui.KeyLeft) {
+		if icon(c, lucide.ChevronLeft(), "上一张", index <= 0) || !a.form.open && c.Shortcut(0, ui.KeyLeft) {
 			target = index - 1
 		}
 		muted(c, fmt.Sprintf("%d / %d", index+1, len(rows)))
-		if icon(c, lucide.ChevronRight(), "下一张", index+1 >= len(rows)) || c.Shortcut(0, ui.KeyRight) {
+		if icon(c, lucide.ChevronRight(), "下一张", index+1 >= len(rows)) || !a.form.open && c.Shortcut(0, ui.KeyRight) {
 			target = index + 1
 		}
 		toCopy = screenshotCopyButton(c, p)
+		if button(c.Key(p.original).Key("icon"), "用作实例图标…", action.Default, p.original == nil || a.busy || a.pickerBusy) {
+			toIcon = p.original
+		}
 	})
 	switch {
 	case back:
@@ -256,6 +259,8 @@ func (a *desktop) screenshotViewer(c *ui.Context, p *screenshotGallery) {
 		c.Invalidate()
 	case toCopy != nil:
 		a.copyScreenshot(p, toCopy)
+	case toIcon != nil:
+		a.editScreenshotIcon(p, toIcon)
 	}
 	screenshotPreview(c, p, false)
 }
