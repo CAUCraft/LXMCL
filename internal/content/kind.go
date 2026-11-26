@@ -20,6 +20,7 @@ type File struct {
 	Name             string
 	ModTitle, ModIDs string
 	mods             []manifestMod
+	location         *modFileLocation
 	Size             int64
 	Directory        bool
 	Enabled          bool

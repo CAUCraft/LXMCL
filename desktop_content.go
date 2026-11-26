@@ -47,6 +47,7 @@ type contentView struct {
 	selected    map[string]bool // physical filename → enabled state
 	scroll      ui.ListState
 	listing     *resourceListing
+	reveal      *modRevealRequest
 }
 
 const (
@@ -116,7 +117,7 @@ func (a *desktop) refreshContent(i launcher.Instance) {
 	a.content.packPreview = nil
 	a.content.copyLocal = nil
 	a.content.comparison = nil
-	a.content.listing = nil
+	a.content.listing, a.content.reveal = nil, nil
 	if a.ctx == nil {
 		return
 	}
@@ -493,6 +494,10 @@ func (a *desktop) contentList(c *ui.Context, i launcher.Instance, disabled bool)
 				detail = file.Modified.Local().Format("01-02 15:04") + " · " + detail
 			}
 			muted(c, detail).FontSize(12)
+			if v.kind() == launcher.Mods && icon(c.Key("reveal-mod"), lucide.FolderSearch(), "在文件夹中显示 "+key,
+				a.ctx == nil || a.busy || v.reveal != nil && v.reveal.listing == v.listing) {
+				a.revealModFile(i, file)
+			}
 			label := "停用"
 			if !file.Enabled {
 				label = "恢复"

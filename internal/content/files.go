@@ -63,6 +63,10 @@ func list(ctx context.Context, i instance.Instance, kind Kind, identify bool) ([
 	if err != nil {
 		return nil, err
 	}
+	var modDirectory fs.FileInfo
+	if identify && kind == Mods {
+		modDirectory, _ = root.Stat(".")
+	}
 	var result []File
 	for _, entry := range entries {
 		if err := ctx.Err(); err != nil {
@@ -88,6 +92,12 @@ func list(ctx context.Context, i instance.Instance, kind Kind, identify bool) ([
 			file.Size = 0
 		}
 		if identify && kind == Mods {
+			if modDirectory != nil {
+				// Lstat captures the file identity from a handle on Windows.
+				if snapshot, err := root.Lstat(entry.Name()); err == nil && snapshot.Mode().IsRegular() {
+					file.location = &modFileLocation{directory: modDirectory, file: snapshot}
+				}
+			}
 			file.mods = readManifestMods(root, entry.Name(), markers)
 			file.ModTitle, file.ModIDs = modLabels(file.mods)
 		}
