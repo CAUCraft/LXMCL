@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"strings"
 
 	"github.com/CAUCraft/LXMCL/internal/content"
 	"github.com/CAUCraft/LXMCL/internal/launcher"
+	"github.com/CAUCraft/LXMCL/internal/storage"
 	"github.com/egoist/mygo/ui"
 	"github.com/lobehub/lobe-mygo/pkg/action"
 	"github.com/lobehub/lobe-mygo/pkg/display"
@@ -16,10 +18,14 @@ import (
 )
 
 type savedPacksView struct {
-	rows    []content.SavedPack
-	err     error
-	loading bool
-	scroll  ui.ListState
+	target   launcher.Instance
+	rows     []content.SavedPack
+	copyText string
+	copyErr  error
+	err      error
+	loading  bool
+	copied   bool
+	scroll   ui.ListState
 }
 
 func (a *desktop) closeSavedPacks() {
@@ -36,30 +42,54 @@ func (a *desktop) openSavedPacks(i launcher.Instance) {
 	a.closeSavedPacks()
 	ctx, cancel := context.WithCancel(a.ctx)
 	a.contentCancel = cancel
-	p := &savedPacksView{loading: true}
+	p := &savedPacksView{target: i, loading: true}
 	a.content.savedPacks = p
 	go func() {
 		defer cancel()
 		rows, err := content.SavedResourcePacks(ctx, i)
+		var copyText string
+		if err == nil {
+			copyText = savedPackOrderClipboard(rows)
+		}
 		a.post(func() {
 			if a.content.savedPacks == p {
-				p.rows, p.err, p.loading = rows, err, false
+				p.rows, p.copyText, p.err, p.loading = rows, copyText, err, false
 			}
 		})
 	}()
 }
 
 func (a *desktop) savedPackOrder(c *ui.Context, i launcher.Instance, p *savedPacksView) {
+	if p.target != i {
+		a.closeSavedPacks()
+		return
+	}
+	back, refresh, copyOrder := false, false, false
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-		if icon(c, lucide.ArrowLeft(), "返回本地资源包", false) {
-			a.closeSavedPacks()
-		}
+		back = icon(c, lucide.ArrowLeft(), "返回本地资源包", false)
 		display.Text(c, "游戏上次选择", display.TextProps{Strong: true, FontSize: 16}).Grow(1)
-		if icon(c, lucide.RefreshCw(), "重新读取游戏选择", p.loading) {
-			a.openSavedPacks(i)
+		copyOrder = button(c.Key(p), "复制资源包顺序", action.Default, p.copyText == "")
+		refresh = icon(c, lucide.RefreshCw(), "重新读取游戏选择", p.loading)
+	})
+	switch {
+	case back:
+		a.closeSavedPacks()
+		return
+	case refresh:
+		a.openSavedPacks(i)
+		return
+	case copyOrder:
+		a.copySavedPackOrder(c, p)
+	}
+	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+		muted(c, "按 options.txt 中上次保存的顺序排列").FontSize(13).Grow(1).MinWidth(0)
+		if p.copied {
+			muted(c, "已复制资源包顺序").FontSize(12)
 		}
 	})
-	muted(c, "按 options.txt 中保存的顺序排列").FontSize(13)
+	if p.copyErr != nil {
+		feedback.Alert(c, "复制资源包顺序失败，请重试", feedback.AlertProps{Type: feedback.Error, Description: p.copyErr.Error()})
+	}
 	switch {
 	case p.loading:
 		flightLoading(c, "正在读取游戏选择…")
@@ -102,4 +132,44 @@ func (a *desktop) savedPackOrder(c *ui.Context, i launcher.Instance, p *savedPac
 			})
 		})
 	}
+}
+
+func savedPackOrderClipboard(rows []content.SavedPack) string {
+	if len(rows) == 0 {
+		return ""
+	}
+	var text strings.Builder
+	text.WriteString("游戏上次保存的资源包顺序")
+	for n, pack := range rows {
+		name, file := strings.CutPrefix(pack.ID, "file/")
+		if !storage.ValidFilename(name) || strings.ContainsAny(name, "\u2028\u2029") {
+			name = "标识已隐藏"
+		} else if file {
+			name += "（文件）"
+		}
+		fmt.Fprintf(&text, "\n%d. %s", n+1, name)
+	}
+	return text.String()
+}
+
+func (a *desktop) currentSavedPackOrder(p *savedPacksView) bool {
+	if a.page != pageLibrary || a.detailPage != detailContent || a.inspected != p.target.ID ||
+		a.content.kind() != launcher.ResourcePacks || a.content.savedPacks != p || a.content.packPreview != nil {
+		return false
+	}
+	current, ok := a.state.Find(p.target.ID)
+	return ok && current == p.target
+}
+
+func (a *desktop) copySavedPackOrder(c *ui.Context, p *savedPacksView) {
+	if p.copyText == "" || !a.currentSavedPackOrder(p) {
+		return
+	}
+	p.copied, p.copyErr = false, nil
+	c.WriteClipboardThen(p.copyText, func(err error) {
+		if !a.currentSavedPackOrder(p) {
+			return
+		}
+		p.copied, p.copyErr = err == nil, err
+	})
 }
