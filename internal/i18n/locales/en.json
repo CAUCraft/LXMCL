@@ -304,6 +304,7 @@
   "progress.verify_station": "Verifying skin site sign-in",
   "progress.with_mirror": "%s · mirror",
   "resource.saved_packs_invalid": "The resourcePacks setting in options.txt is not a valid list of pack IDs. Save the selection in game and refresh.",
+  "resource.pack_preview_changed": "The resource pack has changed. Go back and refresh the list.",
   "resource.pack_metadata_invalid": "Missing or invalid pack section in pack.mcmeta",
   "resource.archive_invalid": "The resource is not a valid ZIP or JAR: %w",
   "resource.archive_missing_marker": "The resource is missing %s",

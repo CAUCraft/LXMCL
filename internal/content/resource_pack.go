@@ -7,6 +7,7 @@ import (
 	"image"
 	"io"
 	"io/fs"
+	"os"
 
 	"github.com/CAUCraft/LXMCL/internal/i18n"
 	"github.com/CAUCraft/LXMCL/internal/iconimage"
@@ -15,6 +16,8 @@ import (
 	"github.com/CAUCraft/LXMCL/internal/storage"
 	"github.com/CAUCraft/LXMCL/internal/transfer"
 )
+
+const packPreviewChanged = "resource.pack_preview_changed"
 
 type ResourcePackPreview struct {
 	packmeta.Metadata
@@ -41,15 +44,31 @@ func PreviewResourcePack(ctx context.Context, i instance.Instance, file File) (R
 	if err != nil {
 		return ResourcePackPreview{}, err
 	}
+	if file.location != nil {
+		parent, err := root.Stat(".")
+		if err != nil {
+			return ResourcePackPreview{}, err
+		}
+		if !os.SameFile(file.location.directory, parent) || !os.SameFile(file.location.file, info) {
+			return ResourcePackPreview{}, i18n.Error(packPreviewChanged)
+		}
+	}
 	if file.Directory && info.IsDir() {
 		dir, err := root.OpenRoot(name)
 		if err != nil {
 			return ResourcePackPreview{}, err
 		}
 		defer dir.Close()
+		opened, err := dir.Stat(".")
+		if err != nil {
+			return ResourcePackPreview{}, err
+		}
+		if !os.SameFile(info, opened) {
+			return ResourcePackPreview{}, i18n.Error(packPreviewChanged)
+		}
 		return readPackPreview(ctx, dir.FS())
 	}
-	if file.Directory || !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > MaxSize {
+	if file.Directory || !info.Mode().IsRegular() {
 		return ResourcePackPreview{}, i18n.Error("resource.filename_or_size_invalid")
 	}
 	f, err := root.Open(name)
@@ -57,7 +76,17 @@ func PreviewResourcePack(ctx context.Context, i instance.Instance, file File) (R
 		return ResourcePackPreview{}, err
 	}
 	defer f.Close()
-	z, err := zip.NewReader(f, info.Size())
+	opened, err := f.Stat()
+	if err != nil {
+		return ResourcePackPreview{}, err
+	}
+	if !os.SameFile(info, opened) {
+		return ResourcePackPreview{}, i18n.Error(packPreviewChanged)
+	}
+	if opened.Size() <= 0 || opened.Size() > MaxSize {
+		return ResourcePackPreview{}, i18n.Error("resource.filename_or_size_invalid")
+	}
+	z, err := zip.NewReader(f, opened.Size())
 	if err != nil {
 		return ResourcePackPreview{}, i18n.Error("resource.archive_invalid", err)
 	}
