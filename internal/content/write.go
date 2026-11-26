@@ -21,8 +21,11 @@ func WriteVerified(ctx context.Context, i instance.Instance, kind Kind, name str
 }
 
 func writeVerifiedFile(ctx context.Context, i instance.Instance, kind Kind, file File, in io.Reader, digest hash.Hash, expected string) error {
-	size := file.Size
-	return publishResource(ctx, i, kind, file, func(f *os.File) error {
+	return publishResource(ctx, i, kind, file, verifiedResourceWriter(ctx, in, file.Size, digest, expected))
+}
+
+func verifiedResourceWriter(ctx context.Context, in io.Reader, size int64, digest hash.Hash, expected string) func(*os.File) error {
+	return func(f *os.File) error {
 		var out io.Writer = f
 		if digest != nil {
 			out = io.MultiWriter(f, digest)
@@ -35,5 +38,5 @@ func writeVerifiedFile(ctx context.Context, i instance.Instance, kind Kind, file
 			return i18n.Error("resource.checksum_failed")
 		}
 		return nil
-	})
+	}
 }

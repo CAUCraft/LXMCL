@@ -20,15 +20,16 @@ func ModCopyTarget(source, target instance.Instance) bool {
 		Mods.Supports(source) && Mods.Supports(target) && filepath.Clean(source.GameDir) != filepath.Clean(target.GameDir)
 }
 
-type ModCopyItem struct {
+type CopyItem struct {
 	File     File
 	Conflict string
 	digest   string
 }
 
-type ModCopyPlan struct {
+type CopyPlan struct {
 	source, target instance.Instance
-	Items          []ModCopyItem
+	packRoots      *packCopyRoots
+	Items          []CopyItem
 	Ready          int
 }
 
@@ -61,7 +62,7 @@ func (index modCopyIndex) conflict(f File, limit int) string {
 
 // PreviewModCopy does not create the target mods directory. Only explicitly
 // selected files can enter the plan, including their physical enabled state.
-func PreviewModCopy(ctx context.Context, source, target instance.Instance, selected []File) (*ModCopyPlan, error) {
+func PreviewModCopy(ctx context.Context, source, target instance.Instance, selected []File) (*CopyPlan, error) {
 	if !ModCopyTarget(source, target) {
 		return nil, i18n.Error("resource.copy_target")
 	}
@@ -78,12 +79,12 @@ func PreviewModCopy(ctx context.Context, source, target instance.Instance, selec
 	}
 	defer src.Close()
 	chosen, existing := indexModFiles(selected), indexModFiles(files)
-	p := &ModCopyPlan{source: source, target: target}
+	p := &CopyPlan{source: source, target: target}
 	for _, f := range selected {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		item := ModCopyItem{File: f, Conflict: existing.conflict(f, 0)}
+		item := CopyItem{File: f, Conflict: existing.conflict(f, 0)}
 		if item.Conflict == "" {
 			item.Conflict = chosen.conflict(f, 1)
 		}
@@ -120,20 +121,27 @@ func selectedModDigest(ctx context.Context, root *os.Root, source instance.Insta
 	if ids != f.ModIDs {
 		return "", i18n.Error("resource.copy_changed")
 	}
+	return copyDigest(ctx, file, f.Size, "resource.copy_changed")
+}
+
+func copyDigest(ctx context.Context, file io.Reader, size int64, changed string) (string, error) {
 	hash := sha256.New()
-	n, err := io.Copy(hash, io.LimitReader(transfer.Reader(ctx, file), f.Size+1))
+	n, err := io.Copy(hash, io.LimitReader(transfer.Reader(ctx, file), size+1))
 	if err != nil {
 		return "", err
 	}
-	if n != f.Size {
-		return "", i18n.Error("resource.copy_changed")
+	if n != size {
+		return "", i18n.Error(changed)
 	}
 	return fmt.Sprintf("%x", hash.Sum(nil)), nil
 }
 
 // Apply rechecks the destination and publishes only approved files. As with a
 // batch import, a failure retains earlier completed copies and returns their count.
-func (p *ModCopyPlan) Apply(ctx context.Context) (int, error) {
+func (p *CopyPlan) Apply(ctx context.Context) (int, error) {
+	if p.packRoots != nil {
+		return p.applyPacks(ctx)
+	}
 	if err := ctx.Err(); err != nil {
 		return 0, err
 	}

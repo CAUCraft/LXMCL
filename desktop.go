@@ -273,8 +273,8 @@ func (a *desktop) backFromDetail() {
 		a.closeSavedPacks()
 		return
 	}
-	if a.detailPage == detailContent && a.content.copyMods != nil {
-		a.closeModCopy()
+	if a.detailPage == detailContent && a.content.copyLocal != nil {
+		a.closeLocalCopy()
 		return
 	}
 	if p := a.screenshots; p != nil && p.viewerFrom != "" && a.detailPage == detailScreenshots && a.inspected == p.instance.ID {
