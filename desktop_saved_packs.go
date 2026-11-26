@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"strings"
+	"unicode"
 
 	"github.com/CAUCraft/LXMCL/internal/content"
 	"github.com/CAUCraft/LXMCL/internal/launcher"
@@ -141,15 +142,21 @@ func savedPackOrderClipboard(rows []content.SavedPack) string {
 	var text strings.Builder
 	text.WriteString("游戏上次保存的资源包顺序")
 	for n, pack := range rows {
-		name, file := strings.CutPrefix(pack.ID, "file/")
-		if !storage.ValidFilename(name) || strings.ContainsAny(name, "\u2028\u2029") {
-			name = "标识已隐藏"
-		} else if file {
-			name += "（文件）"
-		}
-		fmt.Fprintf(&text, "\n%d. %s", n+1, name)
+		fmt.Fprintf(&text, "\n%d. %s", n+1, savedPackClipboardLabel(pack.ID))
 	}
 	return text.String()
+}
+
+func savedPackClipboardLabel(id string) string {
+	name, file := strings.CutPrefix(id, "file/")
+	if !storage.ValidFilename(name) || strings.ContainsAny(name, "\u2028\u2029") ||
+		strings.ContainsFunc(name, func(r rune) bool { return unicode.Is(unicode.Bidi_Control, r) }) {
+		return "标识已隐藏"
+	}
+	if file {
+		return name + "（文件）"
+	}
+	return name
 }
 
 func (a *desktop) currentSavedPackOrder(p *savedPacksView) bool {
