@@ -1,4 +1,4 @@
-// Package nbt reads named, big-endian Java Edition NBT data.
+// Package nbt handles named, big-endian Java Edition NBT data.
 package nbt
 
 import (

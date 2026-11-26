@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -15,6 +16,12 @@ import (
 	"github.com/lobehub/lobe-mygo/pkg/feedback"
 )
 
+const (
+	serverBackupExport = iota
+	serverBackupRestore
+	serverBackupGameList
+)
+
 type serverBackupView struct {
 	mode      int
 	path, err string
@@ -23,6 +30,7 @@ type serverBackupView struct {
 	added     int
 	list      ui.ListState
 	working   bool
+	gameList  *serverGameExport
 }
 
 func (a *desktop) serverBackupDialog(c *ui.Context) {
@@ -35,13 +43,17 @@ func (a *desktop) serverBackupDialog(c *ui.Context) {
 	feedback.Modal(c, &open, feedback.ModalProps{Title: "服务器收藏备份", Width: 510, NoFooter: true}, func() {
 		ui.Column(c).Gap(10).Children(func() {
 			last := p.mode
-			action.Segmented(c, &p.mode, []string{"导出收藏", "恢复收藏"}, action.SegmentedProps{}).Label("备份操作").Disabled(locked)
+			action.Segmented(c, &p.mode, []string{"导出收藏", "恢复收藏", "导出 servers.dat"}, action.SegmentedProps{}).Label("备份操作").Disabled(locked)
 			if last != p.mode {
 				p.path, p.rows, p.plan, p.added, p.err = "", nil, nil, 0, ""
-				p.list = ui.ListState{}
+				p.list, p.gameList = ui.ListState{}, nil
+			}
+			if p.mode == serverBackupGameList {
+				a.serverGameExportView(c, p, &open, locked)
+				return
 			}
 			rows := a.state.Servers
-			if p.mode == 1 {
+			if p.mode == serverBackupRestore {
 				rows = p.rows
 				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 					if button(c, "选择备份文件…", action.Default, locked) {
@@ -53,7 +65,7 @@ func (a *desktop) serverBackupDialog(c *ui.Context) {
 				})
 			}
 			switch {
-			case p.mode == 0:
+			case p.mode == serverBackupExport:
 				muted(c, fmt.Sprintf("将导出全部 %d 条启动器收藏", len(rows)))
 			case p.working:
 				flightLoading(c, "正在处理收藏备份…")
@@ -69,7 +81,7 @@ func (a *desktop) serverBackupDialog(c *ui.Context) {
 							ui.Text(rc, entry.Name).SingleLine().Ellipsis("…")
 							muted(rc, entry.Address).FontSize(12).SingleLine().Ellipsis("…").Tooltip(entry.Address)
 						})
-						if p.mode == 1 {
+						if p.mode == serverBackupRestore {
 							status := "跳过同址"
 							if p.plan[row.Index].Add {
 								status = "将追加"
@@ -86,7 +98,7 @@ func (a *desktop) serverBackupDialog(c *ui.Context) {
 				if button(c, "取消", action.Default, locked) {
 					open = false
 				}
-				if p.mode == 0 {
+				if p.mode == serverBackupExport {
 					if button(c, "导出备份…", action.Primary, locked || len(rows) == 0) {
 						a.exportFavoritesBackup(p)
 					}
@@ -103,7 +115,7 @@ func (a *desktop) serverBackupDialog(c *ui.Context) {
 
 func (a *desktop) chooseFavoritesBackup(p *serverBackupView) {
 	a.pickPath(mygo.OpenDialogOptions{Title: "选择服务器收藏备份", ButtonLabel: "预览备份", Filters: []mygo.FileFilter{{Name: "收藏备份", Extensions: []string{"json"}}}}, func(path string) {
-		if a.serverBackup != p || p.mode != 1 {
+		if a.serverBackup != p || p.mode != serverBackupRestore {
 			return
 		}
 		p.path, p.rows, p.plan, p.added, p.err = path, nil, nil, 0, ""
@@ -113,7 +125,7 @@ func (a *desktop) chooseFavoritesBackup(p *serverBackupView) {
 			rows, err := server.ReadFavorites(path)
 			a.post(func() {
 				p.working = false
-				if a.serverBackup != p || p.mode != 1 {
+				if a.serverBackup != p || p.mode != serverBackupRestore {
 					return
 				}
 				if err != nil {
@@ -133,23 +145,33 @@ func (a *desktop) chooseFavoritesBackup(p *serverBackupView) {
 }
 
 func (a *desktop) exportFavoritesBackup(p *serverBackupView) {
-	rows := slices.Clone(a.state.Servers)
+	options := mygo.SaveDialogOptions{Title: "导出服务器收藏备份", ButtonLabel: "导出", DefaultPath: "lxmcl-servers.json", Filters: []mygo.FileFilter{{Name: "收藏备份", Extensions: []string{"json"}}}}
+	a.saveServerExport(p, options, slices.Clone(a.state.Servers), server.ExportFavorites, "收藏备份已导出")
+}
+
+func (a *desktop) saveServerExport(p *serverBackupView, options mygo.SaveDialogOptions, rows []server.Server, write func(context.Context, string, []server.Server) error, success string) {
+	if a.ctx == nil || a.pickerBusy || a.busy || p.working || a.serverBackup != p || len(rows) == 0 {
+		return
+	}
 	p.err, p.working, a.pickerBusy = "", true, true
-	options := mygo.SaveDialogOptions{Parent: a.window, Title: "导出服务器收藏备份", ButtonLabel: "导出", DefaultPath: "lxmcl-servers.json", Filters: []mygo.FileFilter{{Name: "收藏备份", Extensions: []string{"json"}}}}
+	options.Parent = a.window
 	go func() {
 		path, err := mygo.Dialog.Save(options)
 		if err == nil && path != "" {
-			err = server.ExportFavorites(a.ctx, path, rows)
+			err = write(a.ctx, path, rows)
 		}
 		a.post(func() {
 			p.working, a.pickerBusy = false, false
+			if a.serverBackup != p {
+				return
+			}
 			if errors.Is(err, fs.ErrExist) {
 				p.err = "已有同名文件，请更换文件名或目录。"
 			} else if err != nil {
 				p.err = err.Error()
 			} else if path != "" {
 				a.serverBackup = nil
-				a.message("收藏备份已导出 · "+filepath.Base(path), nil)
+				a.message(success+" · "+filepath.Base(path), nil)
 			}
 		})
 	}()

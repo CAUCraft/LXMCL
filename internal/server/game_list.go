@@ -12,6 +12,8 @@ import (
 	"github.com/CAUCraft/LXMCL/internal/transfer"
 )
 
+const maxGameServers = 65536
+
 // ReadGameList reads the visible favorites of a Java Edition instance, in file order.
 // An absent game directory or servers.dat is reported as os.ErrNotExist.
 func ReadGameList(ctx context.Context, gameDir string) ([]Server, error) {
@@ -67,7 +69,7 @@ func decodeGameList(ctx context.Context, data []byte) ([]Server, error) {
 			r.Invalidate()
 			return
 		}
-		if count > 65536 {
+		if count > maxGameServers {
 			oversized = true
 			r.Invalidate()
 			return

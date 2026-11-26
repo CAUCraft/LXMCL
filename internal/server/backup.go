@@ -44,6 +44,10 @@ func ExportFavorites(ctx context.Context, path string, rows []Server) error {
 	if len(data) > maxFavoritesBackup {
 		return i18n.Error("server.backup_large")
 	}
+	return publishServerFile(ctx, path, data)
+}
+
+func publishServerFile(ctx context.Context, path string, data []byte) error {
 	root, err := os.OpenRoot(filepath.Dir(path))
 	if err != nil {
 		return err
