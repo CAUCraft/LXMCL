@@ -13,6 +13,7 @@ import (
 const (
 	screenshotModifiedToday = "today"
 	screenshotModifiedWeek  = "week"
+	screenshotOldestFirst   = "oldest"
 )
 
 var screenshotDateOptions = []field.SelectOption{
@@ -21,8 +22,14 @@ var screenshotDateOptions = []field.SelectOption{
 	{Value: screenshotModifiedWeek, Label: "最近 7 天"},
 }
 
+var screenshotOrderOptions = []field.SelectOption{
+	{Value: "", Label: "最近在前"},
+	{Value: screenshotOldestFirst, Label: "最早在前"},
+}
+
 type screenshotFilterKey struct {
 	query, period string
+	oldestFirst   bool
 	day           time.Time
 	location      *time.Location
 }
@@ -38,7 +45,12 @@ func (p *screenshotGallery) visibleRows() []display.ListItem {
 }
 
 func (p *screenshotGallery) visibleRowsAt(now time.Time) []display.ListItem {
-	filter := screenshotFilterKey{query: strings.ToLower(strings.TrimSpace(p.query)), period: p.dateFilter}
+	filter := screenshotFilterKey{
+		query:       strings.ToLower(strings.TrimSpace(p.query)),
+		period:      p.dateFilter,
+		oldestFirst: p.order == screenshotOldestFirst,
+	}
+	useMatches := filter.query != "" || filter.period != "" || filter.oldestFirst
 	if filter.period != "" {
 		filter.day, filter.location = screenshotDay(now), now.Location()
 	}
@@ -48,9 +60,9 @@ func (p *screenshotGallery) visibleRowsAt(now time.Time) []display.ListItem {
 		if filter.period == screenshotModifiedWeek {
 			start = start.AddDate(0, 0, -6)
 		}
-		if filter.query != "" || filter.period != "" {
+		if useMatches {
 			for _, row := range p.rows {
-				if !strings.Contains(strings.ToLower(row.Key), filter.query) {
+				if filter.query != "" && !strings.Contains(strings.ToLower(row.Key), filter.query) {
 					continue
 				}
 				if filter.period != "" {
@@ -63,8 +75,14 @@ func (p *screenshotGallery) visibleRowsAt(now time.Time) []display.ListItem {
 				p.matches = append(p.matches, row)
 			}
 		}
+		if filter.oldestFirst {
+			// The original list already orders equal timestamps by filename.
+			slices.SortStableFunc(p.matches, func(a, b display.ListItem) int {
+				return p.entries[a.Key].Modified.Compare(p.entries[b.Key].Modified)
+			})
+		}
 	}
-	if filter.query == "" && filter.period == "" {
+	if !useMatches {
 		return p.rows
 	}
 	return p.matches

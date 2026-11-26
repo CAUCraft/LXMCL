@@ -102,13 +102,19 @@ func (a *desktop) exportScreenshotBatch(p *screenshotGallery) {
 	if len(selected) == 0 {
 		return
 	}
+	names := make(map[string]bool, len(selected))
+	for _, entry := range selected {
+		names[entry.Name] = true
+	}
 	a.pickPath(mygo.OpenDialogOptions{Title: "选择截图导出目录", ButtonLabel: "导出到此处", Directory: true, CreateDirectories: true}, func(folder string) {
 		live, ok := a.state.Find(i.ID)
 		if a.ctx == nil || a.busy || p.exporting || !ok || live != i || a.screenshots != p ||
 			a.page != pageLibrary || a.detailPage != detailScreenshots || a.inspected != i.ID {
 			return
 		}
-		if !slices.EqualFunc(selected, p.batchSelection(p.visibleRows()), func(a, b screenshots.Entry) bool { return a.Name == b.Name }) {
+		current := p.batchSelection(p.visibleRows())
+		// Reordering the same selection keeps the original export request valid.
+		if len(current) != len(selected) || slices.ContainsFunc(current, func(e screenshots.Entry) bool { return !names[e.Name] }) {
 			a.message("截图选择已变化，请重新选择。", nil)
 			return
 		}
