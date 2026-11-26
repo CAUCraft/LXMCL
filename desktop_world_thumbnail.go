@@ -82,6 +82,7 @@ func (a *desktop) worldSelectionDetails(c *ui.Context, p *worldBrowser, i launch
 			muted(c, worldSavedVersionLabel(world)).FontSize(12).SingleLine().Ellipsis("…")
 			muted(c, settings).FontSize(12).SingleLine().Ellipsis("…").Tooltip(settings)
 		})
+		a.worldPinButton(c, p, i, world)
 		a.worldUsageDetails(c, p, i, world)
 	})
 }

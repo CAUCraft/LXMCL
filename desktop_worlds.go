@@ -29,6 +29,8 @@ type worldBrowser struct {
 	cancel    context.CancelFunc
 	opening   bool
 	openErr   string
+	pinning   bool
+	pinErr    string
 	retry     *taskRecord
 	copy      *worldCopyView
 	packs     *worldPacksView
@@ -49,14 +51,23 @@ func (a *desktop) browseWorlds(i launcher.Instance, retry *taskRecord) {
 			old.cancel()
 		}
 	}
-	ctx, cancel := context.WithCancel(a.ctx)
-	p := &worldBrowser{loading: true, cancel: cancel, selected: -1, retry: retry}
+	p := &worldBrowser{selected: -1, retry: retry}
 	a.form = editor{mode: "worlds", open: true, target: i, worlds: p}
+	a.readWorlds(p, i)
+}
+
+func (a *desktop) readWorlds(p *worldBrowser, i launcher.Instance) {
+	previous, _ := p.selectedWorld()
+	p.loading, p.openErr, p.pinErr, a.form.err = true, "", "", ""
+	p.closeWorldThumbnail()
+	p.closeWorldUsage()
+	ctx, cancel := context.WithCancel(a.ctx)
+	p.cancel = cancel
 	go func() {
 		defer cancel()
 		entries, err := saves.Worlds(ctx, i.GameDir)
 		a.post(func() {
-			if !a.form.open || a.form.worlds != p {
+			if !a.form.open || a.form.worlds != p || a.form.target != i {
 				return
 			}
 			p.loading = false
@@ -64,16 +75,19 @@ func (a *desktop) browseWorlds(i launcher.Instance, retry *taskRecord) {
 				a.form.err = err.Error()
 				return
 			}
-			if retry != nil {
-				idx := slices.IndexFunc(entries, func(w saves.World) bool { return w.Folder() == retry.World })
+			if p.retry != nil {
+				idx := slices.IndexFunc(entries, func(w saves.World) bool { return w.Folder() == p.retry.World })
 				if idx < 0 {
 					a.form.err = "原任务的世界已移动，请从实例的游戏文件页重新选择。"
 					return
 				}
-				entries = entries[idx : idx+1]
+				p.entries, p.visible = entries[idx:idx+1], entries[idx:idx+1]
 				p.selected = 0
+				return
 			}
 			p.entries, p.visible = entries, entries
+			p.selected = slices.IndexFunc(entries, func(w saves.World) bool { return w.Folder() == previous.Folder() })
+			p.filter(a.state.PinnedWorlds[i.ID])
 		})
 	}()
 }
@@ -127,7 +141,7 @@ func (a *desktop) openWorldDirectory(p *worldBrowser, i launcher.Instance, world
 	}()
 }
 
-func (p *worldBrowser) filter() {
+func (p *worldBrowser) filter(pinned map[string]bool) {
 	selected, _ := p.selectedWorld()
 	query := strings.ToLower(strings.TrimSpace(p.query))
 	p.visible = p.entries
@@ -140,13 +154,22 @@ func (p *worldBrowser) filter() {
 			}
 		}
 	}
-	if p.order == sortRecent {
+	if p.order == sortRecent || len(pinned) > 0 {
 		if query == "" {
 			// Preserve the directory order shared with the default view.
 			p.visible = slices.Clone(p.visible)
 		}
 		slices.SortStableFunc(p.visible, func(a, b saves.World) int {
-			return b.LastPlayed().Compare(a.LastPlayed())
+			if pa, pb := pinned[a.Folder()], pinned[b.Folder()]; pa != pb {
+				if pa {
+					return -1
+				}
+				return 1
+			}
+			if p.order == sortRecent {
+				return b.LastPlayed().Compare(a.LastPlayed())
+			}
+			return 0
 		})
 	}
 	p.selected = slices.IndexFunc(p.visible, func(world saves.World) bool { return world.Folder() == selected.Folder() })
@@ -179,7 +202,15 @@ func (a *desktop) worldEditor(c *ui.Context) {
 		stale = stale || !canRetry
 	}
 	previous, _ := p.selectedWorld()
-	panelHeading(c, lucide.FolderOpen(), i.Name, "实例配置版本 · Minecraft "+i.Version+" · "+loaderName(i))
+	pinned := a.state.PinnedWorlds[i.ID]
+	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+		ui.Column(c).Grow(1).MinWidth(0).Children(func() {
+			panelHeading(c, lucide.FolderOpen(), i.Name, "实例配置版本 · Minecraft "+i.Version+" · "+loaderName(i))
+		})
+		if p.retry == nil && icon(c.Key("refresh"), lucide.RefreshCw(), "刷新存档", stale || p.loading || p.opening || p.pinning || a.busy || a.running != nil || a.ctx == nil) {
+			a.readWorlds(p, i)
+		}
+	})
 	switch {
 	case stale:
 		feedback.Alert(c, "实例或启动身份已更改，请关闭列表并重新选择。", feedback.AlertProps{Type: feedback.Warning})
@@ -202,7 +233,7 @@ func (a *desktop) worldEditor(c *ui.Context) {
 				}}).Label("存档排序").Width(112)
 			})
 			if p.query != queryBefore || p.order != orderBefore {
-				p.filter()
+				p.filter(pinned)
 			}
 		}
 		if len(p.visible) == 0 {
@@ -212,7 +243,7 @@ func (a *desktop) worldEditor(c *ui.Context) {
 			p.list.Key = func(idx int) any { return p.visible[idx].Folder() }
 			p.list.Label = func(idx int) string { return p.visible[idx].Folder() }
 			maxRows := 5
-			if p.openErr != "" {
+			if p.openErr != "" || p.pinErr != "" {
 				maxRows = 4
 			}
 			const rowHeight = 40
@@ -228,7 +259,11 @@ func (a *desktop) worldEditor(c *ui.Context) {
 				}
 				rc := r.Context
 				ui.Row(rc).Height(rowHeight).AlignItems(ui.Center).Gap(8).Padding(0, 10).Children(func() {
-					ui.Icon(rc, lucide.Folder()).FontSize(16)
+					if p.retry == nil && pinned[world.Folder()] {
+						ui.Icon(rc, lucide.Pin()).FontSize(16).Label("已置顶 " + world.Folder())
+					} else {
+						ui.Icon(rc, lucide.Folder()).FontSize(16)
+					}
 					ui.Column(rc).Grow(1).MinWidth(0).Children(func() {
 						ui.Text(rc, name).SingleLine().Ellipsis("…")
 						if name != world.Folder() {
@@ -247,7 +282,7 @@ func (a *desktop) worldEditor(c *ui.Context) {
 	}
 	world, selected := p.selectedWorld()
 	if previous.Folder() != world.Folder() {
-		p.openErr = ""
+		p.openErr, p.pinErr = "", ""
 	}
 	if selected && !stale && !p.loading && a.form.err == "" {
 		a.worldSelectionDetails(c, p, i, world)
@@ -257,6 +292,9 @@ func (a *desktop) worldEditor(c *ui.Context) {
 	}
 	if p.openErr != "" && !stale {
 		feedback.Alert(c, "无法打开世界目录", feedback.AlertProps{Type: feedback.Warning, Variant: feedback.Plain, Description: p.openErr})
+	}
+	if p.pinErr != "" && !stale {
+		feedback.Alert(c, "未能保存置顶状态", feedback.AlertProps{Type: feedback.Warning, Variant: feedback.Plain, Description: p.pinErr})
 	}
 	canLaunch := p.retry == nil || p.retry.Action == taskLaunch
 	canBackup := p.retry == nil || p.retry.Action == taskBackup
