@@ -79,6 +79,12 @@ func TestInstanceLogFileTypeFilter(t *testing.T) {
 		t.Fatal("matching filter copied a different preview")
 	}
 	tt.Advance(500 * time.Millisecond)
+	if reveal, ok := tt.Access("在文件夹中显示"); !ok || reveal.Disabled {
+		t.Fatal("selected instance log cannot be located")
+	}
+	if r, ok := tt.Find("在文件夹中显示"); !ok || r.X < 0 || r.Y+r.H > 530 || r.X+r.W > 820 {
+		t.Fatal("locate action outside the minimum window", r)
+	}
 	capture(t, tt, "instance-log-type-latest-light")
 
 	filter("归档日志")
@@ -104,7 +110,7 @@ func TestInstanceLogFileTypeFilter(t *testing.T) {
 	if ctx.Err() == nil || a.logPath != "" || a.logReading || !tt.HasText("最近的日志列表中没有此类型的文件。") {
 		t.Fatal("empty type did not cancel the hidden read and display its empty state", tt.Texts())
 	}
-	for _, label := range []string{"复制当前日志", "导出预览…", "打开文件"} {
+	for _, label := range []string{"复制当前日志", "导出预览…", "在文件夹中显示", "打开文件"} {
 		if el, ok := tt.Access(label); !ok || !el.Disabled {
 			t.Fatalf("log action %s remained available without a selected file", label)
 		}

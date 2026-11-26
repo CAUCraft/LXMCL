@@ -684,6 +684,12 @@ func (a *desktop) logDialog(c *ui.Context) {
 				if button(c, "导出预览…", action.Default, preview.text == "" || a.logReading || a.logExporting || a.pickerBusy) {
 					a.exportLog(preview.text)
 				}
+				if p := a.logLibrary; p != nil {
+					entry, selected := p.selectedEntry(a.logPath)
+					if button(c.Key(entry), "在文件夹中显示", action.Default, !selected || p.reading || p.revealing) {
+						a.revealInstanceLog(p, entry)
+					}
+				}
 				if button(c, "打开文件", action.Default, a.logPath == "") {
 					a.openLog(a.logPath)
 				}
@@ -699,6 +705,9 @@ func (a *desktop) logDialog(c *ui.Context) {
 }
 
 func (a *desktop) logProblem() (string, string) {
+	if p := a.logLibrary; p != nil && p.revealFailed {
+		return "无法定位原文件", "文件已移走、更换或不可访问。请刷新日志列表后重新选择。"
+	}
 	// Resolve the preview failure first; secondary errors remain available after
 	// it clears, without pushing recovery actions outside a small window.
 	if a.logError != "" {

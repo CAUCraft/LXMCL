@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -19,6 +20,7 @@ const RecentLimit = 30
 type Entry struct {
 	Path     string
 	Modified time.Time
+	info     fs.FileInfo
 }
 
 // Minecraft rotates dated logs; mod loaders also rotate numbered debug logs.
@@ -105,5 +107,57 @@ func Recent(ctx context.Context, gameDir string) ([]Entry, error) {
 			failures = append(failures, i18n.Error("log.directory_read_failed", directory, err))
 		}
 	}
+	// Capture stable identities only for the retained rows. On Windows,
+	// directory enumeration may defer fetching file identities until comparison.
+	for i := range entries {
+		if err := ctx.Err(); err != nil {
+			return entries, errors.Join(append(failures, err)...)
+		}
+		path := entries[i].Path
+		info, err := root.Lstat(filepath.Join(filepath.Base(filepath.Dir(path)), filepath.Base(path)))
+		if err == nil && info.Mode().IsRegular() {
+			entries[i].info = info
+		}
+	}
 	return entries, errors.Join(failures...)
+}
+
+// CheckReveal verifies that the listed original still occupies its instance path.
+func (e Entry) CheckReveal(gameDir string) error {
+	if e.info == nil || !filepath.IsAbs(gameDir) || !IsPreview(e.Path) {
+		return fs.ErrInvalid
+	}
+	folder := filepath.Base(filepath.Dir(e.Path))
+	name := filepath.Join(folder, filepath.Base(e.Path))
+	relative, err := filepath.Rel(gameDir, e.Path)
+	if err != nil || relative != name {
+		return fs.ErrInvalid
+	}
+	root, err := os.OpenRoot(gameDir)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	parent, err := root.Lstat(folder)
+	if err != nil {
+		return err
+	}
+	if !parent.IsDir() {
+		return fs.ErrInvalid
+	}
+	actual, err := root.Lstat(name)
+	if err != nil {
+		return err
+	}
+	if !actual.Mode().IsRegular() || !os.SameFile(e.info, actual) {
+		return fs.ErrInvalid
+	}
+	current, err := root.Lstat(folder)
+	if err != nil {
+		return err
+	}
+	if !current.IsDir() || !os.SameFile(parent, current) {
+		return fs.ErrInvalid
+	}
+	return nil
 }
