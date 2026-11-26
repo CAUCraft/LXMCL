@@ -156,24 +156,37 @@ func TestWorldGameplaySettings(t *testing.T) {
 	}
 	mode := func(id uint32) []byte { return field(3, "GameType", binary.BigEndian.AppendUint32(nil, id)) }
 	hardcore := func(value byte) []byte { return field(1, "hardcore", []byte{value}) }
-	difficulty := func(value []byte) []byte {
-		return field(10, "difficulty_settings", append(bytes.Clone(value), 0))
+	legacy := func(id byte) []byte { return field(1, "Difficulty", []byte{id}) }
+	modern := func(id string) []byte {
+		return field(8, "difficulty", append(binary.BigEndian.AppendUint16(nil, uint16(len(id))), id...))
+	}
+	settings := func(fields ...[]byte) []byte {
+		return field(10, "difficulty_settings", append(bytes.Join(fields, nil), 0))
 	}
 	tests := []struct {
-		name     string
-		fields   [][]byte
-		mode     GameMode
-		hardcore worldHardcore
+		name       string
+		fields     [][]byte
+		mode       GameMode
+		hardcore   worldHardcore
+		difficulty Difficulty
 	}{
-		{"a-survival", [][]byte{mode(0), hardcore(0)}, GameModeSurvival, hardcoreOff},
-		{"b-creative", [][]byte{mode(1), hardcore(1)}, GameModeCreative, hardcoreOn},
-		{"c-adventure", [][]byte{mode(2)}, GameModeAdventure, hardcoreUnknown},
-		{"d-spectator", [][]byte{mode(3), difficulty(hardcore(0)), hardcore(1)}, GameModeSpectator, hardcoreOff},
-		{"e-unknown-mode", [][]byte{mode(6), difficulty(hardcore(1))}, GameModeUnknown, hardcoreOn},
-		{"f-unknown-flag", [][]byte{mode(0), hardcore(2)}, GameModeSurvival, hardcoreUnknown},
-		{"g-wrong-types", [][]byte{field(1, "GameType", []byte{1}), field(3, "hardcore", []byte{0, 0, 0, 1})}, GameModeUnknown, hardcoreUnknown},
-		{"h-empty-settings", [][]byte{hardcore(1), difficulty(nil)}, GameModeUnknown, hardcoreUnknown},
-		{"i-player-only", nil, GameModeUnknown, hardcoreUnknown},
+		{"a-survival", [][]byte{mode(0), hardcore(0), legacy(0)}, GameModeSurvival, hardcoreOff, DifficultyPeaceful},
+		{"b-creative", [][]byte{mode(1), hardcore(1), legacy(1)}, GameModeCreative, hardcoreOn, DifficultyEasy},
+		{"c-adventure", [][]byte{mode(2), legacy(2)}, GameModeAdventure, hardcoreUnknown, DifficultyNormal},
+		{"d-spectator", [][]byte{mode(3), settings(hardcore(0), modern("normal")), hardcore(1), legacy(3)}, GameModeSpectator, hardcoreOff, DifficultyNormal},
+		{"e-unknown-mode", [][]byte{mode(6), settings(hardcore(1), modern("hard"))}, GameModeUnknown, hardcoreOn, DifficultyHard},
+		{"f-unknown-flag", [][]byte{mode(0), hardcore(2), legacy(255)}, GameModeSurvival, hardcoreUnknown, DifficultyUnknown},
+		{"g-wrong-types", [][]byte{field(1, "GameType", []byte{1}), field(3, "hardcore", []byte{0, 0, 0, 1})}, GameModeUnknown, hardcoreUnknown, DifficultyUnknown},
+		{"h-empty-settings", [][]byte{hardcore(1), legacy(0), settings()}, GameModeUnknown, hardcoreUnknown, DifficultyUnknown},
+		{"i-player-only", nil, GameModeUnknown, hardcoreUnknown, DifficultyUnknown},
+		{"j-modern-peaceful", [][]byte{settings(modern("peaceful"))}, GameModeUnknown, hardcoreUnknown, DifficultyPeaceful},
+		{"k-modern-easy", [][]byte{settings(modern("easy"))}, GameModeUnknown, hardcoreUnknown, DifficultyEasy},
+		{"l-modern-unrecognized", [][]byte{legacy(2), settings(hardcore(1), modern("Hard"))}, GameModeUnknown, hardcoreOn, DifficultyUnknown},
+		{"m-modern-wrong-type", [][]byte{settings(hardcore(1), field(1, "difficulty", []byte{0}))}, GameModeUnknown, hardcoreOn, DifficultyUnknown},
+		{"n-invalid-group", [][]byte{legacy(3), field(1, "difficulty_settings", []byte{1})}, GameModeUnknown, hardcoreUnknown, DifficultyUnknown},
+		{"o-legacy-hard", [][]byte{legacy(3)}, GameModeUnknown, hardcoreUnknown, DifficultyHard},
+		{"p-legacy-out-of-range", [][]byte{legacy(4)}, GameModeUnknown, hardcoreUnknown, DifficultyUnknown},
+		{"q-legacy-wrong-type", [][]byte{field(3, "Difficulty", []byte{0, 0, 0, 0})}, GameModeUnknown, hardcoreUnknown, DifficultyUnknown},
 	}
 	game := t.TempDir()
 	for _, tc := range tests {
@@ -183,7 +196,7 @@ func TestWorldGameplaySettings(t *testing.T) {
 		}
 		// Player game mode is separate from the world's default mode.
 		player := field(3, "playerGameType", []byte{0, 0, 0, 1})
-		fields = append(fields, field(10, "Player", append(player, 0))...)
+		fields = append(fields, field(10, "Player", append(append(player, legacy(3)...), 0))...)
 		data := field(10, "", append(field(10, "Data", append(fields, 0)), 0))
 		dir := filepath.Join(game, "saves", tc.name)
 		if err := os.MkdirAll(dir, 0700); err != nil {
@@ -211,6 +224,9 @@ func TestWorldGameplaySettings(t *testing.T) {
 		if world.Folder() != want.name || world.DefaultGameMode() != want.mode ||
 			enabled != (want.hardcore == hardcoreOn) || known != (want.hardcore != hardcoreUnknown) {
 			t.Errorf("%s: mode %v, hardcore (enabled %v, known %v)", world.Folder(), world.DefaultGameMode(), enabled, known)
+		}
+		if got := world.Difficulty(); got != want.difficulty {
+			t.Errorf("%s: difficulty %v, want %v", world.Folder(), got, want.difficulty)
 		}
 	}
 }
