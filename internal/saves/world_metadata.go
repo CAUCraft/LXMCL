@@ -30,6 +30,17 @@ const (
 	GameModeSpectator
 )
 
+// Difficulty represents the explicitly recorded world difficulty.
+type Difficulty uint8
+
+const (
+	DifficultyUnknown Difficulty = iota
+	DifficultyPeaceful
+	DifficultyEasy
+	DifficultyNormal
+	DifficultyHard
+)
+
 type worldHardcore uint8
 
 const (
@@ -42,12 +53,14 @@ type worldMetadata struct {
 	name, savedVersion string
 	lastPlayed         time.Time
 	gameMode           GameMode
+	difficulty         Difficulty
 	hardcore           worldHardcore
 }
 
 func readWorldMetadata(ctx context.Context, root *os.Root, world World) worldMetadata {
 	var metadata worldMetadata
 	var modernHardcore worldHardcore
+	var modernDifficulty Difficulty
 	var hasDifficultySettings bool
 	err := readWorldData(ctx, root, world, func(r *nbt.Reader, tag byte, key string) {
 		switch {
@@ -70,19 +83,25 @@ func readWorldMetadata(ctx context.Context, root *os.Root, world World) worldMet
 			if mode := r.Int(); mode >= 0 && mode <= 3 {
 				metadata.gameMode = GameModeSurvival + GameMode(mode)
 			}
+		case key == "Difficulty":
+			metadata.difficulty = readLegacyDifficulty(r, tag)
 		case key == "hardcore":
 			metadata.hardcore = readWorldHardcore(r, tag)
 		case key == "difficulty_settings":
-			// Java 26.1 moved the flag here. A present group takes precedence.
-			hasDifficultySettings, modernHardcore = true, hardcoreUnknown
+			// Java 26.1 saves these settings together. A present group takes precedence.
+			hasDifficultySettings = true
+			modernHardcore, modernDifficulty = hardcoreUnknown, DifficultyUnknown
 			if tag != 10 {
 				r.Skip(tag)
 				return
 			}
 			r.Compound(func(tag byte, key string) {
-				if key == "hardcore" {
+				switch key {
+				case "difficulty":
+					modernDifficulty = readWorldDifficulty(r, tag)
+				case "hardcore":
 					modernHardcore = readWorldHardcore(r, tag)
-				} else {
+				default:
 					r.Skip(tag)
 				}
 			})
@@ -110,9 +129,39 @@ func readWorldMetadata(ctx context.Context, root *os.Root, world World) worldMet
 		return worldMetadata{}
 	}
 	if hasDifficultySettings {
-		metadata.hardcore = modernHardcore
+		metadata.hardcore, metadata.difficulty = modernHardcore, modernDifficulty
 	}
 	return metadata
+}
+
+func readLegacyDifficulty(r *nbt.Reader, tag byte) Difficulty {
+	if tag != 1 {
+		r.Skip(tag)
+		return DifficultyUnknown
+	}
+	if id := r.Byte(); id <= 3 {
+		return DifficultyPeaceful + Difficulty(id)
+	}
+	return DifficultyUnknown
+}
+
+func readWorldDifficulty(r *nbt.Reader, tag byte) Difficulty {
+	if tag != 8 {
+		r.Skip(tag)
+		return DifficultyUnknown
+	}
+	switch worldMetadataString(r) {
+	case "peaceful":
+		return DifficultyPeaceful
+	case "easy":
+		return DifficultyEasy
+	case "normal":
+		return DifficultyNormal
+	case "hard":
+		return DifficultyHard
+	default:
+		return DifficultyUnknown
+	}
 }
 
 func readWorldHardcore(r *nbt.Reader, tag byte) worldHardcore {

@@ -65,6 +65,21 @@ func worldModeLabel(mode saves.GameMode) string {
 	}
 }
 
+func worldDifficultyLabel(difficulty saves.Difficulty) string {
+	switch difficulty {
+	case saves.DifficultyPeaceful:
+		return "和平"
+	case saves.DifficultyEasy:
+		return "简单"
+	case saves.DifficultyNormal:
+		return "普通"
+	case saves.DifficultyHard:
+		return "困难"
+	default:
+		return "未知"
+	}
+}
+
 func (a *desktop) worldSelectionDetails(c *ui.Context, p *worldBrowser, i launcher.Instance, world saves.World) {
 	a.loadWorldThumbnail(p, i, world)
 	hardcore := "未知"
@@ -86,6 +101,7 @@ func (a *desktop) worldSelectionDetails(c *ui.Context, p *worldBrowser, i launch
 		ui.Column(c).Gap(2).Grow(1).MinWidth(0).Children(func() {
 			muted(c, worldSavedVersionLabel(world)).FontSize(12).SingleLine().Ellipsis("…")
 			muted(c, settings).FontSize(12).SingleLine().Ellipsis("…").Tooltip(settings)
+			muted(c, "存档难度 · "+worldDifficultyLabel(world.Difficulty())).FontSize(12).SingleLine()
 		})
 		a.worldPinButton(c, p, i, world)
 		a.worldUsageDetails(c, p, i, world)

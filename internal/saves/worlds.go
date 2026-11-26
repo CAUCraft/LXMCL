@@ -33,6 +33,9 @@ func (w World) SavedVersion() string { return w.metadata.savedVersion }
 // DefaultGameMode is the world setting saved in level.dat.
 func (w World) DefaultGameMode() GameMode { return w.metadata.gameMode }
 
+// Difficulty is the value recorded in level.dat, or DifficultyUnknown.
+func (w World) Difficulty() Difficulty { return w.metadata.difficulty }
+
 // Hardcore reports the saved world flag and whether it was recognized.
 func (w World) Hardcore() (enabled, known bool) {
 	return w.metadata.hardcore == hardcoreOn, w.metadata.hardcore != hardcoreUnknown
