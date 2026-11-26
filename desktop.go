@@ -174,6 +174,9 @@ func (a *desktop) view(c *ui.Context) {
 			}
 		}
 		a.clearInstanceUsage()
+		if a.content.duplicateView != nil && (a.page != pageLibrary || a.detailPage != detailContent || a.inspected != a.content.id) {
+			a.content.duplicateView = nil
+		}
 		if a.content.reveal != nil && !a.inLocalModList() {
 			a.content.reveal = nil
 		}
@@ -258,6 +261,10 @@ func (a *desktop) noticeBar(c *ui.Context) {
 func (a *desktop) backFromDetail() {
 	if p := a.content.modPreview; a.detailPage == detailContent && p != nil {
 		a.cancelModUpdatePreview(p)
+		return
+	}
+	if a.detailPage == detailContent && a.content.duplicateView != nil {
+		a.content.duplicateView = nil
 		return
 	}
 	if a.detailPage == detailContent && a.content.modNotes != nil {
