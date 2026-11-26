@@ -661,7 +661,8 @@ func (a *desktop) startGame(i launcher.Instance, installOnly bool, server string
 			return
 		}
 		exit, finished := run.Observe(a.ctx)
-		played, playErr := playtime.Record(a.store.Root, i.ID, run.StartedAt, exit.At.Sub(run.StartedAt))
+		elapsed := exit.At.Sub(run.StartedAt)
+		played, playErr := playtime.Record(a.store.Root, i.ID, run.StartedAt, elapsed)
 		if !finished {
 			// Closing the launcher leaves the child running. Only the observed interval is known.
 			if playErr != nil {
@@ -670,6 +671,10 @@ func (a *desktop) startGame(i launcher.Instance, installOnly bool, server string
 			return
 		}
 		record.Status = taskExited
+		if !run.StartedAt.IsZero() && !exit.At.IsZero() && elapsed >= 0 {
+			millis := elapsed.Milliseconds()
+			record.RunMillis = &millis
+		}
 		if exit.Err != nil {
 			record.Status, record.Detail = taskFailed, exit.Err.Error()
 		}

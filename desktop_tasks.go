@@ -361,6 +361,9 @@ func (a *desktop) taskRow(c *ui.Context, row taskRecord) {
 			})
 			display.Tag(c, row.Status, display.TagProps{Color: tone, Round: true})
 		})
+		if row.Action == taskLaunch && (row.Status == taskExited || row.Status == taskFailed) && row.RunMillis != nil && *row.RunMillis >= 0 {
+			muted(c, "Java 进程运行时长 · "+formatLaunchRuntime(*row.RunMillis)).FontSize(13)
+		}
 		if row.Folder != "" {
 			muted(c, row.Folder).FontSize(13).Selectable()
 		}

@@ -24,7 +24,8 @@ func TestInstanceOverviewShowsLastFinishedLaunch(t *testing.T) {
 		ID: "latest-failure", InstanceID: second.ID, Name: second.Name,
 		Action: taskLaunch, Status: taskFailed, Detail: "启动前失败的测试详情", At: at,
 	}
-	exited := taskRecord{ID: "exit-a", InstanceID: first.ID, Name: first.Name, Action: taskLaunch, Status: taskExited, At: at.Add(4 * time.Minute)}
+	millis := int64(62000)
+	exited := taskRecord{ID: "exit-a", InstanceID: first.ID, Name: first.Name, Action: taskLaunch, Status: taskExited, At: at.Add(4 * time.Minute), RunMillis: &millis}
 	previous := taskRecord{ID: "verify-a", InstanceID: first.ID, Name: first.Name, Action: taskVerify, Status: taskFailed, At: at.Add(time.Minute)}
 	records := []taskRecord{
 		{ID: "running-b", InstanceID: second.ID, Name: second.Name, Action: taskLaunch, Status: taskStarted, At: at.Add(8 * time.Minute), PID: 1234},
@@ -86,7 +87,7 @@ func TestInstanceOverviewShowsLastFinishedLaunch(t *testing.T) {
 	capture(t, tt, "instance-last-launch-failure-light")
 	click("查看启动任务")
 	if a.taskInstanceFilter != second.ID || a.taskFilter != 0 || a.taskHistoryQuery != "" ||
-		a.browsedTask != failed.Key() || !tt.HasText(failed.Detail) || tt.HasText("更早的测试失败") {
+		a.browsedTask != failed.Key() || !tt.HasText(failed.Detail) || tt.HasText("更早的测试失败") || tt.HasText("Java 进程运行时长") {
 		t.Fatal("did not open the exact launch task", tt.Texts())
 	}
 	click("返回实例概览")
@@ -121,6 +122,11 @@ func TestInstanceOverviewShowsLastFinishedLaunch(t *testing.T) {
 
 	click("1.21.1 · 原版 · 启动目标")
 	result(exited)
+	click("查看启动任务")
+	if a.browsedTask != exited.Key() || !tt.HasText("Java 进程运行时长 · 1 分钟 2 秒") {
+		t.Fatal("observed duration did not follow the original task", tt.Texts())
+	}
+	click("返回实例概览")
 	click(empty.Name)
 	if !tt.HasText("暂无已结束的启动记录") || tt.HasText("查看启动任务") {
 		t.Fatal("an unfinished launch appeared as a result", tt.Texts())

@@ -75,6 +75,10 @@ func clone(records []Record) []Record {
 	result := append([]Record(nil), records...)
 	for n := range result {
 		result[n].ModUpdates.Items = slices.Clone(result[n].ModUpdates.Items)
+		if result[n].RunMillis != nil {
+			millis := *result[n].RunMillis
+			result[n].RunMillis = &millis
+		}
 		if result[n].Resource != nil {
 			r := *result[n].Resource
 			result[n].Resource = &r
