@@ -85,7 +85,7 @@ func (a *desktop) network(c *ui.Context) {
 			if a.serverSource == 0 && button(c, "备份与恢复…", action.Default, a.busy || a.pickerBusy) {
 				a.serverBackup = &serverBackupView{}
 				if len(a.state.Servers) == 0 {
-					a.serverBackup.mode = 1
+					a.serverBackup.mode = serverBackupRestore
 				}
 			}
 			if a.serverSource == 0 && len(a.state.Servers) != 0 {
