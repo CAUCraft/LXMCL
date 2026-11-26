@@ -50,6 +50,8 @@ type contentView struct {
 	listing     *resourceListing
 	reveal      *modRevealRequest
 
+	packComparison *packComparisonView
+
 	duplicates    []content.DuplicateModID
 	duplicateView *duplicateModView
 }
@@ -115,6 +117,7 @@ func (v contentView) kind() launcher.ContentKind {
 
 func (a *desktop) refreshContent(i launcher.Instance) {
 	a.closeModReleaseNotes()
+	a.closePackComparison()
 	a.content.modPreview = nil
 	a.content.savedPacks = nil
 	a.content.restoreMods = nil
@@ -186,6 +189,7 @@ func (a *desktop) instanceContent(c *ui.Context, i launcher.Instance) {
 		a.message("更新预览已失效，请重新选择要更新的模组。", nil)
 	}
 	if v.id != i.ID || v.revision != i.Revision || v.tab != 0 && !v.kind().Supports(i) {
+		a.closePackComparison()
 		*v = contentView{id: i.ID, revision: i.Revision}
 		a.refreshContent(i)
 	}
@@ -195,6 +199,10 @@ func (a *desktop) instanceContent(c *ui.Context, i launcher.Instance) {
 	}
 	if v.packPreview != nil {
 		a.resourcePackPreview(c, i, v.packPreview)
+		return
+	}
+	if v.packComparison != nil {
+		a.resourcePackComparison(c, v.packComparison)
 		return
 	}
 	if v.savedPacks != nil {
@@ -233,6 +241,10 @@ func (a *desktop) instanceContent(c *ui.Context, i launcher.Instance) {
 		kind := v.kind()
 		if kind == launcher.ResourcePacks && button(c, "游戏上次选择", action.Default, v.reading) {
 			a.openSavedPacks(i)
+		}
+		if kind == launcher.ResourcePacks && icon(c, lucide.GitCompareArrows(), "比对实例资源包", v.reading || !a.packComparisonInstance(i)) {
+			v.packComparison = &packComparisonView{base: i}
+			c.Invalidate()
 		}
 		if kind == launcher.Mods && icon(c, lucide.GitCompareArrows(), "比对实例模组", v.reading) {
 			v.comparison = &modComparisonView{}

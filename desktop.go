@@ -126,6 +126,9 @@ func (a *desktop) view(c *ui.Context) {
 		if a.page != pageNetwork && a.gameServers != nil {
 			a.closeGameServers()
 		}
+		if p := a.content.packComparison; p != nil && !a.inPackComparison(p) {
+			a.closePackComparison()
+		}
 		if p := a.screenshots; p != nil && (a.page != pageLibrary || a.detailPage != detailScreenshots || a.inspected != p.instance.ID) {
 			a.closeScreenshots()
 		}
@@ -277,6 +280,10 @@ func (a *desktop) backFromDetail() {
 	}
 	if a.detailPage == detailContent && a.content.packPreview != nil {
 		a.closePackPreview()
+		return
+	}
+	if a.detailPage == detailContent && a.content.packComparison != nil {
+		a.closePackComparison()
 		return
 	}
 	if a.detailPage == detailContent && a.content.savedPacks != nil {

@@ -17,15 +17,7 @@ func OpenDirectory(i instance.Instance, kind Kind, create bool) (*os.Root, error
 	if _, _, err := kind.Format(i); err != nil {
 		return nil, err
 	}
-	if !filepath.IsAbs(i.GameDir) {
-		return nil, i18n.Error("instance.game_dir_required")
-	}
-	if create {
-		if err := os.MkdirAll(i.GameDir, 0755); err != nil {
-			return nil, err
-		}
-	}
-	root, err := os.OpenRoot(i.GameDir)
+	root, err := openGameDirectory(i, create)
 	if err != nil {
 		return nil, err
 	}
@@ -38,22 +30,52 @@ func OpenDirectory(i instance.Instance, kind Kind, create bool) (*os.Root, error
 	return root.OpenRoot(string(kind))
 }
 
+func openGameDirectory(i instance.Instance, create bool) (*os.Root, error) {
+	if !filepath.IsAbs(i.GameDir) {
+		return nil, i18n.Error("instance.game_dir_required")
+	}
+	if create {
+		if err := os.MkdirAll(i.GameDir, 0755); err != nil {
+			return nil, err
+		}
+	}
+	return os.OpenRoot(i.GameDir)
+}
+
 func List(i instance.Instance, kind Kind) ([]File, error) {
-	return list(context.Background(), i, kind, false)
+	return list(context.Background(), i, kind, false, false)
 }
 
 func Inventory(ctx context.Context, i instance.Instance, kind Kind) ([]File, error) {
-	return list(ctx, i, kind, true)
+	return list(ctx, i, kind, true, false)
 }
 
-func list(ctx context.Context, i instance.Instance, kind Kind, identify bool) ([]File, error) {
+func list(ctx context.Context, i instance.Instance, kind Kind, identify, strict bool) ([]File, error) {
 	ext, markers, err := kind.Format(i)
 	if err != nil {
 		return nil, err
 	}
-	root, err := OpenDirectory(i, kind, false)
-	if errors.Is(err, fs.ErrNotExist) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	game, err := openGameDirectory(i, false)
+	if errors.Is(err, fs.ErrNotExist) && !strict {
 		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer game.Close()
+	root, err := game.OpenRoot(string(kind))
+	if errors.Is(err, fs.ErrNotExist) {
+		if !strict {
+			return nil, nil
+		}
+		// A missing optional directory is empty. An existing path that
+		// could not be opened (such as a broken link) is a scan failure.
+		if _, statErr := game.Lstat(string(kind)); errors.Is(statErr, fs.ErrNotExist) {
+			return nil, nil
+		}
 	}
 	if err != nil {
 		return nil, err
@@ -77,6 +99,9 @@ func list(ctx context.Context, i instance.Instance, kind Kind, identify bool) ([
 		if directory {
 			name, disabled = entry.Name(), false
 			marker, err := root.Lstat(filepath.Join(name, "pack.mcmeta"))
+			if strict && err != nil && !errors.Is(err, fs.ErrNotExist) {
+				return nil, err
+			}
 			if err != nil || !marker.Mode().IsRegular() {
 				continue
 			}
