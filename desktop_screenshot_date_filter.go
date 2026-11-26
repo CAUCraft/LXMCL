@@ -106,6 +106,7 @@ func (a *desktop) currentScreenshotRows(c *ui.Context, p *screenshotGallery) []d
 	}
 	if p.selectionFilter != p.appliedFilter {
 		p.selectionFilter = p.appliedFilter
+		p.reveal = nil
 		p.restrictBatchSelection(rows)
 		p.scroll = ui.ScrollState{}
 		if p.selected != "" && !screenshotIsVisible(rows, p.selected) {
