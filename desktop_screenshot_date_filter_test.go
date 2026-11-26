@@ -21,6 +21,7 @@ func TestScreenshotModifiedDateFilter(t *testing.T) {
 	for _, e := range []screenshots.Entry{
 		{Name: "River-future.png", Modified: midnight.AddDate(0, 0, 1)},
 		{Name: "River-today.png", Modified: midnight},
+		{Name: "River-today-z.png", Modified: midnight},
 		{Name: "Lake-yesterday.png", Modified: midnight.Add(-time.Second)},
 		{Name: "River-oldest.png", Modified: first},
 		{Name: "River-too-old.png", Modified: first.Add(-time.Second)},
@@ -40,12 +41,16 @@ func TestScreenshotModifiedDateFilter(t *testing.T) {
 		}
 	}
 	p.dateFilter = screenshotModifiedToday
-	check(now, "River-today.png")
+	check(now, "River-today.png", "River-today-z.png")
 	p.dateFilter = screenshotModifiedWeek
-	check(now, "River-today.png", "Lake-yesterday.png", "River-oldest.png")
+	check(now, "River-today.png", "River-today-z.png", "Lake-yesterday.png", "River-oldest.png")
 	p.query = " rIvEr "
-	check(now, "River-today.png", "River-oldest.png")
-	check(midnight.AddDate(0, 0, 1), "River-future.png", "River-today.png")
+	check(now, "River-today.png", "River-today-z.png", "River-oldest.png")
+	p.order = screenshotOldestFirst
+	check(now, "River-oldest.png", "River-today.png", "River-today-z.png")
+	check(midnight.AddDate(0, 0, 1), "River-today.png", "River-today-z.png", "River-future.png")
+	p.order = ""
+	check(now, "River-today.png", "River-today-z.png", "River-oldest.png")
 	p.dateFilter = ""
-	check(now, "River-future.png", "River-today.png", "River-oldest.png", "River-too-old.png", "River-unknown.png")
+	check(now, "River-future.png", "River-today.png", "River-today-z.png", "River-oldest.png", "River-too-old.png", "River-unknown.png")
 }

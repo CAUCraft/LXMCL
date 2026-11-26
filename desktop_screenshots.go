@@ -28,7 +28,7 @@ type screenshotGallery struct {
 	rows, matches                       []display.ListItem
 	entries                             map[string]screenshots.Entry
 	batch                               map[string]bool
-	query, dateFilter                   string
+	query, dateFilter, order            string
 	selected, viewerFrom                string
 	loading, folder, exporting, copying bool
 	err, previewErr                     string
@@ -48,9 +48,9 @@ func (a *desktop) closeScreenshots() {
 	}
 }
 
-func (a *desktop) loadScreenshots(i launcher.Instance, selected, query, dateFilter string) {
+func (a *desktop) loadScreenshots(i launcher.Instance, selected, query, dateFilter, order string) {
 	a.closeScreenshots()
-	p := &screenshotGallery{instance: i, loading: true, query: query, dateFilter: dateFilter}
+	p := &screenshotGallery{instance: i, loading: true, query: query, dateFilter: dateFilter, order: order}
 	a.screenshots = p
 	if a.ctx == nil {
 		return
@@ -276,7 +276,7 @@ func (a *desktop) screenshotViewer(c *ui.Context, p *screenshotGallery) {
 func (a *desktop) instanceScreenshots(c *ui.Context, i launcher.Instance) {
 	p := a.screenshots
 	if p == nil || p.instance != i {
-		a.loadScreenshots(i, "", "", "")
+		a.loadScreenshots(i, "", "", "", "")
 		p = a.screenshots
 	}
 	var toCopy *screenshots.Original
@@ -313,7 +313,10 @@ func (a *desktop) instanceScreenshots(c *ui.Context, i launcher.Instance) {
 			}).Label("搜索截图文件名").Grow(1).MinWidth(0)
 			muted(c, "按修改日期").FontSize(12).Shrink(0)
 			field.Select(c.Key("screenshot-date-filter"), &p.dateFilter, field.SelectProps{Options: screenshotDateOptions}).
-				Label("修改日期").Width(132).Shrink(0)
+				Label("修改日期").Width(116).Shrink(0)
+			muted(c, "按修改时间").FontSize(12).Shrink(0)
+			field.Select(c.Key("screenshot-order"), &p.order, field.SelectProps{Options: screenshotOrderOptions}).
+				Label("截图排序").Width(104).Shrink(0)
 		})
 		rows = a.currentScreenshotRows(c, p)
 	}
@@ -346,7 +349,6 @@ func (a *desktop) instanceScreenshots(c *ui.Context, i launcher.Instance) {
 	default:
 		w, _ := c.Size()
 		splitWorkspace(c, catalogListWidth(w), func() {
-			muted(c, "修改时间 · 最近在前").FontSize(12)
 			layout.ScrollArea(c, layout.ScrollAreaProps{State: &p.scroll}, func() {
 				a.screenshotList(c, p, rows)
 			}).Grow(1).MinHeight(0)
@@ -367,7 +369,7 @@ func (a *desktop) instanceScreenshots(c *ui.Context, i launcher.Instance) {
 	}
 	switch {
 	case refresh:
-		a.loadScreenshots(i, p.selected, p.query, p.dateFilter)
+		a.loadScreenshots(i, p.selected, p.query, p.dateFilter, p.order)
 		c.Invalidate()
 	case toCopy != nil && p.original == toCopy:
 		a.copyScreenshot(p, toCopy)
