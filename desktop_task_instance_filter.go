@@ -47,11 +47,12 @@ func (a *desktop) matchesTaskHistoryQuery(row taskRecord) bool {
 
 func (a *desktop) matchesTaskHistory(row taskRecord) bool {
 	return (a.taskInstanceFilter == 0 || row.InstanceID == a.taskInstanceFilter) &&
-		(a.taskFilter != 1 || failedOrCanceled(row)) && a.matchesTaskHistoryQuery(row)
+		(a.taskFilter != 1 || failedOrCanceled(row)) &&
+		a.matchesTaskHistoryAction(row) && a.matchesTaskHistoryQuery(row)
 }
 
 func (a *desktop) visibleTaskHistory() []taskRecord {
-	if a.taskInstanceFilter == 0 && a.taskFilter == 0 && strings.TrimSpace(a.taskHistoryQuery) == "" {
+	if a.taskInstanceFilter == 0 && a.taskFilter == 0 && a.taskActionFilter == "" && strings.TrimSpace(a.taskHistoryQuery) == "" {
 		return a.history
 	}
 	var visible []taskRecord
