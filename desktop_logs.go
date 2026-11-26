@@ -38,6 +38,10 @@ type instanceLogView struct {
 	reading, revealing bool
 	revealFailed       bool
 	err, fileType      string
+
+	original     *originalLogExport
+	originalDone bool
+	originalErr  string
 }
 
 const (
@@ -133,8 +137,8 @@ func (a *desktop) clearHiddenLog(entries []launcherlog.Entry) {
 }
 
 func (a *desktop) showInstanceLogs(i launcher.Instance) {
-	a.logLibrary = &instanceLogView{instance: i}
 	a.stopLogRead()
+	a.logLibrary = &instanceLogView{instance: i}
 	a.logOpen = true
 	a.resetLogPreview("")
 	a.refreshLogFiles()
@@ -155,6 +159,7 @@ func (a *desktop) refreshLogFiles() {
 	if p == nil || p.reading || a.ctx == nil {
 		return
 	}
+	p.stopOriginalExport()
 	p.reading, p.revealFailed, p.err = true, false, ""
 	request, fileType := a.logRequest, p.fileType
 	go func() {
@@ -197,6 +202,7 @@ func (a *desktop) logFilePicker(c *ui.Context) int {
 		visible := p.visibleEntries()
 		count = len(visible)
 		if oldType != p.fileType {
+			p.stopOriginalExport()
 			a.clearHiddenLog(visible)
 			c.Invalidate()
 		}

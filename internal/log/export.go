@@ -15,7 +15,7 @@ func ExportPreview(source, destination, preview string) error {
 	if !filepath.IsAbs(destination) {
 		return i18n.Error("log.export_path_required")
 	}
-	if strings.EqualFold(filepath.Clean(source), filepath.Clean(destination)) || IsPreview(destination) {
+	if strings.EqualFold(filepath.Clean(source), filepath.Clean(destination)) || IsInstanceLog(destination) {
 		return i18n.Error("log.export_source_conflict")
 	}
 	if src, err := os.Stat(source); err == nil {

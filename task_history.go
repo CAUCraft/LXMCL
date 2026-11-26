@@ -93,12 +93,13 @@ func (a *desktop) showLog(path string) {
 	if !launcherlog.IsGame(path) {
 		return
 	}
+	a.logLibrary.stopOriginalExport()
 	a.logLibrary = nil
 	a.selectLog(path)
 }
 
 func (a *desktop) selectLog(path string) {
-	if !launcherlog.IsPreview(path) {
+	if !launcherlog.IsInstanceLog(path) {
 		return
 	}
 	if a.logPath != path || !a.logOpen {
@@ -109,6 +110,7 @@ func (a *desktop) selectLog(path string) {
 }
 
 func (a *desktop) stopLogRead() {
+	a.logLibrary.stopOriginalExport()
 	if a.logCancel != nil {
 		a.logCancel()
 		a.logCancel = nil

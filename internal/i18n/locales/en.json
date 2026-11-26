@@ -168,6 +168,7 @@
   "log.archive_read_failed": "Could not decompress the archived log: %w",
   "log.crash_head": "\n\nShowing only the first 64 KiB of the crash report.\n",
   "log.directory_read_failed": "Could not read %s: %w",
+  "log.export_original_suffix": "Keep the original file extension %s",
   "log.export_path_required": "Choose an absolute destination path",
   "log.export_source_conflict": "Choose a new text file without replacing a log or crash report",
   "log.game_create_failed": "Could not create the game log: %w",

@@ -10,8 +10,11 @@ import (
 )
 
 func (a *desktop) exportLog(preview string) {
-	if a.ctx == nil || a.pickerBusy || a.logReading || a.logExporting || preview == "" {
+	if a.ctx == nil || a.pickerBusy || a.logReading || a.logExporting || preview == "" || a.logLibrary != nil && a.logLibrary.original != nil {
 		return
+	}
+	if p := a.logLibrary; p != nil {
+		p.originalDone = false
 	}
 	source, request := a.logPath, a.logRequest
 	query, filter := a.logQuery, a.logFilter
