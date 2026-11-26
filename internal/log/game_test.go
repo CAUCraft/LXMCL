@@ -63,6 +63,14 @@ func TestRecentDiagnosticsAreBoundedAndKeepInstanceFiles(t *testing.T) {
 	if err != nil || len(entries) != RecentLimit || entries[0].Path != archive || entries[1].Path != crash || entries[2].Path != latest || entries[3].Path != debug {
 		t.Fatalf("unexpected recent logs: %v, %v", entries, err)
 	}
+	for _, entry := range entries[:4] {
+		if err := entry.CheckReveal(dir); err != nil {
+			t.Fatalf("could not locate %s: %v", filepath.Base(entry.Path), err)
+		}
+	}
+	if err := entries[0].CheckReveal(t.TempDir()); err == nil {
+		t.Fatal("accepted a log from a different instance")
+	}
 	if got, err := ReadPreview(t.Context(), crash); err != nil || got != "java.lang.RuntimeException: crash" {
 		t.Fatalf("crash preview: %q, %v", got, err)
 	}
@@ -72,6 +80,19 @@ func TestRecentDiagnosticsAreBoundedAndKeepInstanceFiles(t *testing.T) {
 	}
 	if got, err := ReadPreview(t.Context(), crash); err != nil || !strings.HasPrefix(got, "java.lang.RuntimeException: crash") || strings.Contains(got, "omitted tail") || len(got) > tailLimit+128 {
 		t.Fatalf("large crash report lost its cause or exceeded the bound: %d bytes, %v", len(got), err)
+	}
+	if err := entries[1].CheckReveal(dir); err != nil {
+		t.Fatalf("a modification in place lost the log identity: %v", err)
+	}
+	if err := os.Rename(archive, archive+".moved"); err != nil {
+		t.Fatal(err)
+	}
+	if err := entries[0].CheckReveal(dir); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("missing original accepted: %v", err)
+	}
+	write("logs/2026-11-18-1.log.gz", compressed.String(), entries[0].Modified)
+	if err := entries[0].CheckReveal(dir); err == nil {
+		t.Fatal("accepted a same-name replacement with identical bytes and modification time")
 	}
 	if _, err := ReadGame(crash); err == nil {
 		t.Fatal("legacy game-log validation accepted a crash report")

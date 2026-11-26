@@ -7,6 +7,7 @@ import (
 
 	"github.com/CAUCraft/LXMCL/internal/launcher"
 	launcherlog "github.com/CAUCraft/LXMCL/internal/log"
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"github.com/lobehub/lobe-mygo/pkg/action"
 	"github.com/lobehub/lobe-mygo/pkg/field"
@@ -32,11 +33,11 @@ func (p *logPreview) update(source, query string, problemsOnly bool) {
 }
 
 type instanceLogView struct {
-	instance launcher.Instance
-	entries  []launcherlog.Entry
-	reading  bool
-	err      string
-	fileType string
+	instance           launcher.Instance
+	entries            []launcherlog.Entry
+	reading, revealing bool
+	revealFailed       bool
+	err, fileType      string
 }
 
 const (
@@ -88,6 +89,42 @@ func (p *instanceLogView) visibleEntries() []launcherlog.Entry {
 	return visible
 }
 
+func (p *instanceLogView) selectedEntry(path string) (launcherlog.Entry, bool) {
+	for _, entry := range p.entries {
+		if entry.Path == path && (p.fileType == "" || p.fileType == logFileType(path)) {
+			return entry, true
+		}
+	}
+	return launcherlog.Entry{}, false
+}
+
+func (a *desktop) revealInstanceLog(p *instanceLogView, entry launcherlog.Entry) {
+	if a.ctx == nil || p.reading || p.revealing {
+		return
+	}
+	request, fileType := a.logRequest, p.fileType
+	p.revealing, p.revealFailed = true, false
+	go func() {
+		err := entry.CheckReveal(p.instance.GameDir)
+		a.post(func() {
+			p.revealing = false
+			if !a.logOpen || a.logLibrary != p || p.reading || request != a.logRequest || fileType != p.fileType {
+				return
+			}
+			instance, found := a.state.Find(p.instance.ID)
+			current, selected := p.selectedEntry(a.logPath)
+			if !found || instance != p.instance || !selected || current != entry {
+				return
+			}
+			if err != nil {
+				p.revealFailed = true
+				return
+			}
+			mygo.Shell.ShowItemInFolder(entry.Path)
+		})
+	}()
+}
+
 func (a *desktop) clearHiddenLog(entries []launcherlog.Entry) {
 	if a.logPath != "" && !slices.ContainsFunc(entries, func(e launcherlog.Entry) bool { return e.Path == a.logPath }) {
 		a.stopLogRead()
@@ -108,6 +145,9 @@ func (a *desktop) resetLogPreview(path string) {
 	a.logQuery, a.logFilter, a.logScroll.Y = "", 0, 0
 	a.logDiagnosis = launcherlog.Diagnosis{}
 	a.logExported, a.logExportErr = false, ""
+	if p := a.logLibrary; p != nil {
+		p.revealFailed = false
+	}
 }
 
 func (a *desktop) refreshLogFiles() {
@@ -115,7 +155,7 @@ func (a *desktop) refreshLogFiles() {
 	if p == nil || p.reading || a.ctx == nil {
 		return
 	}
-	p.reading, p.err = true, ""
+	p.reading, p.revealFailed, p.err = true, false, ""
 	request, fileType := a.logRequest, p.fileType
 	go func() {
 		entries, err := launcherlog.Recent(a.ctx, p.instance.GameDir)
