@@ -15,6 +15,11 @@ type Server struct {
 	Address string `json:"address"`
 }
 
+// MatchesNameOrAddress matches a lowercased, trimmed query against the saved text.
+func (s Server) MatchesNameOrAddress(query string) bool {
+	return strings.Contains(strings.ToLower(s.Name), query) || strings.Contains(strings.ToLower(s.Address), query)
+}
+
 // NewFavorite validates and normalizes an entry for the launcher favorites list.
 func NewFavorite(name, address string) (Server, error) {
 	address, err := Address(address)

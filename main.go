@@ -156,10 +156,12 @@ type desktop struct {
 	stationLogin     *stationLoginView
 	stationSessions  map[string]launcher.StationSession
 	stationPreviews  map[string]*stationPreview
-	browsedServer    string
-	serverQuery      string
-	serverSource     int
-	gameServers      *gameServerView
+
+	browsedServer     string
+	serverQuery       string
+	serverSource      int
+	gameServerQueries map[int]string
+	gameServers       *gameServerView
 
 	page, settingsPage, downloadPage int
 	inspected                        int

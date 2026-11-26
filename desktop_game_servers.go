@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io/fs"
+	"strings"
 
 	"github.com/CAUCraft/LXMCL/internal/instance"
 	"github.com/CAUCraft/LXMCL/internal/launcher"
@@ -12,6 +13,7 @@ import (
 	"github.com/lobehub/lobe-mygo/pkg/action"
 	"github.com/lobehub/lobe-mygo/pkg/display"
 	"github.com/lobehub/lobe-mygo/pkg/feedback"
+	"github.com/lobehub/lobe-mygo/pkg/field"
 	"github.com/lobehub/lobe-mygo/pkg/lucide"
 	"github.com/lobehub/lobe-mygo/pkg/theme"
 )
@@ -22,8 +24,24 @@ type gameServerView struct {
 	loading, missing bool
 	err              string
 	rows             []server.Server
+	query, applied   string
+	visible          []int
 	importing        *gameServerImport
 	list             ui.ListState
+}
+
+// matchingRows keeps file order and the identity of duplicate rows.
+func (p *gameServerView) matchingRows() []int {
+	query := strings.ToLower(strings.TrimSpace(p.query))
+	if p.visible == nil || p.applied != query {
+		p.applied, p.visible = query, make([]int, 0)
+		for index, entry := range p.rows {
+			if query == "" || entry.MatchesNameOrAddress(query) {
+				p.visible = append(p.visible, index)
+			}
+		}
+	}
+	return p.visible
 }
 
 func (a *desktop) closeGameServers() {
@@ -31,13 +49,21 @@ func (a *desktop) closeGameServers() {
 		if p.cancel != nil {
 			p.cancel()
 		}
+		if strings.TrimSpace(p.query) == "" {
+			delete(a.gameServerQueries, p.instance.ID)
+		} else {
+			if a.gameServerQueries == nil {
+				a.gameServerQueries = make(map[int]string)
+			}
+			a.gameServerQueries[p.instance.ID] = p.query
+		}
 		a.gameServers = nil
 	}
 }
 
 func (a *desktop) loadGameServers(i launcher.Instance) {
 	a.closeGameServers()
-	p := &gameServerView{instance: i, loading: true}
+	p := &gameServerView{instance: i, loading: true, query: a.gameServerQueries[i.ID]}
 	a.gameServers = p
 	if a.ctx == nil {
 		return
@@ -62,7 +88,7 @@ func (a *desktop) loadGameServers(i launcher.Instance) {
 					p.err = err.Error()
 				}
 			default:
-				p.rows = rows
+				p.rows, p.visible = rows, nil
 			}
 		})
 	}()
@@ -78,9 +104,28 @@ func (a *desktop) gameServerLibrary(c *ui.Context) {
 		a.loadGameServers(i)
 	}
 	p := a.gameServers
+	var visible []int
+	var search ui.Element
+	if len(p.rows) > 0 {
+		previous := p.applied
+		shortcut := "mod+f"
+		if a.logOpen {
+			shortcut = ""
+		}
+		search = field.SearchBar(c.Key(&p.query), &p.query, field.SearchBarProps{
+			Placeholder: "搜索名称或地址", ShortKey: shortcut,
+		}).Label("搜索游戏内收藏")
+		visible = p.matchingRows()
+		if previous != p.applied {
+			p.list = ui.ListState{}
+			if p.importing != nil {
+				p.importing.keepVisible(visible)
+			}
+		}
+	}
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 		muted(c, i.Name+" · servers.dat").Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-		a.gameServerImportControls(c, p)
+		a.gameServerImportControls(c, p, visible)
 		if p.importing == nil && button(c, "刷新列表", action.Default, p.loading) {
 			a.loadGameServers(i)
 		}
@@ -95,15 +140,29 @@ func (a *desktop) gameServerLibrary(c *ui.Context) {
 		emptyPanel(c, lucide.Server(), "此实例还没有 servers.dat")
 	case len(p.rows) == 0:
 		emptyPanel(c, lucide.Server(), "此实例没有可见的游戏内收藏")
+	case len(visible) == 0:
+		ui.Column(c).Grow(1).Center().Children(func() {
+			display.Empty(c, display.EmptyProps{Icon: lucide.Search(), Title: "没有匹配的游戏内收藏", Action: func() {
+				if button(c, "清除游戏内搜索", action.Default, false) {
+					p.query, p.list = "", ui.ListState{}
+					search.Focus()
+					c.Invalidate()
+				}
+			}})
+		})
 	default:
 		supported := instance.SupportedRelease(i.Version)
 		if !supported && p.importing == nil {
 			muted(c, "启动时加入服务器支持 1.20.1 及以后的正式版。").FontSize(12)
 		}
-		p.list.Label = func(idx int) string { return p.rows[idx].Name + " " + p.rows[idx].Address }
-		ui.List(c.Key(p), &p.list, len(p.rows)).Grow(1).MinHeight(0).FillWidth().Rows(func(row ui.ListRow) {
-			rc := row.Context
-			s := p.rows[row.Index]
+		p.list.Key = func(idx int) any { return visible[idx] }
+		p.list.Label = func(idx int) string {
+			entry := p.rows[visible[idx]]
+			return entry.Name + " " + entry.Address
+		}
+		ui.List(c.Key(p), &p.list, len(visible)).Grow(1).MinHeight(0).FillWidth().Rows(func(row ui.ListRow) {
+			rc, source := row.Context, visible[row.Index]
+			s := p.rows[source]
 			name, address := s.Name, s.Address
 			if name == "" {
 				name = "未命名服务器"
@@ -118,7 +177,7 @@ func (a *desktop) gameServerLibrary(c *ui.Context) {
 					muted(rc, address).SingleLine().Ellipsis("…")
 				})
 				if p.importing != nil {
-					p.importing.checkbox(rc, row.Index, s, a.busy)
+					p.importing.checkbox(rc, source, s, a.busy)
 				} else {
 					target, err := launcher.ServerAddress(s.Address)
 					join := action.Button(rc, "启动并加入", action.ButtonProps{Size: theme.Small}).
